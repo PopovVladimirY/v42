@@ -1,0 +1,21 @@
+name: v42_test  # compose project name -- determines network name
+
+services:
+  postgres_test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB:       v42_test
+      POSTGRES_USER:     v42
+      POSTGRES_PASSWORD: testpassword
+    # expose to host for local test runs (make test-integration uses the internal network)
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U v42 -d v42_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+networks:
+  default:
+    name: v42_test

@@ -1,5 +1,7 @@
 .PHONY: dev build test lint migrate-up migrate-down sqlc \
-        docker-up docker-down docker-dev docker-dev-down clean
+        docker-up docker-down docker-dev docker-dev-down \
+        test-db-up test-db-down test-migrate-up test-migrate-down test-integration \
+        clean
 
 -include .env
 export
@@ -75,3 +77,43 @@ docker-dev-down:
 # Remove built binary
 clean:
 	rm -rf bin/
+
+# ----------------------------------------------------------------
+# Test infrastructure
+# ----------------------------------------------------------------
+
+# DSN for the isolated test database (used by migrate and Go test runner via Docker)
+TEST_DB_DSN_INTERNAL := postgres://v42:testpassword@postgres_test:5432/v42_test?sslmode=disable
+
+# Official migrate image -- no local CLI installation required
+DOCKER_MIGRATE := docker run --rm \
+	-v "$(CURDIR)/migrations:/migrations" \
+	--network v42_test \
+	migrate/migrate
+
+# Start isolated test postgres (port 5433 on host)
+test-db-up:
+	docker compose -f docker-compose.test.yml up -d
+
+# Stop and remove test postgres + its volume
+test-db-down:
+	docker compose -f docker-compose.test.yml down -v
+
+# Apply all migrations to test database
+test-migrate-up:
+	$(DOCKER_MIGRATE) -database "$(TEST_DB_DSN_INTERNAL)" -path /migrations up
+
+# Roll back one migration on test database
+test-migrate-down:
+	$(DOCKER_MIGRATE) -database "$(TEST_DB_DSN_INTERNAL)" -path /migrations down 1
+
+# Run integration tests (requires: make test-db-up && make test-migrate-up)
+# Note: -race requires CGO -- not available on alpine; use native Go for race detection
+test-integration:
+	docker run --rm \
+		-v "$(CURDIR):/app" \
+		-v "$(GO_CACHE):/root/go/pkg/mod" \
+		-w /app \
+		--network v42_test \
+		-e TEST_DB_DSN="$(TEST_DB_DSN_INTERNAL)" \
+		$(GO_IMAGE) go test -tags integration -v ./...

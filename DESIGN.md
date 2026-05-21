@@ -728,22 +728,22 @@ PATCH /api/v1/projects/{id}/backlog/reorder
 
 ## План реализации
 
-### Фаза 0 -- Фундамент (3-4 дня)
-- [ ] `go mod init`, структура директорий
-- [ ] `Dockerfile` (multi-stage: build + minimal runtime)
-- [ ] `docker-compose.yml`: postgres + adminer (порт 8081, для дебага схемы)
-- [ ] `Makefile`: `make dev`, `make build`, `make migrate-up`, `make migrate-down`, `make sqlc`
-- [ ] `config.go`: читаем `.env`, валидируем при старте (нет конфига -- не запускается)
+### Фаза 0 -- Фундамент ✓ DONE (commit af2a044, fe8984e)
+- [x] `go mod init`, структура директорий
+- [x] `Dockerfile` (multi-stage: build + minimal runtime)
+- [x] `docker-compose.yml`: postgres + adminer (порт 8081, для дебага схемы)
+- [x] `Makefile`: `make dev`, `make build`, `make migrate-up`, `make migrate-down`, `make sqlc`
+- [x] `config.go`: читаем `.env`, валидируем при старте (нет конфига -- не запускается)
   - Production guard: если `APP_ENV=production` и `SEED_ADMIN_PASSWORD=changeme` -- падаем с явной ошибкой
-- [ ] Подключение к БД с healthcheck
-- [ ] `golang-migrate` setup, первая пустая миграция
-- [ ] `chi` router, базовый `/api/v1/health` endpoint
-- [ ] CORS middleware (`cors.go`): разрешаем React dev server (`:5173`) и production origin
-- [ ] Rate limit middleware (`ratelimit.go`): применяем к `/api/v1/auth/*` (IP-based, 10 req/min)
-- [ ] Логгер (structured JSON logs)
+- [x] Подключение к БД с healthcheck
+- [x] `golang-migrate` setup, первая пустая миграция
+- [x] `chi` router, базовый `/api/v1/health` endpoint
+- [x] CORS middleware (`cors.go`): разрешаем React dev server (`:5173`) и production origin
+- [x] Rate limit middleware (`ratelimit.go`): применяем к `/api/v1/auth/*` (IP-based, 10 req/min)
+- [x] Логгер (structured JSON logs)
 
-### Фаза 1 -- Схема данных (3-4 дня)
-- [ ] Все миграции из раздела "Схема" выше
+### Фаза 1 -- Схема данных (в работе)
+- [x] Все миграции из раздела "Схема" выше -- `000002_schema.up.sql`
 - [ ] `sqlc.yaml` config, базовые queries для всех таблиц
 - [ ] `make sqlc` -- генерируем Go-код
 - [ ] Проверяем на реальной БД (adminer -- наш друг)
