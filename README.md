@@ -9,54 +9,77 @@ Stack: **Go 1.25** + **PostgreSQL 16** + **React 18** (frontend coming in Phase 
 
 ## Prerequisites
 
-You need exactly two things:
-
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or Docker Engine + Compose)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) with **WSL2 backend** enabled
+- [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) with Ubuntu (default distro)
 - Git
-
-Go, Node.js, and PostgreSQL do **not** need to be installed locally.
-Everything runs in containers.
 
 ---
 
-## Quick Start (3 commands)
+## WSL2 Setup (one time)
+
+### 1. Install Go 1.25 in WSL
+
+Open a WSL terminal (Windows Terminal -> Ubuntu) and run:
 
 ```bash
-git clone <repo-url>
-cd V42
-cp .env.example .env
+curl -Lo /tmp/go.tar.gz https://go.dev/dl/go1.25.0.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf /tmp/go.tar.gz
+sudo ln -sf /usr/local/go/bin/go /usr/local/bin/go
+sudo ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+go version
+# go version go1.25.0 linux/amd64
 ```
 
-Then start the infrastructure and API:
+### 2. Fix WSL HOME variable
+
+WSL inherits the Windows `HOME` variable which breaks `~` expansion.
+Run once as root:
 
 ```bash
-# Start postgres + adminer (background)
-docker compose -f docker-compose.dev.yml up -d
-
-# Run the API (foreground -- you'll see JSON logs)
-docker run --rm \
-  -v "$(pwd):/app" \
-  -v "v42-gomod-cache:/root/go/pkg/mod" \
-  -w /app \
-  --network v42_default \
-  --env-file .env \
-  -e DB_HOST=postgres \
-  -p 8080:8080 \
-  golang:1.25-alpine sh -c "go run ./cmd/api"
+# Make HOME always resolve from /etc/passwd, not Windows
+echo 'HOME=/home/$USER' | sudo tee /etc/environment > /dev/null
+# Or more precisely:
+printf 'export HOME=$(getent passwd $(id -un) | cut -d: -f6)\n' \
+  | sudo tee /etc/profile.d/fix-wsl-home.sh
+sudo chmod +x /etc/profile.d/fix-wsl-home.sh
 ```
 
-On Windows (PowerShell):
+### 3. Symlink the project into Linux home
 
-```powershell
-docker run --rm `
-  -v "C:\path\to\V42:/app" `
-  -v "v42-gomod-cache:/root/go/pkg/mod" `
-  -w /app `
-  --network v42_default `
-  --env-file .env `
-  -e DB_HOST=postgres `
-  -p 8080:8080 `
-  golang:1.25-alpine sh -c "go run ./cmd/api"
+From WSL, link the Windows project folder into your Linux home so
+`~/v42` and `C:\path\to\V42` are the same directory -- no copies, no sync:
+
+```bash
+# Adjust the Windows path if your project lives elsewhere
+ln -s /mnt/c/Users/$USER/Desktop/V42 ~/v42
+ls ~/v42/go.mod   # should print the file path
+```
+
+### 4. Verify
+
+```bash
+cd ~/v42
+make vet    # should print VET_OK, no Docker involved
+```
+
+---
+
+## Quick Start
+
+```bash
+cd ~/v42
+cp .env.example .env          # fill in DB_PASSWORD and JWT_SECRET at minimum
+
+make docker-dev               # start postgres + adminer (background)
+make migrate-up               # apply all SQL migrations
+make dev                      # run API (foreground -- JSON logs)
+```
+
+Smoke test in a second terminal:
+
+```bash
+curl http://localhost:8080/api/v1/health
+# {"data":{"status":"ok","db":"ok","version":"0.1.0"},"error":null,"meta":null}
 ```
 
 ---
@@ -65,16 +88,11 @@ docker run --rm `
 
 ### 1. API is alive
 
-Open a second terminal and hit the health endpoint:
+After `make dev`, hit the health endpoint from a second WSL terminal:
 
 ```bash
 curl http://localhost:8080/api/v1/health
-```
-
-Expected response:
-
-```json
-{"data":{"status":"ok","db":"ok","version":"0.1.0"},"error":null,"meta":null}
+# {"data":{"status":"ok","db":"ok","version":"0.1.0"},"error":null,"meta":null}
 ```
 
 `status: ok` -- API is up. `db: ok` -- PostgreSQL connection works.
@@ -103,17 +121,33 @@ Watch the terminal running the API. Every request logs as structured JSON:
 ## Makefile Commands
 
 ```bash
-make tidy          # download / update Go dependencies (via Docker)
-make vet           # run go vet (via Docker)
-make test          # run tests with race detector (via Docker)
-make docker-dev    # start postgres + adminer in background
+# -- Go (native, requires WSL setup above) --
+make dev               # run API locally (requires: make docker-dev first)
+make build             # build binary to bin/v42
+make tidy              # go mod tidy
+make vet               # go vet ./...
+make test              # go test -race ./...  (unit tests)
+make lint              # golangci-lint run
+
+# -- Docker infrastructure --
+make docker-dev        # start postgres + adminer in background
 make docker-dev-down   # stop postgres + adminer
-make docker-up     # start full stack (postgres + api + adminer)
-make docker-down   # stop full stack
-make migrate-up    # apply all pending SQL migrations
-make migrate-down  # roll back one migration
-make sqlc          # regenerate Go code from SQL query files
-make build         # build binary to bin/v42 (requires local Go)
+make docker-up         # start full stack (postgres + api + adminer)
+make docker-down       # stop full stack
+
+# -- Migrations (golang-migrate via Docker, no local CLI needed) --
+make migrate-up        # apply all pending SQL migrations
+make migrate-down      # roll back one migration
+
+# -- Integration tests (isolated postgres on port 5433) --
+make test-db-up        # start test postgres
+make test-db-down      # stop test postgres + wipe volume
+make test-migrate-up   # apply migrations to test DB
+make test-integration  # go test -race -tags integration ./...
+
+# -- Code generation --
+make sqlc              # regenerate Go code from SQL query files
+make docker-build-go   # build binary via Docker (for CI without local Go)
 ```
 
 ---
@@ -159,27 +193,31 @@ Everything else has sensible defaults. See [.env.example](.env.example) for the 
 
 ## Development Workflow
 
-```
-1. Edit Go code
-2. Ctrl+C the running API container
-3. Re-run the docker run command above
-   (go run recompiles automatically)
+Edit code in VS Code (Windows), run commands in the WSL terminal:
+
+```bash
+# Typical loop
+make dev                 # start API; Ctrl+C to stop, re-run to reload
+make test                # unit tests with race detector
+make test-integration    # integration tests (needs test-db-up first)
 ```
 
-For database schema changes:
+Database schema changes:
 
-```
-1. Create migrations/00000N_describe_change.up.sql
-2. Create migrations/00000N_describe_change.down.sql
-3. make migrate-up
+```bash
+# 1. Create migration files
+touch migrations/00000N_describe_change.{up,down}.sql
+# 2. Fill them in, then:
+make migrate-up
 ```
 
-For new SQL queries (typed Go code via sqlc):
+New SQL queries (typed Go code via sqlc):
 
-```
-1. Add query to internal/db/queries/<domain>.sql
-2. make sqlc
-3. Use generated functions from internal/db/gen/
+```bash
+# 1. Add query to internal/db/queries/<domain>.sql
+# 2. Regenerate
+make sqlc
+# 3. Use generated functions from internal/db/gen/
 ```
 
 ---
@@ -217,8 +255,8 @@ Response envelope -- every endpoint returns:
 | Phase | What | Status |
 |-------|------|--------|
 | 0 | Scaffold: Go, chi, pgx, middleware, health endpoint | Done |
-| 1 | Full DB schema (17 tables), migrations | Next |
-| 2 | Auth: login, JWT tokens, refresh, logout | Planned |
+| 1 | Full DB schema (19 tables, 13 ENUMs), migrations, test infra | Done |
+| 2 | Auth: login, JWT tokens, refresh, logout | Next |
 | 3 | Projects, epics, backlog items API | Planned |
 | 4 | Tasks, comments, team management | Planned |
 | 5 | Tests (ATDD), sprint management | Planned |

@@ -26,17 +26,17 @@ build:
 docker-build-go:
 	$(DOCKER_GO) go build -ldflags="-s -w" -o bin/v42 ./cmd/api
 
-# Download/update dependencies via Docker
+# Download/update dependencies (native Go)
 tidy:
-	$(DOCKER_GO) go mod tidy
+	go mod tidy
 
-# Run all tests with race detector via Docker
+# Run all unit tests with race detector (native Go + CGO)
 test:
-	$(DOCKER_GO) go test -race -count=1 ./...
+	go test -race -count=1 ./...
 
-# Run go vet via Docker
+# Run go vet (native Go)
 vet:
-	$(DOCKER_GO) go vet ./...
+	go vet ./...
 
 # Lint (install: https://golangci-lint.run/usage/install/)
 lint:
@@ -82,8 +82,10 @@ clean:
 # Test infrastructure
 # ----------------------------------------------------------------
 
-# DSN for the isolated test database (used by migrate and Go test runner via Docker)
+# DSN inside Docker network (for migrate container)
 TEST_DB_DSN_INTERNAL := postgres://v42:testpassword@postgres_test:5432/v42_test?sslmode=disable
+# DSN from host/WSL (port 5433 exposed)
+TEST_DB_DSN_HOST     := postgres://v42:testpassword@localhost:5433/v42_test?sslmode=disable
 
 # Official migrate image -- no local CLI installation required
 DOCKER_MIGRATE := docker run --rm \
@@ -108,12 +110,5 @@ test-migrate-down:
 	$(DOCKER_MIGRATE) -database "$(TEST_DB_DSN_INTERNAL)" -path /migrations down 1
 
 # Run integration tests (requires: make test-db-up && make test-migrate-up)
-# Note: -race requires CGO -- not available on alpine; use native Go for race detection
 test-integration:
-	docker run --rm \
-		-v "$(CURDIR):/app" \
-		-v "$(GO_CACHE):/root/go/pkg/mod" \
-		-w /app \
-		--network v42_test \
-		-e TEST_DB_DSN="$(TEST_DB_DSN_INTERNAL)" \
-		$(GO_IMAGE) go test -tags integration -v ./...
+	TEST_DB_DSN="$(TEST_DB_DSN_HOST)" go test -race -tags integration -v ./...
