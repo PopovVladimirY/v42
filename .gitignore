@@ -1,21 +1,46 @@
-# compiled binary
+# --- Go ---
+# compiled binaries (make build puts them here)
 bin/
+# go build without -o drops a binary named after the module dir
+/v42
+/api
 
-# environment -- secrets stay local, never committed
-.env
-
-# Go test binary artifacts
+# test binaries and coverage
 *.test
+*.out
+coverage.html
+
+# dependency vendor directory (we use module cache instead)
+vendor/
 
 # sqlc generated code -- regenerate with: make sqlc
 internal/db/gen/
 
-# IDE
+# --- Environment ---
+# secrets stay local, never committed (.env.example IS committed)
+.env
+.env.local
+.env.*.local
+
+# --- IDE ---
 .idea/
 .vscode/
 *.swp
 *.swo
+*.swo~
+*.swn
+*~
 
-# OS
+# --- OS ---
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- Temp / Build ---
+tmp/
+*.tmp
