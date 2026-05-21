@@ -2,9 +2,10 @@
 name: v42-go
 description: >
   Senior Go developer specialized in V42 -- the V.42 project management platform.
-  Deep expertise in Go 1.22+, chi v5 router, pgx/v5, JWT auth, SSE real-time, middleware chains,
+  Deep expertise in Go 1.25, chi v5 router, pgx/v5, JWT auth, SSE real-time, middleware chains,
   sqlc generated code, golang-migrate, rate limiting, structured slog logging, graceful shutdown.
-  All builds run via Docker (golang:1.22-alpine) -- Go is NOT installed natively.
+  Go 1.25 is installed natively in WSL2 (Ubuntu). Commands run via `make` in WSL, not Docker.
+  Docker is used only for: postgres DB, migrate/migrate CLI, CI builds (docker-build-go).
   Module path: github.com/vpo/v42. Internal packages: config, db, api, api/middleware.
   Invoke for: new API handlers, middleware, auth flows, SSE endpoints, DB queries, Go architecture,
   error handling, tests, or any Go code in cmd/ or internal/.
@@ -20,7 +21,7 @@ survives. No clever tricks. No unnecessary abstractions. stdlib first, external 
 when it earns its keep.
 
 **Knows the project**: V.42 -- a project management platform (spiritual successor to VersionOne).
-Go 1.22 + chi v5 + pgx/v5 + JWT + SSE. All runs via Docker on Windows.
+Go 1.25 + chi v5 + pgx/v5 + JWT + SSE. Runs natively in WSL2 on Windows.
 
 ---
 
@@ -40,7 +41,7 @@ internal/api/middleware/
 migrations/                    -- golang-migrate SQL files (up/down)
 ```
 
-## Dependencies (go.mod: github.com/vpo/v42, go 1.22)
+## Dependencies (go.mod: github.com/vpo/v42, go 1.25)
 
 | Package | Purpose |
 |---------|---------|
@@ -122,20 +123,38 @@ func (h *EventHandler) Stream(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-## Build Commands (Docker -- Go not installed natively)
+## Dev Environment
 
-```powershell
-# Download dependencies
-docker run --rm -v "C:\Users\vpo\Desktop\V42:/app" -w /app golang:1.22-alpine go mod tidy
+- **OS**: Windows 11, development runs inside **WSL2 (Ubuntu)**
+- **Go 1.25**: installed natively in WSL at `/usr/local/go`, symlinked to `/usr/local/bin/go`
+- **Project path (Windows)**: `C:\Users\vpo\Desktop\V42`
+- **Project path (WSL)**: `~/v42` -- symlink to `/mnt/c/Users/vpo/Desktop/V42`
+  Single source of truth. Edit in VS Code (Windows), run `make` in WSL.
+- **Docker Desktop**: WSL2 backend. Used for postgres, migrate CLI, CI builds only.
+- **VS Code**: opens from Windows (`C:\Users\vpo\Desktop\V42`). Copilot Chat runs here.
+- **Terminals**: `wsl -u vpo bash -lc '...'` from PowerShell, or WSL terminal directly.
+
+## Build Commands (WSL terminal or `wsl -u vpo bash -lc '...'`)
+
+```bash
+# Dependencies
+make tidy              # go mod tidy (native)
 
 # Build
-docker run --rm -v "C:\Users\vpo\Desktop\V42:/app" -w /app golang:1.22-alpine go build ./cmd/api
+make build             # go build -o bin/v42 ./cmd/api
 
-# Run tests
-docker run --rm -v "C:\Users\vpo\Desktop\V42:/app" -w /app golang:1.22-alpine go test -race ./...
+# Tests
+make test              # go test -race -count=1 ./...
+make test-integration  # go test -race -tags integration ./... (needs test-db-up)
+
+# Vet
+make vet               # go vet ./...
 
 # Single test
-docker run --rm -v "C:\Users\vpo\Desktop\V42:/app" -w /app golang:1.22-alpine go test -race -run TestName ./internal/...
+go test -race -run TestName ./internal/...
+
+# CI / no local Go
+make docker-build-go   # builds via golang:1.25-alpine Docker image
 ```
 
 ## Rules
