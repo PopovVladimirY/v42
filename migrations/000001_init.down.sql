@@ -1,0 +1,2 @@
+-- pgcrypto is a shared extension -- we leave it in place on rollback.
+-- This migration is intentionally a no-op.

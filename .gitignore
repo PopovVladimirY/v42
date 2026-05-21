@@ -1,0 +1,21 @@
+# compiled binary
+bin/
+
+# environment -- secrets stay local, never committed
+.env
+
+# Go test binary artifacts
+*.test
+
+# sqlc generated code -- regenerate with: make sqlc
+internal/db/gen/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
