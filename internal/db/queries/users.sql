@@ -14,3 +14,28 @@ WHERE id = $1;
 INSERT INTO users (email, password_hash, display_name, role)
 VALUES ($1, $2, $3, $4)
 RETURNING id, email, display_name, role, is_active, avatar_url, created_at, updated_at;
+
+-- name: ListAllUsers :many
+-- Admin/maintainer: returns all users regardless of active status.
+SELECT id, email, display_name, role, is_active, avatar_url, created_at, updated_at
+FROM users
+ORDER BY display_name, email;
+
+-- name: ListActiveUsers :many
+-- Regular users: see only active accounts.
+SELECT id, email, display_name, role, is_active, avatar_url, created_at, updated_at
+FROM users
+WHERE is_active = true
+ORDER BY display_name, email;
+
+-- name: UpdateUser :one
+-- PATCH /users/{id}: caller merges current state with request, then calls this.
+UPDATE users
+SET
+    display_name = $2,
+    avatar_url   = $3,
+    role         = $4,
+    is_active    = $5,
+    updated_at   = now()
+WHERE id = $1
+RETURNING id, email, display_name, role, is_active, avatar_url, created_at, updated_at;

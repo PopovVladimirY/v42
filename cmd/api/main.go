@@ -65,7 +65,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	router := api.NewRouter(cfg, pool, log, authSvc)
+	router := api.NewRouter(cfg, pool, log, authSvc, queries)
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf("%s:%s", cfg.ServerHost, cfg.ServerPort),

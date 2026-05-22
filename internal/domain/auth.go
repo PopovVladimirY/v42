@@ -33,17 +33,20 @@ var (
 	ErrTokenRevoked       = errors.New("token revoked")
 	ErrTokenReuse         = errors.New("token reuse detected -- all sessions revoked")
 	ErrUserInactive       = errors.New("user account is inactive")
-	ErrNotFound           = errors.New("not found") // storage-layer sentinel; never returned as HTTP error directly
+	ErrNotFound           = errors.New("not found")  // storage-layer sentinel; never returned as HTTP error directly
+	ErrConflict           = errors.New("conflict")   // unique constraint violated; caller maps to 409
 )
 
 // User is the domain user without the password hash (safe to pass to handlers).
 type User struct {
-	ID          string  `json:"id"`
-	Email       string  `json:"email"`
-	DisplayName string  `json:"display_name"`
-	Role        string  `json:"role"`
-	IsActive    bool    `json:"is_active"`
-	AvatarURL   *string `json:"avatar_url"`
+	ID          string    `json:"id"`
+	Email       string    `json:"email"`
+	DisplayName string    `json:"display_name"`
+	Role        string    `json:"role"`
+	IsActive    bool      `json:"is_active"`
+	AvatarURL   *string   `json:"avatar_url"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // StoredUser includes the password hash -- only used inside Login for verification.

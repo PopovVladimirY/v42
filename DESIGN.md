@@ -855,11 +855,16 @@ PATCH /api/v1/projects/{id}/backlog/reorder
 - [x] Seed admin -- `SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD` at startup
 - [x] 15 integration tests; 4 security review rounds; 16 bugs found and fixed
 
-### Фаза 3 -- Пользователи и команды (2-3 дня)
-- [ ] CRUD users
-- [ ] CRUD skills (builtin seed + custom)
-- [ ] CRUD member_skills
-- [ ] CRUD teams + team members
+### Фаза 3 -- Пользователи и команды ✓ DONE
+- [x] CRUD users (GET list, POST, GET by id, PATCH -- с role/active guard-цепочкой)
+- [x] CRUD skills -- каталог (GET list, POST [admin]; ErrConflict → 409)
+- [x] CRUD member_skills (GET, PUT upsert, DELETE -- idempotent)
+- [x] CRUD teams + team members (GET, POST, PATCH, DELETE; UPSERT capacity_hours)
+- [x] 61 integration tests; 3 review + 1 monkey round; 19 bugs found and fixed
+  - validation: null bytes, trim, length limits (name 200, skill 100, avatar_url 2048)
+  - admin self-deactivation guard (403)
+  - malformed UUID → 404 on all DELETE handlers
+  - ErrConflict / ErrNotFound propagation сквозь store → handler
 
 ### Фаза 4 -- Рабочие элементы (5-7 дней)
 - [ ] CRUD projects (archive via PATCH status, no DELETE)

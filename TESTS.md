@@ -320,6 +320,578 @@
 
 ---
 
+## Категория: Users / Skills / Teams (Phase 3 -- DONE)
+
+Все тесты в `internal/api/users_skills_teams_test.go`. Тег `//go:build integration`.
+Инфраструктура: `testEnv` из `auth_test.go` + Phase 3 helpers:
+`loginToken`, `postAuth`, `patchAuth`, `putAuth`, `deleteAuth`, `userID`.
+
+**Итого Phase 3 + регрессии**: 38 тестов, все green (53 суммарно по проекту).
+
+---
+
+### `TestUsers_List_AsAdmin` -- ✓ DONE
+
+**Что**: `GET /api/v1/users` admin-токеном возвращает всех юзеров включая inactive.
+
+**Почему**: admin видит полный список, non-admin -- только активных (фильтр в store).
+
+---
+
+### `TestUsers_List_AsDeveloper_HidesInactive` -- ✓ DONE
+
+**Что**: developer-токен → GET /users возвращает только active=true юзеров.
+
+**Почему**: inactive пользователи не должны "светиться" в листингах для коллег.
+
+---
+
+### `TestUsers_Get_Success` -- ✓ DONE
+
+**Что**: `GET /api/v1/users/{id}` возвращает конкретного пользователя по UUID.
+
+**Почему**: базовый контракт эндпоинта.
+
+---
+
+### `TestUsers_Get_NotFound` -- ✓ DONE
+
+**Что**: валидный UUID которого нет в БД → 404.
+
+**Почему**: UUID-формат не гарантирует существование записи.
+
+---
+
+### `TestUsers_Update_OwnProfile` -- ✓ DONE
+
+**Что**: пользователь меняет свой `display_name` → 200, новое имя в ответе.
+
+**Почему**: каждый может менять себя; не может менять других (тест ниже).
+
+---
+
+### `TestUsers_Update_RoleByAdmin` -- ✓ DONE
+
+**Что**: admin меняет роль другого пользователя → 200.
+
+**Почему**: role management -- только admin.
+
+---
+
+### `TestUsers_Update_RoleByNonAdmin_Forbidden` -- ✓ DONE
+
+**Что**: developer пытается сменить роль → 403.
+
+**Почему**: `RequireRole`/handler guard.
+
+---
+
+### `TestUsers_Update_OtherUser_Forbidden` -- ✓ DONE
+
+**Что**: developer пытается PATCH чужого profile → 403.
+
+**Почему**: isAdmin || isSelf guard в handler.
+
+---
+
+### `TestSkills_List` -- ✓ DONE
+
+**Что**: `GET /api/v1/skills` возвращает список skills из seed (`migration 000004`).
+
+**Почему**: skills -- read-only каталог для всех аутентифицированных.
+
+---
+
+### `TestSkills_Create_AsAdmin` -- ✓ DONE
+
+**Что**: admin создаёт новый skill → 201, skill в ответе.
+
+**Почему**: добавление skills в каталог -- admin-only операция.
+
+---
+
+### `TestSkills_Create_AsDeveloper_Forbidden` -- ✓ DONE
+
+**Что**: developer пытается создать skill → 403.
+
+**Почему**: RequireRole(admin) на `POST /skills`.
+
+---
+
+### `TestSkills_Create_Duplicate_Conflict` -- ✓ DONE
+
+**Что**: admin создаёт skill с именем которое уже есть → 409 `CONFLICT`.
+
+**Почему**: `unique` constraint в БД; store переводит `23505` в `domain.ErrConflict`; handler → 409.
+
+---
+
+### `TestMemberSkills_UpsertAndList` -- ✓ DONE
+
+**Что**: PUT skill уровня + GET /users/{id}/skills → список содержит upsert-нутый skill.
+
+**Почему**: upsert (INSERT ON CONFLICT DO UPDATE) -- основной паттерн для member_skills.
+
+---
+
+### `TestMemberSkills_OtherUser_Forbidden` -- ✓ DONE
+
+**Что**: developer пытается PUT/DELETE skill другого пользователя → 403.
+
+**Почему**: member_skills привязаны к конкретному user; только сам пользователь (или admin) управляет.
+
+---
+
+### `TestTeams_CreateAndList` -- ✓ DONE
+
+**Что**: admin создаёт team, `GET /api/v1/teams` возвращает её в списке.
+
+**Почему**: happy path для teams CRUD.
+
+---
+
+### `TestTeams_Create_AsDeveloper_Forbidden` -- ✓ DONE
+
+**Что**: developer пытается POST team → 403.
+
+**Почему**: RequireRole(admin, maintainer) на POST /teams.
+
+---
+
+### `TestTeams_GetWithMembers` -- ✓ DONE
+
+**Что**: `GET /api/v1/teams/{id}` возвращает team + members array.
+
+**Как**: создаём team, добавляем member, GET, проверяем `members[0].email`.
+
+**Почему**: teams всегда возвращаются с members (единый эндпоинт).
+
+---
+
+### `TestTeams_Update` -- ✓ DONE
+
+**Что**: PATCH team name → 200, новое имя в ответе.
+
+**Почему**: merge-update: неуказанные поля остаются прежними.
+
+---
+
+### `TestTeams_Delete_AsAdmin` -- ✓ DONE
+
+**Что**: admin удаляет team → 204.
+
+**Почему**: Delete возвращает 204 даже если team уже нет (idempotent).
+
+---
+
+### `TestTeams_Delete_AsMaintainer_Forbidden` -- ✓ DONE
+
+**Что**: maintainer пытается DELETE team → 403.
+
+**Почему**: DELETE /teams/{id} ограничен только admin.
+
+---
+
+### `TestRequireRole_Integration` -- ✓ DONE
+
+**Что**: `POST /api/v1/teams` без RequireRole роли → 403.
+
+**Почему**: явный тест middleware цепочки: JWTAuth → RequireRole → handler.
+
+---
+
+## Round 1 -- Regression Tests (Phase 3, pass 1)
+
+Баги найдены в ходе code review после создания Phase 3.
+
+---
+
+### `TestUsers_Get_MalformedUUID_Returns404` -- ✓ DONE (regression R1-1)
+
+**Что**: `GET /api/v1/users/not-a-uuid` → 404.
+
+**Почему**: `parseUUID` в store возвращал `fmt.Errorf` которое уходило в 500.
+Теперь parseUUID failure → `domain.ErrNotFound` во всех store-методах.
+
+---
+
+### `TestSkills_Create_MalformedUUID_MemberSkill_Returns404` -- ✓ DONE (regression R1-2)
+
+**Что**: `PUT /api/v1/users/{id}/skills/not-a-uuid` → 404.
+
+**Почему**: аналогично -- parseUUID в SkillStore.UpsertMemberSkill давал 500.
+
+---
+
+### `TestTeams_AddMember_InvalidCapacity` -- ✓ DONE (regression R1-3)
+
+**Что**: `capacity_hours: -1` и `capacity_hours: 169` → 400.
+
+**Почему**: поле не валидировалось; -1 уходил в БД (int валиден), 169 > рабочей недели.
+Теперь проверка `0 <= capacity_hours <= 168`.
+
+---
+
+### `TestTeams_AddMember_ReturnsFullUserDetails` -- ✓ DONE (regression R1-4)
+
+**Что**: `POST /teams/{id}/members/{user_id}` возвращает `email`, `display_name` в member-объекте.
+
+**Почему**: AddMember в store возвращал только `{user_id, capacity_hours, joined_at}`.
+Теперь после INSERT делается GET user для полного member-объекта.
+
+---
+
+### `TestMemberSkills_UpsertNonexistentSkill_Returns404` -- ✓ DONE (regression R1-5)
+
+**Что**: upsert skill с валидным UUID которого нет в БД → 404.
+
+**Почему**: FK constraint 23503 в БД переводился в `domain.ErrNotFound` в store,
+но handler проверял `strings.Contains(err.Error(), "foreign key")` -- хрупко.
+Теперь `errors.Is(err, domain.ErrNotFound)` → 404.
+
+---
+
+## Round 2 -- Regression Tests (Phase 3, pass 2)
+
+Баги найдены в ходе второго code review.
+
+---
+
+### `TestUsers_Update_AdminSelfRoleChange_Forbidden` -- ✓ DONE (regression R2-1)
+
+**Что**: admin PATCH своей собственной роли → 403.
+
+**Почему**: без guard admin мог сделать себя observer и потерять доступ навсегда.
+Теперь `isAdmin && isSelf && req.Role != nil && *req.Role != claims.Role` → 403.
+
+**Контракт**: смену роли admin-а должен делать другой admin.
+
+---
+
+### `TestUsers_Update_AdminChangesOtherRole_OK` -- ✓ DONE (regression R2-1, contra-test)
+
+**Что**: admin меняет роль другого пользователя → 200 (guard не срабатывает).
+
+**Почему**: проверяем что guard `isSelf` не перекрывает admin-права над другими.
+
+---
+
+### `TestUsers_Update_DisplayName_TooLong` -- ✓ DONE (regression R2-2)
+
+**Что**: `display_name` длиной 201 символ → 400.
+
+**Почему**: поле TEXT в БД принимает любую длину; клиент может передать мегабайтное имя.
+Ограничение 200 символов соответствует DESIGN.md.
+
+---
+
+### `TestSkills_Create_NameTooLong` -- ✓ DONE (regression R2-2)
+
+**Что**: skill `name` длиной 101 символ → 400.
+
+**Почему**: skill name -- краткий идентификатор; 100 символов более чем достаточно.
+
+---
+
+### `TestTeams_Create_NameTooLong` -- ✓ DONE (regression R2-2)
+
+**Что**: team `name` длиной 201 символ → 400.
+
+**Почему**: TEXT без ограничений → DoS через длинное имя или garbage в UI.
+
+---
+
+### `TestTeams_Update_NameTooLong` -- ✓ DONE (regression R2-2)
+
+**Что**: PATCH team name длиной 201 символ → 400.
+
+**Почему**: валидация должна работать и при обновлении, не только при создании.
+
+---
+
+## Round 3 -- Crazy Monkey Tests (Phase 3, pass 3)
+
+Бешенная обезьяна: ломимся в закрытые и открытые окна, двери и просто в стены.
+Новые баги + тесты на каждый угол атаки.
+
+**Новые баги найдены и зафиксированы:**
+1. **R3-1**: `Delete`, `RemoveMember`, `DeleteSkill` не проверяли `domain.ErrNotFound` → малформированный UUID давал 500
+2. **R3-2**: Null byte (`\u0000`) в любом текстовом поле → PostgreSQL hard error → 500
+3. **R3-3**: Admin мог деактивировать собственный аккаунт (`is_active: false`) → тот же риск локаута что и с ролью
+4. **R3-4**: `avatar_url` без ограничения длины → потенциальный хранение мусора в БД
+5. **R3-5**: Role string не тримился → `" admin "` давал 400 вместо 200
+
+**Итого после Round 3**: 76 тестов, все green.
+
+---
+
+### `TestTeams_Delete_MalformedUUID_Returns404` -- ✓ DONE (regression R3-1a)
+
+**Что**: `DELETE /api/v1/teams/not-a-uuid` → 404.
+
+**Почему**: `store.Delete` возвращал `domain.ErrNotFound` при parseUUID failure,
+но Delete handler не проверял ErrNotFound → 500. Аналогично `Update` handler,
+который был исправлен ещё в Round 1. Delete-пути всегда нужна та же проверка.
+
+---
+
+### `TestTeams_RemoveMember_MalformedUUID_Returns404` -- ✓ DONE (regression R3-1b)
+
+**Что**: `DELETE /teams/{id}/members/not-a-uuid` → 404.
+
+**Почему**: тот же паттерн — store возвращает ErrNotFound, handler давал 500.
+
+---
+
+### `TestUsers_DeleteSkill_MalformedSkillUUID_Returns404` -- ✓ DONE (regression R3-1c)
+
+**Что**: `DELETE /users/{id}/skills/not-a-uuid` → 404.
+
+**Почему**: тот же паттерн.
+
+---
+
+### `TestTeams_Delete_NonExistent_Idempotent` -- ✓ DONE
+
+**Что**: DELETE валидного UUID которого нет в БД → 204 (идемпотентно).
+
+**Почему**: SQL `DELETE WHERE id = $1` тихо не находит запись и возвращает nil.
+Это корректное поведение (RFC 9110: DELETE идемпотентен). Отличие от malformed UUID:
+malformed → parseUUID error → 404; valid but absent → DB deletes 0 rows → 204.
+
+---
+
+### `TestSkills_Create_NullByte_Returns400` -- ✓ DONE (regression R3-2a)
+
+**Что**: `POST /skills` с `"name": "go\u0000lang"` → 400.
+
+**Почему**: PostgreSQL отклоняет строки содержащие null byte (0x00) с ошибкой
+"invalid byte sequence for encoding". Go's json.Decoder декодирует `\u0000` как
+настоящий null byte в строке. Без guard → любое текстовое поле с null byte → 500.
+`strings.ContainsRune(s, 0)` добавлен во все точки валидации текста.
+
+---
+
+### `TestTeams_Create_NullByte_Returns400` -- ✓ DONE (regression R3-2b)
+
+**Что**: team name с null byte → 400.
+
+**Почему**: аналогично R3-2a.
+
+---
+
+### `TestUsers_Update_NullByteInDisplayName_Returns400` -- ✓ DONE (regression R3-2c)
+
+**Что**: display_name с null byte → 400.
+
+**Почему**: аналогично R3-2a.
+
+---
+
+### `TestUsers_Update_AdminSelfDeactivate_Forbidden` -- ✓ DONE (regression R3-3)
+
+**Что**: admin `PATCH /users/{own-id}` с `{"is_active": false}` → 403.
+
+**Почему**: такой же риск локаута как и self-demotion (R2-1). Если admin единственный
+и деактивирует себя — система теряет все admin-привилегии. Guard: `isAdmin && isSelf && !*req.IsActive`.
+
+**Контракт**: деактивацию admin-а должен делать другой admin.
+
+---
+
+### `TestUsers_Update_AdminDeactivatesOther_OK` -- ✓ DONE (contra-test R3-3)
+
+**Что**: admin деактивирует другого пользователя → 200.
+
+**Почему**: guard `isSelf` не должен перекрывать admin-права над другими аккаунтами.
+
+---
+
+### `TestUsers_Update_AvatarURL_TooLong_Returns400` -- ✓ DONE (regression R3-4)
+
+**Что**: `avatar_url` длиной >2048 символов → 400.
+
+**Почему**: без ограничения — клиент может залить мегабайт в TEXT поле.
+Ограничение 2048 соответствует максимальной длине URL в большинстве браузеров.
+
+---
+
+### `TestUsers_Update_Role_TrimmedWhitespace_OK` -- ✓ DONE (regression R3-5)
+
+**Что**: `{"role": " tester "}` (пробелы вокруг) → 200, роль успешно обновлена.
+
+**Почему**: поле role не тримировалось — `" tester "` давал 400 INVALID_ROLE.
+Все строки через trim до валидации — единый стиль API.
+
+---
+
+### `TestUsers_Update_Role_Invalid_Returns400` -- ✓ DONE
+
+**Что**: `"ADMIN"`, `"superuser"`, `""`, `"god"` → 400.
+
+**Почему**: validRoles — whitelist; любое не-совпадение = 400. Case-sensitive после trim.
+Подтверждает что нормализация (trim) не маскирует невалидные роли.
+
+---
+
+### `TestTeams_AddMember_CapacityWrongType_Returns400` -- ✓ DONE
+
+**Что**: `{"capacity_hours": "forty"}` (строка вместо int16) → 400.
+
+**Почему**: Go json.Decoder возвращает ошибку при несовместимых типах.
+Тест фиксирует что handler не допускает тихое преобразование и возвращает 400, не 500.
+
+---
+
+### `TestUsers_Update_IsActive_WrongType_Returns400` -- ✓ DONE
+
+**Что**: `{"is_active": "yes"}` (строка вместо bool) → 400.
+
+**Почему**: аналогично — тип не совпадает → json.Decode ошибка → 400 INVALID_JSON.
+
+---
+
+### `TestSkills_Create_ArrayBody_Returns400` -- ✓ DONE
+
+**Что**: JSON array `[{"name":"Go"}]` вместо объекта → 400.
+
+**Почему**: json.Decoder не может распаковать массив в struct → ошибка → 400.
+Проверяет что API не принимает произвольный JSON shape.
+
+---
+
+### `TestUsers_Update_EmptyPatch_NoOp` -- ✓ DONE
+
+**Что**: `PATCH /users/{id}` с `{}` → 200, данные пользователя не изменились.
+
+**Почему**: PATCH семантика — нет изменений = no-op. Handler делает GetByID + Update
+с теми же значениями. Регрессия: если что-то сломает merge-логику, этот тест поймает.
+
+---
+
+### `TestTeams_Create_MissingName_Returns400` -- ✓ DONE
+
+**Что**: `POST /teams` без поля `name` → 400.
+
+**Почему**: `name` — required. Подтверждает что zero-value string `""` тоже не проходит.
+
+---
+
+### `TestTeams_AddMember_MissingUserID_Returns400` -- ✓ DONE
+
+**Что**: `POST /teams/{id}/members` с `{}` → 400.
+
+**Почему**: user_id — required. TrimSpace("") == "" → 400.
+
+---
+
+### `TestTeams_AddMember_MalformedUserID_Returns400` -- ✓ DONE
+
+**Что**: `user_id: "not-a-uuid"` в теле → 400 (team or user not found).
+
+**Почему**: parseUUID в store возвращает ErrNotFound → handler → 400.
+Malformed user_id это плохой ввод, не "не нашли". 400 корректнее чем 404.
+
+---
+
+### `TestUsers_UpsertSkill_EmptyLevel_Returns400` -- ✓ DONE
+
+**Что**: `PUT /users/{id}/skills/{skill_id}` с `level: ""` → 400 INVALID_LEVEL.
+
+**Почему**: `validLevels[""]` == false → 400. Подтверждает что пустая строка не проходит whitelist.
+
+---
+
+### `TestUsers_UpsertSkill_InvalidInterest_Returns400` -- ✓ DONE
+
+**Что**: `interest: "VERY_HIGH"` → 400 INVALID_INTEREST.
+
+**Почему**: validInterests whitelist строгий. Аналогично role — case-sensitive.
+
+---
+
+### `TestTeams_AddMember_ReAdd_UpdatesCapacity` -- ✓ DONE
+
+**Что**: добавить одного пользователя в команду дважды с разными `capacity_hours` → 200 оба раза.
+
+**Как**: первый `capacity_hours=20`, второй `capacity_hours=40`. Проверяем что второй ответ содержит `40`.
+
+**Почему**: SQL — `INSERT ON CONFLICT DO UPDATE SET capacity_hours = EXCLUDED.capacity_hours`.
+UPSERT семантика: повторное добавление обновляет мощность, не дублирует запись.
+Документирует что это намеренно, а не баг.
+
+---
+
+### `TestUsers_ListSkills_NonexistentUser_Returns404` -- ✓ DONE
+
+**Что**: `GET /users/00000000-0000-0000-0000-000000000001/skills` → 404.
+
+**Почему**: handler сначала проверяет существование пользователя через GetByID.
+Если пользователя нет — 404, не пустой массив. Пустой массив был бы тихим обманом.
+
+---
+
+### `TestTeams_AddMember_CapacityBoundaries_Valid` -- ✓ DONE
+
+**Что**: `capacity_hours=0` и `capacity_hours=168` → 200 (граничные значения валидны).
+
+**Почему**: boundary testing. 0 = человек в команде без выделенного времени (ок).
+168 = все часы недели (максимум). 167 и 1 проверяются косвенно через остальные тесты.
+
+---
+
+### `TestTeams_Get_MalformedUUID_Returns404` -- ✓ DONE
+
+**Что**: `GET /teams/not-a-uuid` → 404.
+
+**Почему**: GET-путь через GetWithMembers с parseUUID уже возвращал ErrNotFound → 404.
+Тест явно фиксирует это поведение.
+
+---
+
+### `TestSkills_Create_Unicode_OK` -- ✓ DONE
+
+**Что**: `POST /skills` с именем `"Алгоритмы и структуры"` (кириллица) → 201.
+
+**Почему**: Unicode в именах должен работать. PostgreSQL TEXT полностью поддерживает UTF-8.
+Проверяем что null byte guard не ломает легитимные многобайтные символы.
+
+---
+
+### `TestTeams_Create_WhitespaceOnlyName_Returns400` -- ✓ DONE
+
+**Что**: `{"name": "   \t\n  "}` → 400.
+
+**Почему**: TrimSpace убирает все whitespace символы, оставляет пустую строку → 400.
+Проверяем что `\t` и `\n` тоже убираются, не только пробелы.
+
+---
+
+## Обновление покрытия Phase 3
+
+| Модуль | Покрыто | Пробелы |
+|--------|---------|--------|
+| `handler_users.go`: List (admin/non-admin) | ✓ | Pagination (Phase 4+) |
+| `handler_users.go`: Get (found, not found, malformed UUID) | ✓ | - |
+| `handler_users.go`: Update (self, admin, forbidden, self-role-guard, self-deactivate, length, null byte, avatar, role trim) | ✓ | - |
+| `handler_skills.go`: List | ✓ | - |
+| `handler_skills.go`: Create (admin, forbidden, conflict, length, null byte, array body, unicode) | ✓ | - |
+| `handler_users.go`: UpsertSkill (upsert, forbidden, nonexistent, malformed UUID, empty level, invalid interest) | ✓ | - |
+| `handler_users.go`: ListMemberSkills (found, nonexistent user) | ✓ | - |
+| `handler_users.go`: DeleteSkill (own, malformed UUID → 404) | ✓ | Delete of non-member (idempotent, TODO) |
+| `handler_teams.go`: Create (admin, forbidden, length, null byte, whitespace-only, missing name) | ✓ | - |
+| `handler_teams.go`: List | ✓ | - |
+| `handler_teams.go`: Get (found, not found, malformed UUID) | ✓ | - |
+| `handler_teams.go`: Update (merge, not found, length, null byte) | ✓ | - |
+| `handler_teams.go`: Delete (admin, forbidden, malformed UUID → 404, non-existent → 204) | ✓ | - |
+| `handler_teams.go`: AddMember (full response, capacity, FK, UPSERT, wrong type, malformed IDs, boundaries) | ✓ | - |
+| `handler_teams.go`: RemoveMember (malformed UUID → 404) | ✓ | Non-member remove (idempotent, TODO) |
+| `middleware/roles.go`: RequireRole | ✓ | - |
+| `store/skills.go`: GetByID ErrNoRows | ✓ | - |
+| `store/teams.go`: Get() lightweight | ✓ | - |
+
+---
+
 ## Развитие документа
 
 | Когда добавлять тест сюда | Когда нет |

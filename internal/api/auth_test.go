@@ -55,7 +55,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	router := api.NewRouter(cfg, pool, log, authSvc)
+	router := api.NewRouter(cfg, pool, log, authSvc, q)
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 

@@ -13,10 +13,12 @@ import (
 
 	"github.com/vpo/v42/internal/api/middleware"
 	"github.com/vpo/v42/internal/config"
+	dbgen "github.com/vpo/v42/internal/db/gen"
+	"github.com/vpo/v42/internal/db/store"
 	"github.com/vpo/v42/internal/domain"
 )
 
-func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc *domain.AuthService) *chi.Mux {
+func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc *domain.AuthService, queries *dbgen.Queries) *chi.Mux {
 	r := chi.NewRouter()
 
 	// global middleware stack -- order matters
@@ -39,6 +41,16 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 		refreshTTL: cfg.JWTRefreshTTL,
 	}
 
+	// Phase 3 handlers: wire stores to handlers inside the router.
+	// SkillStore is shared between userH and skillH -- no need for two instances.
+	skillStore := store.NewSkillStore(queries)
+	userH := &userHandlers{
+		users:  store.NewUserStore(queries),
+		skills: skillStore,
+	}
+	skillH := &skillHandlers{skills: skillStore}
+	teamH := &teamHandlers{teams: store.NewTeamStore(queries)}
+
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", healthHandler(pool))
 
@@ -49,14 +61,42 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 			r.Post("/auth/refresh", auth.Refresh)
 		})
 
-		// JWT-protected: require valid access token (DEF-1 fixed)
+		// JWT-protected group: all endpoints below require a valid access token.
 		r.Group(func(r chi.Router) {
 			r.Use(jwtAuth)
+
+			// Auth
 			r.Post("/auth/logout", auth.Logout)
 			r.Get("/auth/me", auth.Me)
-		})
 
-		// future route groups (phases 3-7) will be mounted here
+			// Users + member skills (any authenticated user can read; writes are permission-checked in handler)
+			r.Get("/users", userH.List)
+			r.Get("/users/{id}", userH.Get)
+			r.Patch("/users/{id}", userH.Update)
+			r.Get("/users/{id}/skills", userH.ListSkills)
+			r.Put("/users/{id}/skills/{skill_id}", userH.UpsertSkill)
+			r.Delete("/users/{id}/skills/{skill_id}", userH.DeleteSkill)
+
+			// Skills: read for all, write for admin only
+			r.Get("/skills", skillH.List)
+			r.With(middleware.RequireRole("admin")).Post("/skills", skillH.Create)
+
+			// Teams: read for all authenticated users
+			r.Get("/teams", teamH.List)
+			r.Get("/teams/{id}", teamH.Get)
+
+			// Teams: write for admin/maintainer
+			r.Group(func(r chi.Router) {
+				r.Use(middleware.RequireRole("admin", "maintainer"))
+				r.Post("/teams", teamH.Create)
+				r.Patch("/teams/{id}", teamH.Update)
+				r.Post("/teams/{id}/members", teamH.AddMember)
+				r.Delete("/teams/{id}/members/{user_id}", teamH.RemoveMember)
+			})
+
+			// Teams: delete for admin only
+			r.With(middleware.RequireRole("admin")).Delete("/teams/{id}", teamH.Delete)
+		})
 	})
 
 	return r

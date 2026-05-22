@@ -39,6 +39,8 @@ func (s *UserStore) GetByEmail(ctx context.Context, email string) (*domain.Store
 			Role:        string(row.Role),
 			IsActive:    row.IsActive,
 			AvatarURL:   row.AvatarUrl,
+			CreatedAt:   row.CreatedAt.Time,
+			UpdatedAt:   row.UpdatedAt.Time,
 		},
 		PasswordHash: row.PasswordHash,
 	}, nil
@@ -47,7 +49,7 @@ func (s *UserStore) GetByEmail(ctx context.Context, email string) (*domain.Store
 func (s *UserStore) GetByID(ctx context.Context, id string) (*domain.User, error) {
 	uid, err := parseUUID(id)
 	if err != nil {
-		return nil, fmt.Errorf("invalid user id: %w", err)
+		return nil, domain.ErrNotFound // malformed UUID can never refer to an existing resource
 	}
 	row, err := s.q.GetUserByID(ctx, uid)
 	if err != nil {
@@ -63,6 +65,8 @@ func (s *UserStore) GetByID(ctx context.Context, id string) (*domain.User, error
 		Role:        string(row.Role),
 		IsActive:    row.IsActive,
 		AvatarURL:   row.AvatarUrl,
+		CreatedAt:   row.CreatedAt.Time,
+		UpdatedAt:   row.UpdatedAt.Time,
 	}, nil
 }
 
@@ -83,6 +87,8 @@ func (s *UserStore) Create(ctx context.Context, email, passwordHash, displayName
 		Role:        string(row.Role),
 		IsActive:    row.IsActive,
 		AvatarURL:   row.AvatarUrl,
+		CreatedAt:   row.CreatedAt.Time,
+		UpdatedAt:   row.UpdatedAt.Time,
 	}, nil
 }
 
