@@ -1064,14 +1064,15 @@ UI строится итерационно -- каждый шаг синхрон
 
 Бэкенд Фазы 2 сделан. UI можно начинать прямо сейчас.
 
-- [ ] Vite + TS + shadcn/ui + Router -- инициализация проекта
-- [ ] Axios instance: `baseURL`, request/response interceptors, token refresh logic
-- [ ] Zustand: `useAuthStore` -- user, accessToken, isAuthenticated, logout
-- [ ] `POST /auth/login` -- login form, валидация, error display
-- [ ] `POST /auth/refresh` -- автоматически при 401, прозрачно для компонентов
-- [ ] Protected route wrapper -- redirect to `/login` если нет токена
-- [ ] `GET /auth/me` -- загрузка текущего пользователя при старте
-- [ ] `POST /auth/logout` -- очистка стора, redirect
+- [x] Vite + TS + Tailwind v4 + React Router v7 -- инициализация проекта
+- [x] Axios instance: `baseURL`, request/response interceptors, token refresh logic
+- [x] Zustand: `useAuthStore` -- user, accessToken, setAuth, logout, refresh, loadMe
+- [x] `POST /auth/login` -- login form, валидация (zod + react-hook-form), error display
+- [x] `POST /auth/refresh` -- автоматически при 401, прозрачно для компонентов
+- [x] Protected route wrapper -- redirect to `/login` если нет токена
+- [x] `GET /auth/me` -- загрузка текущего пользователя при старте
+- [x] `POST /auth/logout` -- очистка стора, redirect
+- [x] Playwright E2E: auth flow tests (e2e/auth.spec.ts) -- 4/4 pass
 
 ---
 
