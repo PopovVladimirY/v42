@@ -1,11 +1,38 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/hooks/useAuth';
 import { useThemeStore, THEMES } from '@/stores/useTheme';
 import type { Theme } from '@/stores/useTheme';
 import { authApi } from '@/api/endpoints/auth';
-import { usersApi } from '@/api/endpoints/users';
+import { usersApi, skillsApi } from '@/api/endpoints/users';
 import { teamsApi } from '@/api/endpoints/teams';
-import type { MemberSkill, SkillLevel, InterestLevel } from '@/types/index';
+import type { MemberSkill, SkillLevel, InterestLevel, Skill } from '@/types/index';
+
+// ------------------------------------------------------------------
+// Constants
+// ------------------------------------------------------------------
+
+const LEVELS: { value: SkillLevel; label: string }[] = [
+  { value: 'novice', label: 'Novice' },
+  { value: 'beginner', label: 'Beginner' },
+  { value: 'competent', label: 'Competent' },
+  { value: 'proficient', label: 'Proficient' },
+  { value: 'expert', label: 'Expert' },
+];
+
+const LEVEL_COLOR: Record<SkillLevel, string> = {
+  novice: '#6b7280',
+  beginner: 'var(--color-info)',
+  competent: '#a78bfa',
+  proficient: 'var(--color-warning)',
+  expert: 'var(--color-success)',
+};
+
+const INTERESTS: { value: InterestLevel; label: string; icon: string }[] = [
+  { value: 'low', label: 'Low', icon: '~' },
+  { value: 'medium', label: 'Medium', icon: '+' },
+  { value: 'high', label: 'High', icon: '++' },
+];
 
 // ------------------------------------------------------------------
 // Helpers
@@ -28,113 +55,228 @@ const ROLE_LABEL: Record<string, string> = {
   observer: 'Observer',
 };
 
-const LEVEL_COLOR: Record<SkillLevel, string> = {
-  beginner: 'var(--color-info)',
-  practitioner: 'var(--color-warning)',
-  expert: 'var(--color-success)',
-};
-
-const INTEREST_ICON: Record<InterestLevel, string> = {
-  low: '~',
-  medium: '+',
-  high: '++',
+const ACCENT_MAP: Record<string, string> = {
+  'deep-dive': '#5b7cf6',
+  'night-sky': '#7b6ef6',
+  'classic-dark': '#6b7280',
+  'ocean-blue': '#3b82f6',
+  'paper-white': '#d97706',
+  'sunrise': '#f59e0b',
+  'high-contrast': '#ffffff',
 };
 
 // ------------------------------------------------------------------
 // Sub-components
 // ------------------------------------------------------------------
 
-function SkillRow({ s }: { s: MemberSkill }) {
+function SkillRow({
+  s,
+  onEdit,
+  onDelete,
+  isDeleting,
+}: {
+  s: MemberSkill;
+  onEdit: (s: MemberSkill) => void;
+  onDelete: (skillId: string) => void;
+  isDeleting: boolean;
+}) {
+  const color = LEVEL_COLOR[s.level] ?? 'var(--text-3)';
+  const interestIcon = INTERESTS.find((i) => i.value === s.interest)?.icon ?? '~';
   return (
     <div
-      className="flex items-center gap-3 px-3 py-2.5 rounded-lg"
-      style={{
-        background: 'var(--bg-surface)',
-        border: '1px solid var(--border)',
-      }}
+      className="flex items-center gap-3 px-3 py-2.5 rounded-lg group"
+      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
     >
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate" style={{ color: 'var(--text-1)' }}>
           {s.skill_name}
         </p>
-        <p className="text-xs" style={{ color: 'var(--text-3)' }}>
-          {s.category}
-        </p>
+        {s.category && (
+          <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+            {s.category}
+          </p>
+        )}
       </div>
-
-      {/* Interest badge */}
       <span
         className="text-xs font-mono px-1.5 py-0.5 rounded flex-shrink-0"
-        style={{
-          background: 'var(--bg-elevated)',
-          color: 'var(--text-3)',
-          letterSpacing: '0.05em',
-        }}
+        style={{ background: 'var(--bg-elevated)', color: 'var(--text-3)', letterSpacing: '0.05em' }}
         title={`Interest: ${s.interest}`}
       >
-        {INTEREST_ICON[s.interest]}
+        {interestIcon}
       </span>
-
-      {/* Level badge */}
       <span
         className="text-xs font-medium capitalize px-2 py-0.5 rounded-full flex-shrink-0"
-        style={{
-          background: LEVEL_COLOR[s.level] + '1a',
-          color: LEVEL_COLOR[s.level],
-          border: `1px solid ${LEVEL_COLOR[s.level]}40`,
-        }}
+        style={{ background: color + '1a', color, border: `1px solid ${color}40` }}
       >
         {s.level}
       </span>
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+        <button
+          onClick={() => onEdit(s)}
+          title="Edit"
+          className="p-1 rounded transition-colors hover:bg-[var(--bg-hover)]"
+          style={{ color: 'var(--text-3)' }}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M8.5 1.5L10.5 3.5L4 10H2V8L8.5 1.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        <button
+          onClick={() => onDelete(s.skill_id)}
+          disabled={isDeleting}
+          title="Remove"
+          className="p-1 rounded transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-40"
+          style={{ color: 'var(--color-danger)' }}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
     </div>
   );
 }
 
-function ThemeButton({ t, active, onChange }: { t: Theme; active: boolean; onChange: (t: Theme) => void }) {
-  // Theme preview swatch -- a tiny dot in the accent color for the theme
-  const ACCENT_MAP: Record<string, string> = {
-    'deep-dive': '#5b7cf6',
-    'night-sky': '#7b6ef6',
-    'classic-dark': '#6b7280',
-    'ocean-blue': '#3b82f6',
-    'paper-white': '#d97706',
-    'sunrise': '#f59e0b',
-    'high-contrast': '#ffffff',
-  };
+interface SkillFormState {
+  skillId: string;
+  level: SkillLevel;
+  interest: InterestLevel;
+  note: string;
+}
 
+function SkillEditor({
+  userId,
+  catalog,
+  existingSkillIds,
+  initial,
+  onDone,
+  onCancel,
+}: {
+  userId: string;
+  catalog: Skill[];
+  existingSkillIds: Set<string>;
+  initial?: MemberSkill;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState<SkillFormState>({
+    skillId: initial?.skill_id ?? '',
+    level: initial?.level ?? 'beginner',
+    interest: initial?.interest ?? 'medium',
+    note: initial?.interest_note ?? '',
+  });
+  const upsert = useMutation({
+    mutationFn: () =>
+      usersApi.upsertSkill(userId, form.skillId, {
+        level: form.level,
+        interest: form.interest,
+        interest_note: form.note.trim() || null,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['user-skills', userId] });
+      onDone();
+    },
+  });
+  const available = catalog.filter((s) => s.id === form.skillId || !existingSkillIds.has(s.id));
   return (
-    <button
-      onClick={() => onChange(t)}
-      className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-left transition-colors w-full"
-      style={{
-        background: active ? 'var(--bg-active)' : 'var(--bg-surface)',
-        border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
-        color: active ? 'var(--text-1)' : 'var(--text-2)',
-      }}
+    <div
+      className="rounded-lg p-4 flex flex-col gap-3"
+      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}
     >
-      <span
-        className="w-3 h-3 rounded-full flex-shrink-0"
-        style={{ background: ACCENT_MAP[t] ?? '#888' }}
-      />
-      <span className="text-sm capitalize truncate">{t.replace(/-/g, ' ')}</span>
-      {active && (
-        <svg
-          className="ml-auto flex-shrink-0"
-          width="12"
-          height="12"
-          viewBox="0 0 12 12"
-          fill="none"
-        >
-          <path
-            d="M2 6l3 3 5-5"
-            stroke="var(--accent)"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+      {!initial && (
+        <div>
+          <label className="text-xs font-medium block mb-1.5" style={{ color: 'var(--text-2)' }}>Skill</label>
+          <select
+            value={form.skillId}
+            onChange={(e) => setForm((f) => ({ ...f, skillId: e.target.value }))}
+            className="w-full text-sm rounded-md px-2.5 py-2 outline-none"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+          >
+            <option value="">Select a skill...</option>
+            {available.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}{s.category ? ` (${s.category})` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
       )}
-    </button>
+      <div>
+        <label className="text-xs font-medium block mb-1.5" style={{ color: 'var(--text-2)' }}>Level</label>
+        <div className="flex gap-1">
+          {LEVELS.map((l) => (
+            <button
+              key={l.value}
+              onClick={() => setForm((f) => ({ ...f, level: l.value }))}
+              className="flex-1 py-1.5 text-xs rounded-md transition-colors"
+              style={{
+                background: form.level === l.value ? (LEVEL_COLOR[l.value] + '22') : 'var(--bg-surface)',
+                border: `1px solid ${form.level === l.value ? LEVEL_COLOR[l.value] : 'var(--border)'}`,
+                color: form.level === l.value ? LEVEL_COLOR[l.value] : 'var(--text-2)',
+                fontWeight: form.level === l.value ? 600 : 400,
+              }}
+            >
+              {l.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <label className="text-xs font-medium block mb-1.5" style={{ color: 'var(--text-2)' }}>Interest</label>
+        <div className="flex gap-2">
+          {INTERESTS.map((i) => (
+            <button
+              key={i.value}
+              onClick={() => setForm((f) => ({ ...f, interest: i.value }))}
+              className="flex-1 py-1.5 text-xs rounded-md transition-colors"
+              style={{
+                background: form.interest === i.value ? 'var(--bg-active)' : 'var(--bg-surface)',
+                border: `1px solid ${form.interest === i.value ? 'var(--accent)' : 'var(--border)'}`,
+                color: form.interest === i.value ? 'var(--text-1)' : 'var(--text-2)',
+                fontWeight: form.interest === i.value ? 600 : 400,
+              }}
+            >
+              {i.label} <span className="font-mono">{i.icon}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <label className="text-xs font-medium block mb-1.5" style={{ color: 'var(--text-2)' }}>
+          Note <span style={{ color: 'var(--text-3)' }}>(optional)</span>
+        </label>
+        <input
+          type="text"
+          value={form.note}
+          onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
+          placeholder="e.g. Focused on React, not Angular"
+          maxLength={500}
+          className="w-full text-sm rounded-md px-2.5 py-2 outline-none"
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+        />
+      </div>
+      {upsert.isError && (
+        <p className="text-xs" style={{ color: 'var(--color-danger)' }}>Failed to save. Please try again.</p>
+      )}
+      <div className="flex gap-2 pt-1">
+        <button
+          onClick={() => void upsert.mutate()}
+          disabled={!form.skillId || upsert.isPending}
+          className="flex-1 py-2 text-sm font-medium rounded-md transition-colors disabled:opacity-40"
+          style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
+        >
+          {upsert.isPending ? 'Saving...' : initial ? 'Update' : 'Add skill'}
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-4 py-2 text-sm rounded-md"
+          style={{ background: 'var(--bg-surface)', color: 'var(--text-2)', border: '1px solid var(--border)' }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -145,13 +287,21 @@ function ThemeButton({ t, active, onChange }: { t: Theme; active: boolean; onCha
 export function ProfilePage() {
   const user = useAuthStore((s) => s.user);
   const { theme: activeTheme, setTheme } = useThemeStore();
+  const qc = useQueryClient();
 
   const userId = user?.id ?? '';
+  const [editing, setEditing] = useState<null | 'new' | MemberSkill>(null);
 
   const { data: skills, isLoading: skillsLoading } = useQuery({
     queryKey: ['user-skills', userId],
     queryFn: () => usersApi.getSkills(userId),
     enabled: !!userId,
+  });
+
+  const { data: skillCatalog } = useQuery({
+    queryKey: ['skills-catalog'],
+    queryFn: skillsApi.list,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: teams, isLoading: teamsLoading } = useQuery({
@@ -160,30 +310,28 @@ export function ProfilePage() {
     enabled: !!userId,
   });
 
+  const deleteSkill = useMutation({
+    mutationFn: (skillId: string) => usersApi.deleteSkill(userId, skillId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['user-skills', userId] }),
+  });
+
   async function handleThemeChange(t: Theme) {
     setTheme(t);
-    try {
-      await authApi.patchMe({ theme: t });
-    } catch {
-      // Non-critical
-    }
+    try { await authApi.patchMe({ theme: t }); } catch { /* non-critical */ }
   }
 
   const label = user?.full_name ?? user?.display_name ?? user?.email ?? '?';
   const userInitials = initials(label);
+  const existingSkillIds = new Set(skills?.map((s) => s.skill_id) ?? []);
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-xl mx-auto px-6 py-8">
 
-        {/* Header: avatar + name */}
+        {/* Header */}
         <div className="flex items-center gap-5 mb-8">
           {user?.avatar_url ? (
-            <img
-              src={user.avatar_url}
-              alt={label}
-              className="w-16 h-16 rounded-full object-cover flex-shrink-0"
-            />
+            <img src={user.avatar_url} alt={label} className="w-16 h-16 rounded-full object-cover flex-shrink-0" />
           ) : (
             <div
               className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold flex-shrink-0"
@@ -193,139 +341,154 @@ export function ProfilePage() {
             </div>
           )}
           <div className="min-w-0">
-            <h1
-              className="text-xl font-semibold truncate"
-              style={{ color: 'var(--text-1)' }}
-            >
-              {label}
-            </h1>
-            <p
-              className="text-sm truncate mt-0.5"
-              style={{ color: 'var(--text-2)' }}
-            >
-              {user?.email}
-            </p>
+            <h1 className="text-xl font-semibold truncate" style={{ color: 'var(--text-1)' }}>{label}</h1>
+            <p className="text-sm truncate mt-0.5" style={{ color: 'var(--text-2)' }}>{user?.email}</p>
             <div className="flex items-center gap-3 mt-2">
               <span
-                className="text-xs px-2 py-0.5 rounded-full font-medium capitalize"
-                style={{
-                  background: 'var(--accent)',
-                  color: 'var(--accent-fg)',
-                  opacity: 0.9,
-                }}
+                className="text-xs px-2 py-0.5 rounded-full font-medium"
+                style={{ background: 'var(--accent)', color: 'var(--accent-fg)', opacity: 0.9 }}
               >
                 {ROLE_LABEL[user?.role ?? ''] ?? user?.role}
               </span>
               {user?.created_at && (
-                <span className="text-xs" style={{ color: 'var(--text-3)' }}>
-                  Since {fmtDate(user.created_at)}
-                </span>
+                <span className="text-xs" style={{ color: 'var(--text-3)' }}>Since {fmtDate(user.created_at)}</span>
               )}
             </div>
           </div>
         </div>
 
-        {/* Theme section */}
+        {/* Appearance */}
         <section className="mb-8">
-          <h2
-            className="text-xs font-semibold uppercase tracking-widest mb-3"
-            style={{ color: 'var(--text-3)' }}
-          >
+          <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
             Appearance
           </h2>
           <div className="grid grid-cols-2 gap-2">
-            {THEMES.map((t) => (
-              <ThemeButton
-                key={t}
-                t={t}
-                active={activeTheme === t}
-                onChange={(t) => void handleThemeChange(t)}
-              />
-            ))}
+            {THEMES.map((t) => {
+              const active = activeTheme === t;
+              return (
+                <button
+                  key={t}
+                  onClick={() => void handleThemeChange(t)}
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-left transition-colors w-full"
+                  style={{
+                    background: active ? 'var(--bg-active)' : 'var(--bg-surface)',
+                    border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
+                    color: active ? 'var(--text-1)' : 'var(--text-2)',
+                  }}
+                >
+                  <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: ACCENT_MAP[t] ?? '#888' }} />
+                  <span className="text-sm capitalize truncate">{t.replace(/-/g, ' ')}</span>
+                  {active && (
+                    <svg className="ml-auto flex-shrink-0" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 6l3 3 5-5" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </section>
 
-        {/* Skills section */}
+        {/* Skills */}
         <section className="mb-8">
           <div className="flex items-center justify-between mb-3">
-            <h2
-              className="text-xs font-semibold uppercase tracking-widest"
-              style={{ color: 'var(--text-3)' }}
-            >
+            <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
               Skills
             </h2>
-            <span className="text-xs" style={{ color: 'var(--text-3)' }}>
-              level &nbsp;·&nbsp; interest&nbsp;
-              <span className="font-mono">~ + ++</span>
-            </span>
+            <button
+              onClick={() => setEditing((e) => (e === 'new' ? null : 'new'))}
+              className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md transition-colors"
+              style={{
+                background: editing === 'new' ? 'var(--bg-active)' : 'var(--bg-surface)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-2)',
+              }}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              Add skill
+            </button>
           </div>
+
+          {editing === 'new' && skillCatalog && (
+            <div className="mb-3">
+              <SkillEditor
+                userId={userId}
+                catalog={skillCatalog}
+                existingSkillIds={existingSkillIds}
+                onDone={() => setEditing(null)}
+                onCancel={() => setEditing(null)}
+              />
+            </div>
+          )}
 
           {skillsLoading ? (
             <div className="flex flex-col gap-2">
-              {Array.from({ length: 3 }, (_, i) => (
-                <div
-                  key={i}
-                  className="h-12 rounded-lg animate-pulse"
-                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-                />
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-12 rounded-lg animate-pulse" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }} />
               ))}
             </div>
           ) : !skills || skills.length === 0 ? (
-            <p className="text-sm py-4 text-center" style={{ color: 'var(--text-3)' }}>
-              No skills added yet.
-            </p>
+            editing !== 'new' && (
+              <p className="text-sm py-4 text-center" style={{ color: 'var(--text-3)' }}>No skills added yet.</p>
+            )
           ) : (
             <div className="flex flex-col gap-2">
-              {skills.map((s) => (
-                <SkillRow key={s.skill_id} s={s} />
-              ))}
+              {skills.map((s) =>
+                typeof editing === 'object' && editing !== null && editing.skill_id === s.skill_id ? (
+                  <div key={s.skill_id} className="mb-1">
+                    <SkillEditor
+                      userId={userId}
+                      catalog={skillCatalog ?? []}
+                      existingSkillIds={existingSkillIds}
+                      initial={s}
+                      onDone={() => setEditing(null)}
+                      onCancel={() => setEditing(null)}
+                    />
+                  </div>
+                ) : (
+                  <SkillRow
+                    key={s.skill_id}
+                    s={s}
+                    onEdit={(ms) => setEditing(ms)}
+                    onDelete={(id) => void deleteSkill.mutate(id)}
+                    isDeleting={deleteSkill.isPending && deleteSkill.variables === s.skill_id}
+                  />
+                ),
+              )}
             </div>
           )}
         </section>
 
-        {/* Teams section */}
+        {/* Teams */}
         <section>
-          <h2
-            className="text-xs font-semibold uppercase tracking-widest mb-3"
-            style={{ color: 'var(--text-3)' }}
-          >
+          <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
             Teams
           </h2>
-
           {teamsLoading ? (
             <div className="flex flex-col gap-2">
-              {Array.from({ length: 2 }, (_, i) => (
-                <div
-                  key={i}
-                  className="h-10 rounded-lg animate-pulse"
-                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-                />
+              {[0, 1].map((i) => (
+                <div key={i} className="h-10 rounded-lg animate-pulse" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }} />
               ))}
             </div>
           ) : !teams || teams.length === 0 ? (
-            <p className="text-sm py-4 text-center" style={{ color: 'var(--text-3)' }}>
-              Not a member of any team yet.
-            </p>
+            <p className="text-sm py-4 text-center" style={{ color: 'var(--text-3)' }}>Not a member of any team yet.</p>
           ) : (
             <div className="flex flex-col gap-2">
               {teams.map((t) => (
                 <div
                   key={t.id}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-lg"
-                  style={{
-                    background: 'var(--bg-surface)',
-                    border: '1px solid var(--border)',
-                  }}
+                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
                 >
                   <div
-                    className="w-7 h-7 rounded flex items-center justify-center text-xs font-semibold flex-shrink-0"
-                    style={{ background: 'var(--bg-elevated)', color: 'var(--accent)' }}
+                    className="w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold flex-shrink-0"
+                    style={{ background: 'var(--bg-elevated)', color: 'var(--text-2)' }}
                   >
                     {t.name[0].toUpperCase()}
                   </div>
-                  <span className="text-sm flex-1 truncate" style={{ color: 'var(--text-1)' }}>
-                    {t.name}
-                  </span>
+                  <span className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>{t.name}</span>
                 </div>
               ))}
             </div>

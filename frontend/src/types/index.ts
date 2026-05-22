@@ -14,19 +14,60 @@ export interface User {
   created_at: string;
 }
 
-export type SkillLevel = 'beginner' | 'practitioner' | 'expert';
+// Dreyfus 5-level model -- matches backend enum
+export type SkillLevel = 'novice' | 'beginner' | 'competent' | 'proficient' | 'expert';
 export type InterestLevel = 'low' | 'medium' | 'high';
 
 export interface MemberSkill {
   skill_id: string;
   skill_name: string;
-  category: string;
+  category: string | null;
   is_builtin: boolean;
   level: SkillLevel;
   interest: InterestLevel;
   interest_note: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface Skill {
+  id: string;
+  name: string;
+  category: string | null;
+  is_builtin: boolean;
+  created_at: string;
+}
+
+// Capacity analytics types -- mirrors store/capacity.go
+export interface RadarSkill {
+  skill_id: string;
+  skill_name: string;
+  category: string | null;
+  level: SkillLevel;
+  interest: InterestLevel;
+  interest_note: string | null;
+  level_rank: number;
+}
+
+export interface MatrixEntry {
+  user_id: string;
+  skill_id: string;
+  skill_name: string;
+  category: string | null;
+  level: SkillLevel;
+  interest: InterestLevel;
+  interest_note: string | null;
+  level_rank: number;
+}
+
+export interface TandemPair {
+  learner_id: string;
+  learner_level: SkillLevel;
+  learner_interest: InterestLevel;
+  mentor_id: string;
+  mentor_level: SkillLevel;
+  skill_id: string;
+  skill_name: string;
 }
 
 // Generic API envelope -- matches Go's { data, meta, error }

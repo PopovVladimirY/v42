@@ -1,7 +1,15 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
+import {
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip,
+} from 'recharts';
 import { teamsApi } from '@/api/endpoints/teams';
+import { usersApi } from '@/api/endpoints/users';
+import { capacityApi } from '@/api/endpoints/capacity';
+import { useAuthStore } from '@/hooks/useAuth';
 import type { TeamMember } from '@/types/teams';
+import type { MatrixEntry } from '@/types/index';
 
 // Formats "2024-01-15T..." to "Jan 2024"
 function fmtDate(iso: string) {
@@ -27,25 +35,30 @@ const ROLE_COLOR: Record<string, string> = {
   member: 'var(--text-3)',
 };
 
-function MemberCard({ m }: { m: TeamMember }) {
+function MemberCard({
+  m,
+  canManage,
+  onRemove,
+  isRemoving,
+}: {
+  m: TeamMember;
+  canManage: boolean;
+  onRemove: (userId: string) => void;
+  isRemoving: boolean;
+}) {
   const label = m.display_name || m.email;
   const color = ROLE_COLOR[m.role] ?? 'var(--text-3)';
 
   return (
     <div
-      className="flex items-center gap-3 rounded-lg p-3"
+      className="flex items-center gap-3 rounded-lg p-3 group"
       style={{
         background: 'var(--bg-surface)',
         border: '1px solid var(--border)',
       }}
     >
-      {/* Avatar or initials bubble */}
       {m.avatar_url ? (
-        <img
-          src={m.avatar_url}
-          alt={label}
-          className="w-9 h-9 rounded-full flex-shrink-0 object-cover"
-        />
+        <img src={m.avatar_url} alt={label} className="w-9 h-9 rounded-full flex-shrink-0 object-cover" />
       ) : (
         <div
           className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-semibold"
@@ -54,34 +67,50 @@ function MemberCard({ m }: { m: TeamMember }) {
           {initials(label)}
         </div>
       )}
-
-      {/* Name + email */}
       <div className="min-w-0 flex-1">
-        <p
-          className="text-sm font-medium truncate"
-          style={{ color: 'var(--text-1)' }}
-          title={label}
-        >
+        <p className="text-sm font-medium truncate" style={{ color: 'var(--text-1)' }} title={label}>
           {label}
         </p>
         {m.display_name && (
-          <p className="text-xs truncate" style={{ color: 'var(--text-3)' }}>
-            {m.email}
-          </p>
+          <p className="text-xs truncate" style={{ color: 'var(--text-3)' }}>{m.email}</p>
         )}
       </div>
-
-      {/* Role + capacity */}
       <div className="flex-shrink-0 flex flex-col items-end gap-0.5">
-        <span className="text-xs font-medium capitalize" style={{ color }}>
-          {m.role}
-        </span>
-        <span className="text-xs" style={{ color: 'var(--text-3)' }}>
-          {fmtCapacity(m.capacity_hours)}
-        </span>
+        <span className="text-xs font-medium capitalize" style={{ color }}>{m.role}</span>
+        <span className="text-xs" style={{ color: 'var(--text-3)' }}>{fmtCapacity(m.capacity_hours)}</span>
       </div>
+      {canManage && (
+        <button
+          onClick={() => onRemove(m.user_id)}
+          disabled={isRemoving}
+          title="Remove from team"
+          className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 p-1 rounded disabled:opacity-40"
+          style={{ color: 'var(--color-danger)' }}
+        >
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <path d="M1.5 1.5l10 10M11.5 1.5l-10 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
     </div>
   );
+}
+
+  );
+}
+
+// Aggregates matrix entries into radar-friendly [{skill, avgLevel}] array
+function buildRadarData(matrix: MatrixEntry[]) {
+  const map = new Map<string, { sum: number; count: number }>();
+  for (const e of matrix) {
+    const existing = map.get(e.skill_name);
+    if (existing) { existing.sum += e.level_rank; existing.count += 1; }
+    else map.set(e.skill_name, { sum: e.level_rank, count: 1 });
+  }
+  return Array.from(map.entries()).map(([skill, { sum, count }]) => ({
+    skill,
+    avgLevel: Math.round((sum / count) * 10) / 10,
+  }));
 }
 
 function SkeletonCard() {
@@ -95,6 +124,13 @@ function SkeletonCard() {
 
 export function TeamDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const user = useAuthStore((s) => s.user);
+  const qc = useQueryClient();
+  const [addingMember, setAddingMember] = useState(false);
+  const [addUserId, setAddUserId] = useState('');
+  const [addCapacity, setAddCapacity] = useState(32);
+
+  const canManage = user?.role === 'admin' || user?.role === 'maintainer';
 
   const { data: team, isLoading, isError } = useQuery({
     queryKey: ['team', id],
@@ -102,29 +138,53 @@ export function TeamDetailPage() {
     enabled: !!id,
   });
 
+  const { data: matrix } = useQuery({
+    queryKey: ['team-skill-matrix', id],
+    queryFn: () => capacityApi.teamSkillMatrix(id!),
+    enabled: !!id,
+  });
+
+  const { data: allUsers } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => usersApi.list(),
+    enabled: addingMember,
+  });
+
+  const removeMember = useMutation({
+    mutationFn: (userId: string) => teamsApi.removeMember(id!, userId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['team', id] }),
+  });
+
+  const addMember = useMutation({
+    mutationFn: () => teamsApi.addMember(id!, { user_id: addUserId, capacity_hours: addCapacity }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['team', id] });
+      setAddingMember(false);
+      setAddUserId('');
+      setAddCapacity(32);
+    },
+  });
+
+  // Radar data: per skill, average level_rank across members
+  const radarData = buildRadarData(matrix ?? []);
+
   if (isError) {
     return (
       <div className="p-6 flex flex-col items-center justify-center py-20 gap-3">
-        <p className="text-sm" style={{ color: 'var(--error, #ef4444)' }}>
-          Failed to load team.
-        </p>
-        <Link to="/teams" className="text-xs" style={{ color: 'var(--accent)' }}>
-          Back to teams
-        </Link>
+        <p className="text-sm" style={{ color: 'var(--error, #ef4444)' }}>Failed to load team.</p>
+        <Link to="/teams" className="text-xs" style={{ color: 'var(--accent)' }}>Back to teams</Link>
       </div>
     );
   }
 
   const totalCapacity = team?.members.reduce((s, m) => s + m.capacity_hours, 0) ?? 0;
+  const existingMemberIds = new Set(team?.members.map((m) => m.user_id) ?? []);
+  const availableUsers = allUsers?.filter((u) => !existingMemberIds.has(u.id)) ?? [];
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
       {/* Back link */}
-      <Link
-        to="/teams"
-        className="inline-flex items-center gap-1.5 text-xs mb-6"
-        style={{ color: 'var(--text-3)' }}
-      >
+      <Link to="/teams" className="inline-flex items-center gap-1.5 text-xs mb-6" style={{ color: 'var(--text-3)' }}>
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M9 11L5 7l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
@@ -136,17 +196,13 @@ export function TeamDetailPage() {
         {isLoading ? (
           <div className="h-7 w-48 rounded animate-pulse" style={{ background: 'var(--bg-surface)' }} />
         ) : (
-          <h1 className="text-xl font-semibold" style={{ color: 'var(--text-1)' }}>
-            {team?.name}
-          </h1>
+          <h1 className="text-xl font-semibold" style={{ color: 'var(--text-1)' }}>{team?.name}</h1>
         )}
         {isLoading ? (
           <div className="h-4 w-72 rounded mt-2 animate-pulse" style={{ background: 'var(--bg-surface)' }} />
         ) : (
           team?.description && (
-            <p className="mt-1 text-sm" style={{ color: 'var(--text-2)' }}>
-              {team.description}
-            </p>
+            <p className="mt-1 text-sm" style={{ color: 'var(--text-2)' }}>{team.description}</p>
           )
         )}
       </div>
@@ -154,47 +210,153 @@ export function TeamDetailPage() {
       {/* Stats row */}
       <div className="flex gap-6 mb-6">
         <div>
-          <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-            Members
-          </p>
+          <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Members</p>
           <p className="text-lg font-semibold mt-0.5" style={{ color: 'var(--text-1)' }}>
             {isLoading ? '--' : (team?.members.length ?? 0)}
           </p>
         </div>
         <div>
-          <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-            Total capacity
-          </p>
+          <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Total capacity</p>
           <p className="text-lg font-semibold mt-0.5" style={{ color: 'var(--text-1)' }}>
             {isLoading ? '--' : fmtCapacity(totalCapacity)}
           </p>
         </div>
         {!isLoading && team && (
           <div>
-            <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-              Created
-            </p>
-            <p className="text-lg font-semibold mt-0.5" style={{ color: 'var(--text-1)' }}>
-              {fmtDate(team.created_at)}
-            </p>
+            <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Created</p>
+            <p className="text-lg font-semibold mt-0.5" style={{ color: 'var(--text-1)' }}>{fmtDate(team.created_at)}</p>
           </div>
         )}
       </div>
 
-      {/* Members grid */}
-      <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-2)' }}>
-        Members
-      </h2>
+      {/* Skill Radar */}
+      {radarData.length > 0 && (
+        <section className="mb-8">
+          <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
+            Skill Coverage
+          </h2>
+          <div
+            className="rounded-xl p-4"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+          >
+            <ResponsiveContainer width="100%" height={260}>
+              <RadarChart data={radarData} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
+                <PolarGrid stroke="var(--border)" />
+                <PolarAngleAxis
+                  dataKey="skill"
+                  tick={{ fill: 'var(--text-3)', fontSize: 11 }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '8px',
+                    color: 'var(--text-1)',
+                    fontSize: '12px',
+                  }}
+                  formatter={(v: number) => [v.toFixed(1), 'Avg level']}
+                />
+                <Radar
+                  name="Team"
+                  dataKey="avgLevel"
+                  stroke="var(--accent)"
+                  fill="var(--accent)"
+                  fillOpacity={0.25}
+                />
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      )}
+
+      {/* Members */}
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold" style={{ color: 'var(--text-2)' }}>Members</h2>
+        {canManage && (
+          <button
+            onClick={() => setAddingMember((v) => !v)}
+            className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md transition-colors"
+            style={{
+              background: addingMember ? 'var(--bg-active)' : 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              color: 'var(--text-2)',
+            }}
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            Add member
+          </button>
+        )}
+      </div>
+
+      {/* Add member form */}
+      {addingMember && (
+        <div
+          className="mb-3 p-3 rounded-lg flex flex-col gap-3"
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+        >
+          <select
+            value={addUserId}
+            onChange={(e) => setAddUserId(e.target.value)}
+            className="text-sm rounded-md px-3 py-2 w-full"
+            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+          >
+            <option value="">Select a user...</option>
+            {availableUsers.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.full_name || u.display_name || u.email}
+              </option>
+            ))}
+          </select>
+          <div className="flex items-center gap-2">
+            <label className="text-xs" style={{ color: 'var(--text-3)' }}>Capacity h/wk</label>
+            <input
+              type="number"
+              value={addCapacity}
+              min={0}
+              max={168}
+              onChange={(e) => setAddCapacity(Number(e.target.value))}
+              className="w-20 text-sm rounded-md px-2 py-1 text-center"
+              style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => void addMember.mutate()}
+              disabled={!addUserId || addMember.isPending}
+              className="flex-1 text-sm py-1.5 rounded-md font-medium disabled:opacity-40"
+              style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
+            >
+              {addMember.isPending ? 'Adding...' : 'Add'}
+            </button>
+            <button
+              onClick={() => setAddingMember(false)}
+              className="px-4 text-sm py-1.5 rounded-md"
+              style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col gap-2">
         {isLoading
           ? Array.from({ length: 3 }, (_, i) => <SkeletonCard key={i} />)
           : team?.members.length === 0
           ? (
-            <p className="text-sm py-6 text-center" style={{ color: 'var(--text-3)' }}>
-              No members yet.
-            </p>
+            <p className="text-sm py-6 text-center" style={{ color: 'var(--text-3)' }}>No members yet.</p>
           )
-          : team?.members.map((m) => <MemberCard key={m.user_id} m={m} />)
+          : team?.members.map((m) => (
+            <MemberCard
+              key={m.user_id}
+              m={m}
+              canManage={canManage}
+              onRemove={(uid) => void removeMember.mutate(uid)}
+              isRemoving={removeMember.isPending && removeMember.variables === m.user_id}
+            />
+          ))
         }
       </div>
     </div>

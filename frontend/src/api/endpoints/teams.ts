@@ -22,4 +22,10 @@ export const teamsApi = {
     apiClient.patch<{ data: Team }>(`/teams/${id}`, patch).then((r) => unwrap(r.data)),
 
   delete: (id: string) => apiClient.delete(`/teams/${id}`),
+
+  addMember: (id: string, body: { user_id: string; capacity_hours?: number }) =>
+    apiClient.post(`/teams/${id}/members`, body),
+
+  removeMember: (id: string, userId: string) =>
+    apiClient.delete(`/teams/${id}/members/${userId}`),
 };
