@@ -2,7 +2,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { authApi } from '@/api/endpoints/auth';
 import { useAuthStore } from '@/hooks/useAuth';
 import { BubbleCanvas } from '@/components/BubbleCanvas';
@@ -20,6 +20,30 @@ export function LoginPage() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const [serverError, setServerError] = useState<string | null>(null);
   const [bubblesActive, setBubblesActive] = useState(false);
+  // 0 = classic blue  1 = colorful circles  2 = rotating squares
+  const [bubbleMode, setBubbleMode] = useState<0 | 1 | 2>(0);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // After 30 s of inactivity: auto-summon bubbles in a random mode (colorful or squares).
+  // Each subsequent idle period after that cycles to the other mode.
+  useEffect(() => {
+    const IDLE_MS = 30_000;
+    const trigger = () => {
+      setBubblesActive(true);
+      setBubbleMode((prev) => (prev === 2 ? 1 : 2)); // alternate 1 <-> 2
+    };
+    const reset = () => {
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+      idleTimer.current = setTimeout(trigger, IDLE_MS);
+    };
+    const events = ['mousemove', 'keydown', 'scroll', 'touchstart'] as const;
+    events.forEach((e) => window.addEventListener(e, reset, { passive: true }));
+    reset(); // start the clock immediately
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, reset));
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+    };
+  }, []);
 
   const {
     register,
@@ -43,14 +67,18 @@ export function LoginPage() {
 
   return (
     <>
-      {/* Easter egg: WebGL bubbles. Activated by clicking the bottom-left corner. */}
-      <BubbleCanvas active={bubblesActive} />
+      {/* Easter egg: WebGL bubbles. Click background to toggle (mode 0).
+          Idle 30s -> auto-appears in colorful (1) or rotating squares (2). */}
+      <BubbleCanvas active={bubblesActive} mode={bubbleMode} />
 
-      {/* Easter egg: click anywhere on the dark background to unleash the deep. */}
+      {/* Easter egg: click anywhere on the dark background to toggle classic blue bubbles. */}
       <div
         className="min-h-screen flex items-center justify-center"
         style={{ cursor: 'default' }}
-        onClick={() => setBubblesActive((v) => !v)}
+        onClick={() => {
+          setBubbleMode(0);            // manual click = classic mode
+          setBubblesActive((v) => !v);
+        }}
       >
         <div
           className="w-full max-w-sm rounded-xl p-8"
