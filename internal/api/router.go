@@ -75,6 +75,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 			// Auth
 			r.Post("/auth/logout", auth.Logout)
 			r.Get("/auth/me", auth.Me)
+			r.Patch("/auth/me", auth.PatchMe)
 
 			// Users + member skills (any authenticated user can read; writes are permission-checked in handler)
 			r.Get("/users", userH.List)

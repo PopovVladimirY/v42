@@ -33,4 +33,7 @@ export const authApi = {
 
   me: (): Promise<User> =>
     client.get<ApiResponse<User>>('/auth/me').then(unwrap),
+
+  patchMe: (patch: { theme: string }): Promise<User> =>
+    client.patch<ApiResponse<User>>('/auth/me', patch).then(unwrap),
 };

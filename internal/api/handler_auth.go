@@ -134,6 +134,44 @@ func (h *authHandlers) Me(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, u)
 }
 
+// patchMeRequest is the body for PATCH /auth/me.
+type patchMeRequest struct {
+	Theme string `json:"theme"`
+}
+
+// valid themes -- kept in sync with DB CHECK constraint and frontend THEMES const.
+var validThemes = map[string]bool{
+	"deep-dive": true, "night-sky": true, "classic-dark": true,
+	"ocean-blue": true, "paper-white": true, "sunrise": true, "high-contrast": true,
+}
+
+// PatchMe handles PATCH /auth/me.
+// Lets an authenticated user update their own theme preference.
+func (h *authHandlers) PatchMe(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFromContext(r.Context())
+	if claims == nil {
+		respondErr(w, http.StatusUnauthorized, "UNAUTHORIZED", "not authenticated")
+		return
+	}
+
+	var body patchMeRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondErr(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON")
+		return
+	}
+	if !validThemes[body.Theme] {
+		respondErr(w, http.StatusBadRequest, "BAD_REQUEST", "unknown theme")
+		return
+	}
+
+	u, err := h.svc.Users.UpdateTheme(r.Context(), claims.UserID, body.Theme)
+	if err != nil {
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update theme")
+		return
+	}
+	respond(w, http.StatusOK, u)
+}
+
 // -- cookie helpers ----------------------------------------------------------
 
 func (h *authHandlers) setRefreshCookie(w http.ResponseWriter, raw string) {

@@ -1,7 +1,16 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { authApi } from '@/api/endpoints/auth';
+import { useThemeStore } from '@/stores/useTheme';
+import type { Theme } from '@/stores/useTheme';
 import type { User } from '@/types';
+
+// Apply the user's saved theme from profile if it is a valid Theme value.
+function applyUserTheme(user: User) {
+  if (user.theme) {
+    useThemeStore.getState().setTheme(user.theme as Theme);
+  }
+}
 
 interface AuthState {
   user: User | null;
@@ -21,7 +30,10 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       accessToken: null,
 
-      setAuth: (accessToken, user) => set({ accessToken, user }),
+      setAuth: (accessToken, user) => {
+        applyUserTheme(user);
+        set({ accessToken, user });
+      },
 
       clear: () => set({ accessToken: null, user: null }),
 
@@ -42,6 +54,7 @@ export const useAuthStore = create<AuthState>()(
       loadMe: async () => {
         try {
           const user = await authApi.me();
+          applyUserTheme(user);
           set({ user });
         } catch {
           // Token expired or revoked -- clear

@@ -45,6 +45,7 @@ type User struct {
 	Role        string    `json:"role"`
 	IsActive    bool      `json:"is_active"`
 	AvatarURL   *string   `json:"avatar_url"`
+	Theme       string    `json:"theme"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -70,6 +71,7 @@ type UserRepo interface {
 	GetByEmail(ctx context.Context, email string) (*StoredUser, error)
 	GetByID(ctx context.Context, id string) (*User, error)
 	Create(ctx context.Context, email, passwordHash, displayName, role string) (*User, error)
+	UpdateTheme(ctx context.Context, userID, theme string) (*User, error)
 }
 
 // TokenRepo is the storage interface for refresh token operations.

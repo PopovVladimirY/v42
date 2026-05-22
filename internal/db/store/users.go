@@ -27,6 +27,7 @@ func (s *UserStore) ListAll(ctx context.Context) ([]*domain.User, error) {
 			Role:        string(r.Role),
 			IsActive:    r.IsActive,
 			AvatarURL:   r.AvatarUrl,
+			Theme:       r.Theme,
 			CreatedAt:   r.CreatedAt.Time,
 			UpdatedAt:   r.UpdatedAt.Time,
 		}
@@ -49,6 +50,7 @@ func (s *UserStore) ListActive(ctx context.Context) ([]*domain.User, error) {
 			Role:        string(r.Role),
 			IsActive:    r.IsActive,
 			AvatarURL:   r.AvatarUrl,
+			Theme:       r.Theme,
 			CreatedAt:   r.CreatedAt.Time,
 			UpdatedAt:   r.UpdatedAt.Time,
 		}
@@ -82,6 +84,7 @@ func (s *UserStore) Update(ctx context.Context, u *domain.User) (*domain.User, e
 		Role:        string(row.Role),
 		IsActive:    row.IsActive,
 		AvatarURL:   row.AvatarUrl,
+		Theme:       row.Theme,
 		CreatedAt:   row.CreatedAt.Time,
 		UpdatedAt:   row.UpdatedAt.Time,
 	}, nil
@@ -91,6 +94,35 @@ func (s *UserStore) Update(ctx context.Context, u *domain.User) (*domain.User, e
 // Alias for GetByID -- exists to make PATCH handler intent explicit.
 func (s *UserStore) GetByIDForUpdate(ctx context.Context, id string) (*domain.User, error) {
 	return s.GetByID(ctx, id)
+}
+
+// UpdateTheme sets the user's UI theme preference.
+func (s *UserStore) UpdateTheme(ctx context.Context, userID, theme string) (*domain.User, error) {
+	uid, err := parseUUID(userID)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	row, err := s.q.UpdateUserTheme(ctx, dbgen.UpdateUserThemeParams{
+		ID:    uid,
+		Theme: theme,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	return &domain.User{
+		ID:          uuidToString(row.ID),
+		Email:       row.Email,
+		DisplayName: row.DisplayName,
+		Role:        string(row.Role),
+		IsActive:    row.IsActive,
+		AvatarURL:   row.AvatarUrl,
+		Theme:       row.Theme,
+		CreatedAt:   row.CreatedAt.Time,
+		UpdatedAt:   row.UpdatedAt.Time,
+	}, nil
 }
 
 // -- pgtype helpers reused from auth.go (same package, accessible without export) --

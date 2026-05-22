@@ -6,9 +6,11 @@ export interface User {
   id: string;
   email: string;
   full_name: string;
+  display_name: string;
   role: UserRole;
   is_active: boolean;
   avatar_url?: string;
+  theme?: string;
   created_at: string;
 }
 

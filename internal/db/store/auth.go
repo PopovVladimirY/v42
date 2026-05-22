@@ -39,6 +39,7 @@ func (s *UserStore) GetByEmail(ctx context.Context, email string) (*domain.Store
 			Role:        string(row.Role),
 			IsActive:    row.IsActive,
 			AvatarURL:   row.AvatarUrl,
+			Theme:       row.Theme,
 			CreatedAt:   row.CreatedAt.Time,
 			UpdatedAt:   row.UpdatedAt.Time,
 		},
@@ -65,6 +66,7 @@ func (s *UserStore) GetByID(ctx context.Context, id string) (*domain.User, error
 		Role:        string(row.Role),
 		IsActive:    row.IsActive,
 		AvatarURL:   row.AvatarUrl,
+		Theme:       row.Theme,
 		CreatedAt:   row.CreatedAt.Time,
 		UpdatedAt:   row.UpdatedAt.Time,
 	}, nil
@@ -87,6 +89,7 @@ func (s *UserStore) Create(ctx context.Context, email, passwordHash, displayName
 		Role:        string(row.Role),
 		IsActive:    row.IsActive,
 		AvatarURL:   row.AvatarUrl,
+		Theme:       row.Theme,
 		CreatedAt:   row.CreatedAt.Time,
 		UpdatedAt:   row.UpdatedAt.Time,
 	}, nil
