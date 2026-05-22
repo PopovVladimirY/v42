@@ -896,7 +896,8 @@ PATCH /api/v1/projects/{id}/backlog/reorder
 
 #### 6a -- Модель ясности (2-3 дня)
 
-**Миграция 000006** -- добавляем `clarity_level` на ключевые сущности.
+**Миграция 000007** -- добавляем `clarity_level` на ключевые сущности.
+_(000006 занята: `users.theme` -- тема пользователя, сохраняемая на сервере)_
 
 Уровни основаны на фреймворке Cynefin (Дэвид Сноуден): каждый домен требует
 своего подхода к принятию решений, оценке рисков и управлению.
@@ -949,7 +950,7 @@ score = (foggy*4 + unknown*3 + tacit*2 + scoped*1 + clear*0) / total_items
 - `GET /teams/{id}/load` -- кто сколько взял, кто перегружен, кто простаивает
   Ответ: `{ member_id, name, capacity_hours, assigned_hours, utilization_pct }`
 - `GET /sprints/{id}/burndown` -- items и часы по дням спринта (actual vs planned)
-  Requires: `time_logs` таблица (новая миграция 000007, см. ниже)
+  Requires: `time_logs` таблица (новая миграция 000008, см. ниже)
 
 **Тактический уровень** (для планирования релиза):
 - `GET /projects/{id}/velocity` -- нормализованная velocity по спринтам
@@ -962,7 +963,7 @@ score = (foggy*4 + unknown*3 + tacit*2 + scoped*1 + clear*0) / total_items
 - `GET /projects/{id}/overview` -- всё в одном: items by status, sprint health,
   fog distribution, capacity utilization, top blocked items
 
-**Миграция 000007** -- time_logs (нужна для burndown и аналитики):
+**Миграция 000008** -- time_logs (нужна для burndown и аналитики):
 ```sql
 CREATE TABLE time_logs (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1216,14 +1217,16 @@ Line-height: `1.5` for body, `1.25` for headings. No orphan lines.
 
 **Checklist:**
 
-- [ ] `@fontsource-variable/inter` -- установить, импортировать в `index.css`
-- [ ] `index.css` -- полный реестр CSS-токенов для всех 7 тем
-- [ ] `src/stores/useTheme.ts` -- Zustand store: `theme`, `setTheme()`, persist в localStorage
-- [ ] `src/components/ThemeProvider.tsx` -- ставит `data-theme` на `<html>` при монтировании и смене
-- [ ] `main.tsx` -- обернуть приложение в `<ThemeProvider />`
-- [ ] `src/lib/cn.ts` -- утилита `cn(...classes)` (clsx + tailwind-merge)
-- [ ] Переписать `LoginPage` и `DashboardPage` под токены DeepDive
-- [ ] Smoke test: смена темы в `localStorage` -- страница перерисовывается правильно
+- [x] `@fontsource-variable/inter` -- установить, импортировать в `index.css`
+- [x] `index.css` -- полный реестр CSS-токенов для всех 7 тем
+- [x] `src/stores/useTheme.ts` -- Zustand store: `theme`, `setTheme()`, persist в localStorage
+- [x] `src/components/ThemeProvider.tsx` -- ставит `data-theme` на `<html>` при монтировании и смене
+- [x] `main.tsx` -- обернуть приложение в `<ThemeProvider />`
+- [x] `src/lib/cn.ts` -- утилита `cn(...classes)` (clsx + tailwind-merge)
+- [x] Переписать `LoginPage` и `DashboardPage` под токены DeepDive
+- [x] Smoke test: смена темы в `localStorage` -- страница перерисовывается правильно
+- [x] **BONUS:** Тема сохраняется на сервере (`users.theme`, migration 000006, `PATCH /auth/me`)
+- [x] **BONUS:** WebGL2 bubble easter egg -- 3 режима (classic / rainbow / вращающиеся квадраты) + idle detection 30s
 
 ---
 
@@ -1233,12 +1236,18 @@ Line-height: `1.5` for body, `1.25` for headings. No orphan lines.
 Человек видит свои команды, а не список абстрактных проектов.
 
 **Лэйаут и навигация:**
-- [ ] App shell: левый sidebar (команды, быстрые ссылки), header (профиль, logout)
-- [ ] После логина → `/teams` (список команд пользователя, не `/projects`)
-- [ ] `GET /teams` -- список команд текущего пользователя (фильтр по member)
+- [x] App shell: левый sidebar (команды, быстрые ссылки), header (профиль, logout)
+- [x] После логина → `/teams` (список команд пользователя, не `/projects`)
+- [x] `GET /teams` -- список команд текущего пользователя (фильтр по member)
+
+**Team list** (`/teams`):
+- [x] Карточки команд с названием, описанием, датой создания -- клик → `/teams/{id}`
+- [x] Empty state с иллюстрацией
 
 **Team dashboard** (`/teams/{id}`):
-- [ ] Члены команды: имя, роль, Dreyfus-уровни по навыкам, capacity_hours
+- [x] Члены команды: имя, email, роль (с цветом по токену), capacity_hours
+- [x] Статистика: кол-во участников, суммарная ёмкость, дата создания
+- [x] Skeleton при загрузке, back link → `/teams`, error state
 - [ ] Capacity bars: available vs assigned за текущий период
 - [ ] Skill radar (recharts RadarChart): покрытие навыков в команде
   - Серый контур = capacity, залитый = effective (с учётом level_factor)
