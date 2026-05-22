@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -55,8 +56,9 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	router := api.NewRouter(cfg, pool, log, authSvc, q)
+	router, stopLimiter := api.NewRouter(cfg, pool, log, authSvc, q)
 	srv := httptest.NewServer(router)
+	t.Cleanup(stopLimiter)
 	t.Cleanup(srv.Close)
 
 	// Client that stores cookies between requests.
@@ -507,29 +509,40 @@ func TestAuth_RateLimit_XForwardedFor_CannotBypass(t *testing.T) {
 	e := newTestEnv(t)
 	plainClient := &http.Client{} // no jar, no cookie carry-over
 
-	sendLogin := func(fwdFor string) *http.Response {
+	makeReq := func(fwdFor string) *http.Request {
 		req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/api/v1/auth/login",
 			bytes.NewReader(mustJSON(t, map[string]string{"email": "nobody@test.local", "password": "x"})))
 		req.Header.Set("Content-Type", "application/json")
 		if fwdFor != "" {
 			req.Header.Set("X-Forwarded-For", fwdFor)
 		}
-		resp, err := plainClient.Do(req)
-		if err != nil {
-			t.Fatalf("request: %v", err)
-		}
-		return resp
+		return req
 	}
 
-	// Exhaust the burst (10 tokens) from 127.0.0.1.
+	// Exhaust the burst (10 tokens) concurrently so all Allow() calls happen at t~0
+	// before any tokens can replenish. Sequential sends would take ~20s (bcrypt per
+	// request) and refill the bucket mid-test.
+	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
-		resp := sendLogin("")
-		resp.Body.Close()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resp, err := plainClient.Do(makeReq(""))
+			if err != nil {
+				t.Logf("burst request error: %v", err)
+				return
+			}
+			resp.Body.Close()
+		}()
 	}
+	wg.Wait()
 
 	// 11th request: attacker tries to appear as a different IP via X-Forwarded-For.
 	// Must still be rate-limited -- spoofed header must not reset the bucket.
-	resp := sendLogin("203.0.113.42")
+	resp, err := plainClient.Do(makeReq("203.0.113.42"))
+	if err != nil {
+		t.Fatalf("11th request: %v", err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusTooManyRequests {
 		t.Fatalf("expected 429 (IP spoofing via X-Forwarded-For must not bypass rate limit), got %d", resp.StatusCode)

@@ -18,7 +18,7 @@ import (
 	"github.com/vpo/v42/internal/domain"
 )
 
-func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc *domain.AuthService, queries *dbgen.Queries) *chi.Mux {
+func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc *domain.AuthService, queries *dbgen.Queries) (*chi.Mux, func()) {
 	r := chi.NewRouter()
 
 	// global middleware stack -- order matters
@@ -55,9 +55,13 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 	epicH := &epicHandlers{epics: store.NewEpicStore(queries)}
 	backlogH := &backlogHandlers{backlog: store.NewBacklogStore(queries, pool)}
 	taskH := &taskHandlers{tasks: store.NewTaskStore(queries)}
-	sprintH := &sprintHandlers{sprints: store.NewSprintStore(queries)}
 	commentH := &commentHandlers{comments: store.NewCommentStore(queries)}
 	capacityH := &capacityHandlers{capacity: store.NewCapacityStore(queries, pool)}
+	testH := &testHandlers{tests: store.NewTestStore(queries)}
+	timeH := &timeEntryHandlers{entries: store.NewTimeEntryStore(queries)}
+	sprintResults := store.NewSprintTestStore(queries)
+	sprintH := &sprintHandlers{sprints: store.NewSprintStore(queries), results: sprintResults}
+	resultH := &sprintResultHandlers{results: sprintResults}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", healthHandler(pool))
@@ -175,12 +179,37 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 				r.Get("/sprints/{id}/items", sprintH.ListItems)
 				r.Post("/sprints/{id}/items", sprintH.AddItem)
 				r.Delete("/sprints/{id}/items/{backlog_item_id}", sprintH.RemoveItem)
+
+				// Sprint test results
+				r.Post("/sprints/{id}/test-results/init", resultH.InitResults)
+				r.Get("/sprints/{id}/test-results", resultH.ListResults)
+				r.Patch("/sprints/{id}/test-results/{result_id}", resultH.UpdateResult)
+
+				// Test specs: project-level
+				r.Get("/tests", testH.ListProjectTests)
+				r.Post("/tests", testH.CreateProjectTest)
+				r.Get("/tests/{test_id}", testH.GetTest)
+				r.Patch("/tests/{test_id}", testH.UpdateTest)
+				r.Delete("/tests/{test_id}", testH.DeleteTest)
+
+				// Test specs: epic-level
+				r.Get("/epics/{epic_id}/tests", testH.ListEpicTests)
+				r.Post("/epics/{epic_id}/tests", testH.CreateEpicTest)
+
+				// Test specs: backlog-item-level
+				r.Get("/backlog/{backlog_item_id}/tests", testH.ListItemTests)
+				r.Post("/backlog/{backlog_item_id}/tests", testH.CreateItemTest)
+
+				// Time entries: per-task
+				r.Get("/backlog/{backlog_item_id}/tasks/{task_id}/time", timeH.ListByTask)
+				r.Post("/backlog/{backlog_item_id}/tasks/{task_id}/time", timeH.Log)
+				r.Delete("/backlog/{backlog_item_id}/tasks/{task_id}/time/{entry_id}", timeH.DeleteEntry)
 			})
 			}) // end RequirePasswordChanged group
 		})
 	})
 
-	return r
+	return r, authLimiter.Stop
 }
 
 // healthHandler checks db connectivity and reports overall system status.

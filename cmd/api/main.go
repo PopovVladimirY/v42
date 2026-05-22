@@ -65,7 +65,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	router := api.NewRouter(cfg, pool, log, authSvc, queries)
+	router, stopLimiter := api.NewRouter(cfg, pool, log, authSvc, queries)
+	defer stopLimiter()
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf("%s:%s", cfg.ServerHost, cfg.ServerPort),

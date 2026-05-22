@@ -21,6 +21,7 @@ type RateLimiter struct {
 	visitors map[string]*visitor
 	r        rate.Limit
 	burst    int
+	done     chan struct{}
 }
 
 func NewRateLimiter(r rate.Limit, burst int) *RateLimiter {
@@ -28,9 +29,16 @@ func NewRateLimiter(r rate.Limit, burst int) *RateLimiter {
 		visitors: make(map[string]*visitor),
 		r:        r,
 		burst:    burst,
+		done:     make(chan struct{}),
 	}
 	go rl.cleanup()
 	return rl
+}
+
+// Stop shuts down the background cleanup goroutine. Call this when the
+// RateLimiter is no longer needed (e.g. in test teardown via t.Cleanup).
+func (rl *RateLimiter) Stop() {
+	close(rl.done)
 }
 
 func (rl *RateLimiter) get(ip string) *rate.Limiter {
@@ -47,18 +55,23 @@ func (rl *RateLimiter) get(ip string) *rate.Limiter {
 }
 
 // cleanup removes IPs that have been quiet for 10+ minutes.
-// Runs forever in a goroutine -- the limiter lives as long as the process.
+// Exits when Stop() is called.
 func (rl *RateLimiter) cleanup() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
-	for range ticker.C {
-		rl.mu.Lock()
-		for ip, v := range rl.visitors {
-			if time.Since(v.lastSeen) > 10*time.Minute {
-				delete(rl.visitors, ip)
+	for {
+		select {
+		case <-ticker.C:
+			rl.mu.Lock()
+			for ip, v := range rl.visitors {
+				if time.Since(v.lastSeen) > 10*time.Minute {
+					delete(rl.visitors, ip)
+				}
 			}
+			rl.mu.Unlock()
+		case <-rl.done:
+			return
 		}
-		rl.mu.Unlock()
 	}
 }
 

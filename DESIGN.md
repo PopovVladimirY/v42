@@ -872,16 +872,16 @@ PATCH /api/v1/projects/{id}/backlog/reorder
 - [x] CRUD backlog items (с фильтрацией по всем измерениям)
 - [x] Reorder: `POST /projects/{id}/backlog/reorder` (FLOAT8 midpoint trick)
 - [x] CRUD tasks
-- [ ] CRUD tests (на всех уровнях: project / epic / backlog item)
-- [ ] Time logging
+- [x] CRUD tests (на всех уровнях: project / epic / backlog item)
+- [x] Time logging
 - [x] CRUD comments (soft delete + one-level threading; 24h edit window -- pending)
 - [x] 136 integration tests (cumulative); 2 audit passes; 39 bugs found and fixed
 
-### Фаза 4.5 -- Спринты ✓ PARTIAL
+### Фаза 4.5 -- Спринты ✓ PARTIAL DONE
 - [x] CRUD sprints
 - [x] Sprint items: добавление/удаление/список backlog items из спринта
-- [ ] Sprint test runs: инициализация результатов при старте спринта
-- [ ] Auto-skip логика при failed тесте (domain/testrun.go)
+- [x] Sprint test runs: инициализация результатов при старте спринта
+- [x] Auto-skip логика при failed тесте (domain/testrun.go)
 - [ ] Sprint board view: `GET /sprints/{id}/board`
 
 ### Фаза 5 -- Таймлайн (2-3 дня)

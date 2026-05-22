@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -183,6 +184,7 @@ func (h *taskHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 
 type sprintHandlers struct {
 	sprints *store.SprintStore
+	results *store.SprintTestStore
 }
 
 // List handles GET /api/v1/projects/{project_id}/sprints
@@ -318,6 +320,14 @@ func (h *sprintHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update sprint")
 		return
 	}
+
+	// Activation hook: when sprint transitions to active, seed test result rows.
+	if req.Status != nil && *req.Status == "active" {
+		go func() {
+			_ = h.results.InitResults(context.Background(), id)
+		}()
+	}
+
 	respond(w, http.StatusOK, s)
 }
 
