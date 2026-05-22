@@ -57,7 +57,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 	taskH := &taskHandlers{tasks: store.NewTaskStore(queries)}
 	sprintH := &sprintHandlers{sprints: store.NewSprintStore(queries)}
 	commentH := &commentHandlers{comments: store.NewCommentStore(queries)}
-	capacityH := &capacityHandlers{capacity: store.NewCapacityStore(queries)}
+	capacityH := &capacityHandlers{capacity: store.NewCapacityStore(queries, pool)}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", healthHandler(pool))
@@ -121,7 +121,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 			r.Get("/teams/{id}/tandems", capacityH.TandemOpportunities)
 			r.Get("/teams/{id}/learning-appetite", capacityH.TeamLearningAppetite)
 			r.Get("/teams/{id}/skill-coverage", capacityH.SkillCoverage)
-
+				r.Get("/teams/{id}/member-capacity", capacityH.MemberCapacity)
 			// Comments: update/delete own (ownership enforced in future; for now any auth user)
 			r.Patch("/comments/{id}", commentH.Update)
 			r.Delete("/comments/{id}", commentH.Delete)

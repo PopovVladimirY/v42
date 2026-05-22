@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip,
 } from 'recharts';
@@ -123,11 +123,17 @@ export function TeamDetailPage() {
   const { id } = useParams<{ id: string }>();
   const user = useAuthStore((s) => s.user);
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [addingMember, setAddingMember] = useState(false);
   const [addUserId, setAddUserId] = useState('');
   const [addCapacity, setAddCapacity] = useState(32);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const canManage = user?.role === 'admin' || user?.role === 'maintainer';
+  const canDelete = user?.role === 'admin';
 
   const { data: team, isLoading, isError } = useQuery({
     queryKey: ['team', id],
@@ -153,6 +159,12 @@ export function TeamDetailPage() {
     enabled: !!id,
   });
 
+  const { data: memberCapacity } = useQuery({
+    queryKey: ['team-member-capacity', id],
+    queryFn: () => capacityApi.teamMemberCapacity(id!),
+    enabled: !!id,
+  });
+
   const { data: allUsers } = useQuery({
     queryKey: ['users'],
     queryFn: () => usersApi.list(),
@@ -162,6 +174,20 @@ export function TeamDetailPage() {
   const removeMember = useMutation({
     mutationFn: (userId: string) => teamsApi.removeMember(id!, userId),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['team', id] }),
+  });
+
+  const updateTeam = useMutation({
+    mutationFn: () => teamsApi.update(id!, { name: editName.trim(), description: editDesc.trim() || null }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['team', id] });
+      void qc.invalidateQueries({ queryKey: ['teams'] });
+      setEditing(false);
+    },
+  });
+
+  const deleteTeam = useMutation({
+    mutationFn: () => teamsApi.delete(id!),
+    onSuccess: () => navigate('/teams'),
   });
 
   const addMember = useMutation({
@@ -204,15 +230,106 @@ export function TeamDetailPage() {
       <div className="mb-6">
         {isLoading ? (
           <div className="h-7 w-48 rounded animate-pulse" style={{ background: 'var(--bg-surface)' }} />
+        ) : editing ? (
+          <div className="flex flex-col gap-2">
+            <input
+              type="text"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              maxLength={120}
+              className="text-xl font-semibold rounded-md px-2 py-1 outline-none w-full"
+              style={{ background: 'var(--bg-surface)', border: '1px solid var(--accent)', color: 'var(--text-1)' }}
+              autoFocus
+            />
+            <input
+              type="text"
+              value={editDesc}
+              onChange={(e) => setEditDesc(e.target.value)}
+              maxLength={500}
+              placeholder="Description (optional)"
+              className="text-sm rounded-md px-2 py-1 outline-none w-full"
+              style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
+            />
+            {updateTeam.isError && (
+              <p className="text-xs" style={{ color: 'var(--color-danger)' }}>Failed to save. Try again.</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => void updateTeam.mutate()}
+                disabled={!editName.trim() || updateTeam.isPending}
+                className="px-3 py-1.5 text-sm font-medium rounded-md disabled:opacity-40"
+                style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
+              >
+                {updateTeam.isPending ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={() => setEditing(false)}
+                className="px-3 py-1.5 text-sm rounded-md"
+                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         ) : (
-          <h1 className="text-xl font-semibold" style={{ color: 'var(--text-1)' }}>{team?.name}</h1>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-xl font-semibold" style={{ color: 'var(--text-1)' }}>{team?.name}</h1>
+              {team?.description && (
+                <p className="mt-1 text-sm" style={{ color: 'var(--text-2)' }}>{team.description}</p>
+              )}
+            </div>
+            {canManage && team && (
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <button
+                  onClick={() => { setEditName(team.name); setEditDesc(team.description ?? ''); setEditing(true); }}
+                  title="Edit team"
+                  className="p-1.5 rounded-md transition-colors"
+                  style={{ color: 'var(--text-3)', background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                    <path d="M9.5 1.5l2 2-7 7H2.5v-2l7-7z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+                {canDelete && (
+                  confirmDelete ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs" style={{ color: 'var(--color-danger)' }}>Delete?</span>
+                      <button
+                        onClick={() => void deleteTeam.mutate()}
+                        disabled={deleteTeam.isPending}
+                        className="px-2 py-1 text-xs font-medium rounded-md disabled:opacity-40"
+                        style={{ background: 'var(--color-danger)', color: '#fff' }}
+                      >
+                        {deleteTeam.isPending ? '...' : 'Yes'}
+                      </button>
+                      <button
+                        onClick={() => setConfirmDelete(false)}
+                        className="px-2 py-1 text-xs rounded-md"
+                        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
+                      >
+                        No
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDelete(true)}
+                      title="Delete team"
+                      className="p-1.5 rounded-md transition-colors"
+                      style={{ color: 'var(--color-danger)', background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                        <path d="M2 3.5h9M5 3.5V2.5h3v1M4 3.5l.5 7h4l.5-7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </button>
+                  )
+                )}
+              </div>
+            )}
+          </div>
         )}
-        {isLoading ? (
+        {isLoading && (
           <div className="h-4 w-72 rounded mt-2 animate-pulse" style={{ background: 'var(--bg-surface)' }} />
-        ) : (
-          team?.description && (
-            <p className="mt-1 text-sm" style={{ color: 'var(--text-2)' }}>{team.description}</p>
-          )
         )}
       </div>
 
@@ -368,6 +485,53 @@ export function TeamDetailPage() {
           ))
         }
       </div>
+
+      {/* Capacity Bars */}
+      {memberCapacity && memberCapacity.length > 0 && (() => {
+        const memberMap = new Map<string, string>(
+          (team?.members ?? []).map((m) => [m.user_id, m.display_name || m.email])
+        );
+        const maxCap = Math.max(...memberCapacity.map((m) => m.capacity_hours), 1);
+        return (
+          <section className="mt-8">
+            <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
+              Capacity
+            </h2>
+            <div
+              className="rounded-xl p-4 flex flex-col gap-3"
+              style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+            >
+              {memberCapacity.map((m) => {
+                const name = memberMap.get(m.user_id) ?? m.user_id.slice(0, 8);
+                const pct = maxCap > 0 ? (m.capacity_hours / maxCap) * 100 : 0;
+                return (
+                  <div key={m.user_id}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-medium truncate max-w-36" style={{ color: 'var(--text-2)' }}>{name}</span>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        {m.assigned_items > 0 && (
+                          <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>
+                            {m.assigned_items} active
+                          </span>
+                        )}
+                        <span className="text-xs font-medium" style={{ color: 'var(--text-1)' }}>
+                          {m.capacity_hours}h/wk
+                        </span>
+                      </div>
+                    </div>
+                    <div className="relative h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-elevated)' }}>
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-full transition-all"
+                        style={{ width: `${pct}%`, background: 'var(--accent)' }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })()}
 
       {/* Tandem Opportunities */}
       {tandems && tandems.length > 0 && (() => {

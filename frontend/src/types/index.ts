@@ -90,6 +90,12 @@ export interface TeamMemberAppetite {
   curious_breadth: number;
 }
 
+export interface MemberCapacity {
+  user_id: string;
+  capacity_hours: number;   // declared weekly capacity
+  assigned_items: number;   // open items in active sprint
+}
+
 // Generic API envelope -- matches Go's { data, meta, error }
 export interface ApiResponse<T> {
   data: T | null;

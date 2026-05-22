@@ -64,14 +64,22 @@ type EngagementScore struct {
 	GroundedExpertCount int32 `json:"grounded_expert_count"`
 }
 
+// MemberCapacity is one team member's declared vs active-sprint workload.
+type MemberCapacity struct {
+	UserID        string `json:"user_id"`
+	CapacityHours int16  `json:"capacity_hours"`
+	AssignedItems int64  `json:"assigned_items"` // open items in active sprint
+}
+
 // CapacityStore wraps sqlc skills_capacity queries (all read-only).
 type CapacityStore struct {
-	q *dbgen.Queries
+	q  *dbgen.Queries
+	db dbgen.DBTX // used for raw queries not covered by sqlc
 }
 
 // NewCapacityStore returns a CapacityStore.
-func NewCapacityStore(q *dbgen.Queries) *CapacityStore {
-	return &CapacityStore{q: q}
+func NewCapacityStore(q *dbgen.Queries, db dbgen.DBTX) *CapacityStore {
+	return &CapacityStore{q: q, db: db}
 }
 
 func toInt(v interface{}) int {
@@ -237,4 +245,46 @@ func (s *CapacityStore) SkillCoverage(ctx context.Context, teamID, skillID strin
 		TeamID:  tid,
 		SkillID: pgtype.UUID(sid),
 	})
+}
+
+// TeamMemberCapacity returns per-member capacity vs active-sprint workload.
+// assigned_items = open backlog items assigned to the user in any active sprint for this team.
+func (s *CapacityStore) TeamMemberCapacity(ctx context.Context, teamID string) ([]MemberCapacity, error) {
+	tid, err := parseUUID(teamID)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	const q = `
+		SELECT
+			tm.user_id,
+			tm.capacity_hours,
+			COUNT(DISTINCT bi.id) FILTER (WHERE bi.id IS NOT NULL) AS assigned_items
+		FROM team_members tm
+		LEFT JOIN sprints s    ON s.team_id = $1 AND s.status = 'active'
+		LEFT JOIN sprint_items si ON si.sprint_id = s.id
+		LEFT JOIN backlog_items bi
+			ON  bi.id = si.backlog_item_id
+			AND bi.assignee_id = tm.user_id
+			AND bi.status NOT IN ('done', 'cancelled')
+		WHERE tm.team_id = $1
+		GROUP BY tm.user_id, tm.capacity_hours
+		ORDER BY tm.capacity_hours DESC, tm.user_id`
+
+	rows, err := s.db.Query(ctx, q, tid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []MemberCapacity
+	for rows.Next() {
+		var m MemberCapacity
+		var uid pgtype.UUID
+		if err := rows.Scan(&uid, &m.CapacityHours, &m.AssignedItems); err != nil {
+			return nil, err
+		}
+		m.UserID = uuidToString(uid)
+		out = append(out, m)
+	}
+	return out, rows.Err()
 }

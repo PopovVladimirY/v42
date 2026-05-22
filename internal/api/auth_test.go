@@ -267,7 +267,7 @@ func TestAuth_Me_ExpiredToken(t *testing.T) {
 	e := newTestEnv(t)
 
 	// Generate a token that expired 1 second ago.
-	expired, err := auth.GenerateAccessToken("test-secret-not-used-in-production-aaaaaa", "fake-id", "developer", -time.Second)
+	expired, err := auth.GenerateAccessToken("test-secret-not-used-in-production-aaaaaa", "fake-id", "developer", false, -time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -254,3 +254,18 @@ func (h *capacityHandlers) SkillCoverage(w http.ResponseWriter, r *http.Request)
 	}
 	respond(w, http.StatusOK, map[string]int64{"coverage_count": count})
 }
+
+// MemberCapacity returns per-member capacity vs active-sprint workload for a team.
+func (h *capacityHandlers) MemberCapacity(w http.ResponseWriter, r *http.Request) {
+	teamID := chi.URLParam(r, "id")
+	data, err := h.capacity.TeamMemberCapacity(r.Context(), teamID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "team not found")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get member capacity")
+		return
+	}
+	respond(w, http.StatusOK, data)
+}
