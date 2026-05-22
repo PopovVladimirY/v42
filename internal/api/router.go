@@ -50,6 +50,13 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 	}
 	skillH := &skillHandlers{skills: skillStore}
 	teamH := &teamHandlers{teams: store.NewTeamStore(queries)}
+	projectH := &projectHandlers{projects: store.NewProjectStore(queries)}
+	epicH := &epicHandlers{epics: store.NewEpicStore(queries)}
+	backlogH := &backlogHandlers{backlog: store.NewBacklogStore(queries, pool)}
+	taskH := &taskHandlers{tasks: store.NewTaskStore(queries)}
+	sprintH := &sprintHandlers{sprints: store.NewSprintStore(queries)}
+	commentH := &commentHandlers{comments: store.NewCommentStore(queries)}
+	capacityH := &capacityHandlers{capacity: store.NewCapacityStore(queries)}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", healthHandler(pool))
@@ -96,6 +103,68 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 
 			// Teams: delete for admin only
 			r.With(middleware.RequireRole("admin")).Delete("/teams/{id}", teamH.Delete)
+
+			// Capacity + skill radar (read-only, any authenticated user)
+			r.Get("/users/{id}/skill-radar", capacityH.PersonalRadar)
+			r.Get("/users/{id}/learning-appetite", capacityH.UserLearningAppetite)
+			r.Get("/users/{id}/engagement", capacityH.UserEngagement)
+			r.Get("/teams/{id}/skill-matrix", capacityH.TeamSkillMatrix)
+			r.Get("/teams/{id}/tandems", capacityH.TandemOpportunities)
+			r.Get("/teams/{id}/learning-appetite", capacityH.TeamLearningAppetite)
+			r.Get("/teams/{id}/skill-coverage", capacityH.SkillCoverage)
+
+			// Comments: update/delete own (ownership enforced in future; for now any auth user)
+			r.Patch("/comments/{id}", commentH.Update)
+			r.Delete("/comments/{id}", commentH.Delete)
+
+			// Projects
+			r.Get("/projects", projectH.List)
+			r.Get("/projects/{id}", projectH.Get)
+			r.With(middleware.RequireRole("admin", "maintainer")).Post("/projects", projectH.Create)
+			r.With(middleware.RequireRole("admin", "maintainer")).Patch("/projects/{id}", projectH.Update)
+			r.With(middleware.RequireRole("admin")).Delete("/projects/{id}", projectH.Delete)
+
+			// Epics (nested under project)
+			r.Route("/projects/{project_id}", func(r chi.Router) {
+				r.Get("/epics", epicH.List)
+				r.Get("/epics/{id}", epicH.Get)
+				r.With(middleware.RequireRole("admin", "maintainer")).Post("/epics", epicH.Create)
+				r.With(middleware.RequireRole("admin", "maintainer")).Patch("/epics/{id}", epicH.Update)
+				r.With(middleware.RequireRole("admin", "maintainer")).Delete("/epics/{id}", epicH.Delete)
+
+				// Backlog
+				r.Get("/backlog", backlogH.List)
+				r.Get("/backlog/{id}", backlogH.Get)
+				r.Post("/backlog", backlogH.Create)
+				r.Patch("/backlog/{id}", backlogH.Update)
+				r.Delete("/backlog/{id}", backlogH.Delete)
+				r.Post("/backlog/reorder", backlogH.Reorder)
+
+				// Tasks nested under backlog items
+				r.Get("/backlog/{backlog_item_id}/tasks", taskH.List)
+				r.Get("/backlog/{backlog_item_id}/tasks/{id}", taskH.Get)
+				r.Post("/backlog/{backlog_item_id}/tasks", taskH.Create)
+				r.Patch("/backlog/{backlog_item_id}/tasks/{id}", taskH.Update)
+				r.Delete("/backlog/{backlog_item_id}/tasks/{id}", taskH.Delete)
+
+				// Comments on backlog items
+				r.Get("/backlog/{backlog_item_id}/comments", commentH.ListByBacklogItem)
+				r.Post("/backlog/{backlog_item_id}/comments", commentH.CreateForBacklogItem)
+
+				// Comments on tasks
+				r.Get("/backlog/{backlog_item_id}/tasks/{task_id}/comments", commentH.ListByTask)
+				r.Post("/backlog/{backlog_item_id}/tasks/{task_id}/comments", commentH.CreateForTask)
+
+				// Sprints
+				r.Get("/sprints", sprintH.List)
+				r.Get("/sprints/{id}", sprintH.Get)
+				r.With(middleware.RequireRole("admin", "maintainer")).Post("/sprints", sprintH.Create)
+				r.With(middleware.RequireRole("admin", "maintainer")).Patch("/sprints/{id}", sprintH.Update)
+				r.With(middleware.RequireRole("admin", "maintainer")).Delete("/sprints/{id}", sprintH.Delete)
+				r.Get("/sprints/{id}/items", sprintH.ListItems)
+				r.Post("/sprints/{id}/items", sprintH.AddItem)
+				r.Delete("/sprints/{id}/items/{backlog_item_id}", sprintH.RemoveItem)
+			})
 		})
 	})
 

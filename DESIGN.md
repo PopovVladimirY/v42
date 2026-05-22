@@ -888,24 +888,338 @@ PATCH /api/v1/projects/{id}/backlog/reorder
 - [ ] CRUD stages
 - [ ] Привязка backlog items к stage/release
 
-### Фаза 6 -- Статистика (2-3 дня)
-- [ ] Overview endpoint
-- [ ] Capacity vs load
-- [ ] Time by member/skill
+### Фаза 6 -- Ясность, Риск и Аналитика (6-8 дней)
 
-### Фаза 7 -- SSE Real-time (1-2 дня)
-- [ ] SSE endpoint для проекта
-- [ ] Broadcast при изменении item status
+Цель фазы: сделать невидимое видимым. Не только "сколько сделали", но и
+"насколько понимали что делаем". Основа -- квадранты недопонимания (см. IDEAS.md).
 
-### Фаза 8 -- React UI (параллельно с 3-7, или после)
-- [ ] Vite setup, TypeScript, базовый API-клиент
-- [ ] Auth flow (login, token refresh)
-- [ ] Project list + project dashboard
-- [ ] Backlog view (список + фильтры)
-- [ ] Sprint board (dnd-kit, columns by status)
-- [ ] Epic board
-- [ ] Timeline view (releases + stages)
-- [ ] Capacity planning view
+#### 6a -- Модель ясности (2-3 дня)
+
+**Миграция 000006** -- добавляем `clarity_level` на ключевые сущности:
+
+```sql
+CREATE TYPE clarity_level AS ENUM (
+    'unclassified', -- квадрант 5: ещё не разобрали
+    'foggy',        -- квадрант 4: много неизвестного, нужен spike
+    'tacit',        -- квадрант 2: знание есть, но только у одного
+    'scoped',       -- квадрант 3: open questions идентифицированы
+    'clear'         -- квадрант 1: понятно, можно в спринт
+);
+
+ALTER TABLE backlog_items ADD COLUMN clarity_level clarity_level NOT NULL DEFAULT 'unclassified';
+ALTER TABLE epics         ADD COLUMN clarity_level clarity_level NOT NULL DEFAULT 'unclassified';
+ALTER TABLE tasks         ADD COLUMN clarity_level clarity_level NOT NULL DEFAULT 'unclassified';
+```
+
+Новые sqlc queries:
+- `UpdateBacklogItemClarity(id, clarity_level)` -- PATCH отдельным эндпоинтом
+- `ListBacklogItemsByClarity(project_id, clarity_level)` -- фильтрация для grooming view
+- `GetProjectClarityDistribution(project_id)` -- COUNT по каждому уровню
+- `GetSprintClaritySnapshot(sprint_id)` -- clarity_level айтемов на момент старта спринта
+
+API эндпоинты:
+- `PATCH /projects/{id}/backlog/{item_id}/clarity` -- обновить clarity_level
+- `GET  /projects/{id}/clarity-map` -- distribution по всем айтемам проекта
+- `GET  /projects/{id}/backlog?clarity=foggy` -- фильтр беклога по clarity (расширение существующего)
+- `GET  /sprints/{id}/risk-score` -- вычисленный risk score по формуле из IDEAS.md
+
+Sprint risk score:
+```
+score = (foggy*4 + unclassified*3 + tacit*2 + scoped*1 + clear*0) / total_items
+```
+Возвращается вместе с breakdown по квадрантам. Никаких светофоров -- только данные.
+
+#### 6b -- Аналитика и статистика (3-4 дня)
+
+Три уровня аналитики (согласно IDEAS.md раздел 3):
+
+**Оперативный уровень** (для тимлида еженедельно):
+- `GET /teams/{id}/load` -- кто сколько взял, кто перегружен, кто простаивает
+  Ответ: `{ member_id, name, capacity_hours, assigned_hours, utilization_pct }`
+- `GET /sprints/{id}/burndown` -- items и часы по дням спринта (actual vs planned)
+  Requires: `time_logs` таблица (новая миграция 000007, см. ниже)
+
+**Тактический уровень** (для планирования релиза):
+- `GET /projects/{id}/velocity` -- нормализованная velocity по спринтам
+  `velocity = story_points_done / available_capacity` (не абсолютные цифры)
+- `GET /teams/{id}/skill-throughput` -- tasks_done_in_skill / available_hours_in_skill
+  Отвечает: "насколько эффективно используются Python-компетенции в квартале"
+- `GET /projects/{id}/epic-progress` -- прогресс каждого эпика (% закрытых айтемов)
+
+**Агрегированный overview** (дашборд проекта):
+- `GET /projects/{id}/overview` -- всё в одном: items by status, sprint health,
+  fog distribution, capacity utilization, top blocked items
+
+**Миграция 000007** -- time_logs (нужна для burndown и аналитики):
+```sql
+CREATE TABLE time_logs (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    task_id        UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    user_id        UUID NOT NULL REFERENCES users(id),
+    logged_hours   NUMERIC(5,2) NOT NULL CHECK (logged_hours > 0),
+    logged_date    DATE NOT NULL DEFAULT CURRENT_DATE,
+    note           TEXT,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_time_logs_task   ON time_logs(task_id);
+CREATE INDEX idx_time_logs_user   ON time_logs(user_id);
+CREATE INDEX idx_time_logs_date   ON time_logs(logged_date);
+```
+
+API для time_logs:
+- `POST /tasks/{id}/time-logs` -- залогировать время
+- `GET  /tasks/{id}/time-logs` -- история по задаче
+- `GET  /users/{id}/time-logs?from=&to=` -- история по пользователю за период
+
+### Фаза 7 -- SSE Real-time (2-3 дня)
+
+SSE endpoint позволяет клиентам подписаться на поток событий без polling.
+Один постоянный HTTP-соединение, события в формате `text/event-stream`.
+
+**Broadcaster:**
+Горутина внутри процесса. Каналы per-project (map[projectID][]chan Event).
+При горизонтальном масштабировании -- заменить на Kafka/NATS (outbox готов).
+Сейчас: один инстанс, этого достаточно для v1.
+
+**Эндпоинт:**
+```
+GET /projects/{id}/events
+Content-Type: text/event-stream
+Cache-Control: no-cache
+Authorization: Bearer <token>   (JWT в query param как fallback для EventSource)
+```
+
+**Типы событий:**
+
+| event type             | когда                                          | payload                              |
+|------------------------|------------------------------------------------|--------------------------------------|
+| `item.status_changed`  | backlog_item.status изменился                  | `{id, old_status, new_status}`       |
+| `item.clarity_changed` | backlog_item.clarity_level изменился           | `{id, old_clarity, new_clarity}`     |
+| `item.reordered`       | после drag-and-drop reorder                    | `{project_id}`  (клиент перезапросит)|
+| `sprint.started`       | sprint.status = active                         | `{sprint_id, name}`                  |
+| `sprint.completed`     | sprint.status = completed                      | `{sprint_id, velocity}`              |
+| `task.assigned`        | task.assignee_id изменился                     | `{task_id, assignee_id, name}`       |
+| `comment.created`      | новый комментарий                              | `{comment_id, author, body_preview}` |
+| `fog.alert`            | sprint risk score превысил порог (> 1.5)       | `{sprint_id, score, foggy_count}`    |
+| `ping`                 | каждые 30 секунд для keep-alive                | `{ts}`                               |
+
+**Fog alert** -- новое: когда кто-то меняет clarity_level и risk score спринта
+пересекает порог, broadcaster рассылает `fog.alert` всем подписчикам проекта.
+Это не блокировка -- это сигнал для planning meeting.
+
+**Go реализация (структура):**
+
+```go
+// internal/api/sse.go
+type SSEBroker struct {
+    mu       sync.RWMutex
+    channels map[string][]chan SSEEvent  // key = project_id
+}
+
+type SSEEvent struct {
+    Type    string `json:"type"`
+    Payload any    `json:"payload"`
+}
+
+func (b *SSEBroker) Subscribe(projectID string) (<-chan SSEEvent, func())
+func (b *SSEBroker) Publish(projectID string, event SSEEvent)
+```
+
+Handler пишет в `w` в цикле пока клиент не отключится (context.Done()).
+При отключении вызывает unsubscribe функцию (убирает канал из map).
+
+**Интеграция с handlers:**
+После каждого successful PATCH status или PATCH clarity в handler --
+`broker.Publish(projectID, SSEEvent{Type: "item.status_changed", ...})`.
+Broker живёт в Router как зависимость (передаётся в handlers через конструктор).
+
+### Фаза 8 -- React UI (не "потом", а параллельно с каждой фазой)
+
+UI строится итерационно -- каждый шаг синхронизирован с соответствующим бэкенд-этапом.
+Точка входа после логина -- **команда**, не проекты. Человек в системе первичен.
+
+Общий техстек (один раз, в самом начале):
+- Vite + React 18 + TypeScript
+- TanStack Query v5 -- data fetching, кэш, invalidation
+- Zustand -- глобальный state (auth, текущая команда/проект, SSE-события)
+- Axios + JWT interceptor (auto-refresh через refresh token)
+- React Router v6 -- структура маршрутов
+- shadcn/ui + Tailwind CSS -- дизайн-система
+
+---
+
+#### Фаза 8.0 -- Vite Foundation + Auth UI (параллельно с Фазой 2 | уже можно)
+
+Бэкенд Фазы 2 сделан. UI можно начинать прямо сейчас.
+
+- [ ] Vite + TS + shadcn/ui + Router -- инициализация проекта
+- [ ] Axios instance: `baseURL`, request/response interceptors, token refresh logic
+- [ ] Zustand: `useAuthStore` -- user, accessToken, isAuthenticated, logout
+- [ ] `POST /auth/login` -- login form, валидация, error display
+- [ ] `POST /auth/refresh` -- автоматически при 401, прозрачно для компонентов
+- [ ] Protected route wrapper -- redirect to `/login` если нет токена
+- [ ] `GET /auth/me` -- загрузка текущего пользователя при старте
+- [ ] `POST /auth/logout` -- очистка стора, redirect
+
+---
+
+#### Фаза 8.3 -- Команды и люди (параллельно с Фазой 3 | уже можно)
+
+Бэкенд Фазы 3 сделан. Teams UI -- первый экран после логина.
+Человек видит свои команды, а не список абстрактных проектов.
+
+**Лэйаут и навигация:**
+- [ ] App shell: левый sidebar (команды, быстрые ссылки), header (профиль, logout)
+- [ ] После логина → `/teams` (список команд пользователя, не `/projects`)
+- [ ] `GET /teams` -- список команд текущего пользователя (фильтр по member)
+
+**Team dashboard** (`/teams/{id}`):
+- [ ] Члены команды: имя, роль, Dreyfus-уровни по навыкам, capacity_hours
+- [ ] Capacity bars: available vs assigned за текущий период
+- [ ] Skill radar (recharts RadarChart): покрытие навыков в команде
+  - Серый контур = capacity, залитый = effective (с учётом level_factor)
+  - `GET /teams/{id}/skill-matrix`
+- [ ] Tandem opportunities: кто кого может менторить
+  - `GET /teams/{id}/tandems`
+- [ ] Learning appetite: кто хочет расти в каком навыке
+  - `GET /teams/{id}/learning-appetite`
+
+**Управление командой** (admin/maintainer):
+- [ ] Добавить/удалить члена команды
+- [ ] Обновить capacity_hours члена
+- [ ] `GET /skills` -- каталог навыков для выбора
+
+**Профиль пользователя** (`/users/{id}`):
+- [ ] Мои навыки: уровень + interest (редактируемые через `PUT /users/{id}/skills/{skill_id}`)
+- [ ] Skill radar (персональный): мои компетенции по Дрейфусу
+  - `GET /users/{id}/skill-radar`
+- [ ] Learning appetite: trajectory (куда хочу расти)
+  - `GET /users/{id}/learning-appetite`
+- [ ] Engagement score: как активно участвую в задачах
+  - `GET /users/{id}/engagement`
+
+---
+
+#### Фаза 8.4 -- Проекты и беклог (параллельно с Фазой 4)
+
+Проекты открываются из контекста команды. `/teams/{id}/projects` -- не отдельный раздел.
+
+**Project list:**
+- [ ] `GET /projects?team_id={id}` -- проекты команды
+- [ ] Карточка проекта: название, статус, % закрытых айтемов, fog distribution mini-bar
+- [ ] Создать проект (форма: название, описание, team_id из текущей команды)
+- [ ] PATCH статуса (active / on_hold / completed / archived)
+
+**Project dashboard** (`/projects/{id}`):
+- [ ] Overview: items by status (сколько в каждом), velocity (last 3 sprints), fog distribution
+- [ ] Fog distribution: горизонтальный stacked bar (clear / scoped / tacit / foggy / unclassified)
+  - `GET /projects/{id}/clarity-map`
+- [ ] Active sprint summary: risk score, items count, burndown mini-chart
+- [ ] Top epics: прогресс каждого эпика (% done)
+
+**Backlog view** (`/projects/{id}/backlog`):
+- [ ] Список айтемов с фильтрами: status, clarity, epic_id, assignee_id, sprint
+- [ ] Clarity badge на каждой карточке (5 цветов по квадранту)
+  - unclassified = серый, foggy = красный, tacit = оранжевый, scoped = жёлтый, clear = зелёный
+- [ ] Grooming filter: "Требуют уточнения" = foggy + unclassified (кнопка-preset)
+- [ ] Drag-and-drop сортировка приоритетов (dnd-kit SortableContext по всему списку)
+  - `POST /projects/{id}/backlog/reorder`
+- [ ] Inline PATCH статуса: клик по бейджу статуса → меняет без открытия detail
+
+**Backlog item detail** (side panel или отдельная страница):
+- [ ] Все поля: title, description, type, status, estimate, story points
+- [ ] Acceptance criteria: ac_setup + ac_steps + ac_expected (textarea с preview)
+- [ ] Clarity selector: 5 кнопок-квадрантов с описанием (`PATCH /backlog/{id}/clarity`)
+- [ ] Tasks: список подзадач, создать задачу, assignee, статус
+- [ ] Comments: список (threading один уровень), новый комментарий, edit/delete (24h window)
+- [ ] Привязки: epic, stage, release -- dropdown с поиском
+
+**Epic board** (`/projects/{id}/epics`):
+- [ ] Карточки эпиков: title, owner, status, прогресс (% done), clarity badge
+- [ ] Progress bar: закрытые / total backlog items
+- [ ] Клик → список айтемов эпика (использует backlog view с фильтром epic_id)
+
+---
+
+#### Фаза 8.4.5 -- Sprint board (параллельно с Фазой 4.5)
+
+- [ ] Список спринтов проекта, создать спринт, статус (planning / active / completed)
+- [ ] Sprint detail: дата начала/конца, capacity команды, кол-во айтемов
+- [ ] Risk score badge на заголовке: цвет по порогу (< 0.5 зелёный, 0.5-1.5 жёлтый, > 1.5 красный)
+  - `GET /sprints/{id}/risk-score`
+- [ ] Sprint board: колонки to_do / in_progress / in_review / done (dnd-kit DndContext)
+- [ ] Drag карточки между колонками → `PATCH /backlog/{id}` со статусом
+- [ ] Добавить/убрать айтем из спринта (из backlog view: drag в sprint lane или кнопка)
+- [ ] Fog alert toast: SSE событие `fog.alert` → toast с risk score и кнопкой "Посмотреть"
+
+---
+
+#### Фаза 8.5 -- Таймлайн (параллельно с Фазой 5)
+
+- [ ] Горизонтальная шкала времени (кастомный SVG или vis-timeline -- решить по ходу)
+- [ ] Полосы Release: название, период, цвет по статусу
+- [ ] Полосы Stage внутри Release: вложенно, с датами
+- [ ] Epic bars: span от первого до последнего айтема в эпике (auto-computed)
+- [ ] Backlog items в Stage: точки или мини-карточки на полосе
+- [ ] Fog heat-map наложение: интенсивность фона по fog-density в периоде
+  (много foggy айтемов в этапе → тёмный фон этапа → концентрация риска видна сразу)
+- [ ] Drag stage/release для изменения дат → `PATCH /releases/{id}` или `PATCH /stages/{id}`
+- [ ] Привязать айтем к stage: drag с backlog на полосу, или select в item detail
+
+---
+
+#### Фаза 8.6 -- Ясность и аналитика (параллельно с Фазой 6)
+
+Clarity controls уже встроены в backlog (8.4). Здесь -- аналитическая надстройка.
+
+- [ ] Clarity map view (`/projects/{id}/clarity`): quadrant distribution в виде bubble chart
+  - Каждый пузырь = один айтем, ось X = приоритет, ось Y = quadrant, размер = estimate
+- [ ] Time logging UI: кнопка "Залогировать время" на task detail, форма (часы + дата + заметка)
+  - `POST /tasks/{id}/time-logs`
+- [ ] Burndown chart: actual vs planned по дням спринта (recharts LineChart)
+  - `GET /sprints/{id}/burndown`
+- [ ] Velocity chart: нормализованная velocity по спринтам (recharts BarChart)
+  - `GET /projects/{id}/velocity`
+- [ ] Team load view (`/teams/{id}/load`): кто перегружен, кто простаивает
+  - Таблица: member, capacity_hours, assigned_hours, utilization_pct, colored bar
+- [ ] Skill throughput: гистограмма эффективности по навыкам
+  - `GET /teams/{id}/skill-throughput`
+
+---
+
+#### Фаза 8.7 -- Real-time (параллельно с Фазой 7)
+
+Не добавляет новых экранов -- добавляет живость к уже существующим.
+
+- [ ] `useProjectEvents(projectId)` hook -- EventSource с auto-reconnect
+  - Exponential backoff: 1s → 2s → 4s → 8s → max 30s
+  - Reconnect при visibilitychange (вернулся с другой вкладки)
+- [ ] Zustand event handler: обновляет QueryClient кэш по типу события
+  - `item.status_changed` → invalidate backlog query (без перезагрузки страницы)
+  - `item.clarity_changed` → invalidate clarity-map + backlog
+  - `sprint.started` / `sprint.completed` → invalidate sprint list
+  - `fog.alert` → toast notification (shadcn Toast, не блокирующий)
+- [ ] Оптимистичное обновление при drag-and-drop:
+  - Zustand применяет изменение немедленно
+  - При HTTP ошибке → rollback + error toast
+- [ ] Online indicator: зелёная точка в header пока SSE соединение активно
+
+
+
+### Фаза 9 -- Умная аналитика и knowledge map (future, v2)
+
+Когда данных накопится достаточно (3-6 месяцев работы с системой).
+
+- [ ] Clarity trend по спринтам: как менялся fog-distribution со временем
+- [ ] Bus factor alerts: автоматическое обнаружение skill = tacit по истории задач
+  (навык у одного человека + он закрыл >70% задач в этом навыке = alert)
+- [ ] Fog-to-clear trajectory: среднее время от unclassified до clear по типам задач
+  (выявляет паттерны: "epic-level задачи у нас в среднем 2 недели в foggy -- ок или нет?")
+- [ ] Sprint health score trending: risk_score + velocity + utilization = composite health
+- [ ] Retrospective insights: автоматические наблюдения для retro ("3 foggy айтема
+  в этом спринте потребовали 40% больше времени чем оценка -- обсудить на retro")
+- [ ] Skill gap analysis: команда берёт Python-задачи, но уровень Dreyfus = Beginner
+  и clarity = foggy -- система предлагает learning task или найти ментора
 
 ---
 
@@ -933,6 +1247,14 @@ PATCH /api/v1/projects/{id}/backlog/reorder
 7. **Backlog item = цель + тест.** `ac_steps` и `ac_expected` -- не документация, а определение
    "готово". Переход в статус `done` требует `sprint_test_results.status = pass`.
    Это не опция -- это архитектурный принцип. Реализуется в `domain/backlog.go`.
+
+8. **Clarity_level = обязательное поле с первого дня данных.** Новый беклог-айтем всегда
+   начинает как `unclassified`. Переход в спринт без `clear` или `scoped` -- warning,
+   но не hard block. Система подсвечивает, команда решает. Данные накапливаются.
+
+9. **Fog-change события через SSE.** Каждое изменение `clarity_level` -- это событие
+   которое broadcaster публикует в проектный SSE поток. Клиент обновляет risk score
+   без reload. Это не nice-to-have -- это корень real-time аналитики.
 
 6. **Semantic versioning API.** Сломать публичный контракт = новая `/api/v2/`.
 

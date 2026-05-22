@@ -205,8 +205,9 @@ func (h *userHandlers) UpsertSkill(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Level    string `json:"level"`
-		Interest string `json:"interest"`
+		Level        string  `json:"level"`
+		Interest     string  `json:"interest"`
+		InterestNote *string `json:"interest_note"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1024)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -214,19 +215,23 @@ func (h *userHandlers) UpsertSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	validLevels := map[string]bool{"beginner": true, "competent": true, "proficient": true, "expert": true}
+	validLevels := map[string]bool{"novice": true, "beginner": true, "competent": true, "proficient": true, "expert": true}
 	validInterests := map[string]bool{"low": true, "medium": true, "high": true}
 
 	if !validLevels[req.Level] {
-		respondErr(w, http.StatusBadRequest, "INVALID_LEVEL", "level must be one of: beginner, competent, proficient, expert")
+		respondErr(w, http.StatusBadRequest, "INVALID_LEVEL", "level must be one of: novice, beginner, competent, proficient, expert")
 		return
 	}
 	if !validInterests[req.Interest] {
 		respondErr(w, http.StatusBadRequest, "INVALID_INTEREST", "interest must be one of: low, medium, high")
 		return
 	}
+	if req.InterestNote != nil && len(*req.InterestNote) > 500 {
+		respondErr(w, http.StatusBadRequest, "NOTE_TOO_LONG", "interest_note must be 500 characters or less")
+		return
+	}
 
-	ms, err := h.skills.UpsertMemberSkill(r.Context(), id, skillID, req.Level, req.Interest)
+	ms, err := h.skills.UpsertMemberSkill(r.Context(), id, skillID, req.Level, req.Interest, req.InterestNote)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			respondErr(w, http.StatusNotFound, "NOT_FOUND", "skill not found")

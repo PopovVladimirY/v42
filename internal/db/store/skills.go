@@ -23,14 +23,15 @@ type Skill struct {
 
 // MemberSkill is a user's skill with proficiency/interest metadata.
 type MemberSkill struct {
-	SkillID   string    `json:"skill_id"`
-	SkillName string    `json:"skill_name"`
-	Category  *string   `json:"category"`
-	IsBuiltin bool      `json:"is_builtin"`
-	Level     string    `json:"level"`
-	Interest  string    `json:"interest"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	SkillID      string    `json:"skill_id"`
+	SkillName    string    `json:"skill_name"`
+	Category     *string   `json:"category"`
+	IsBuiltin    bool      `json:"is_builtin"`
+	Level        string    `json:"level"`
+	Interest     string    `json:"interest"`
+	InterestNote *string   `json:"interest_note"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // SkillStore wraps sqlc skill/member_skill queries.
@@ -119,21 +120,22 @@ func (s *SkillStore) ListMemberSkills(ctx context.Context, userID string) ([]Mem
 	out := make([]MemberSkill, len(rows))
 	for i, r := range rows {
 		out[i] = MemberSkill{
-			SkillID:   uuidToString(r.SkillID),
-			SkillName: r.SkillName,
-			Category:  r.SkillCategory,
-			IsBuiltin: r.SkillIsBuiltin,
-			Level:     string(r.Level),
-			Interest:  string(r.Interest),
-			CreatedAt: r.CreatedAt.Time,
-			UpdatedAt: r.UpdatedAt.Time,
+			SkillID:      uuidToString(r.SkillID),
+			SkillName:    r.SkillName,
+			Category:     r.SkillCategory,
+			IsBuiltin:    r.SkillIsBuiltin,
+			Level:        string(r.Level),
+			Interest:     string(r.Interest),
+			InterestNote: r.InterestNote,
+			CreatedAt:    r.CreatedAt.Time,
+			UpdatedAt:    r.UpdatedAt.Time,
 		}
 	}
 	return out, nil
 }
 
 // UpsertMemberSkill adds or updates a skill in a user's profile.
-func (s *SkillStore) UpsertMemberSkill(ctx context.Context, userID, skillID, level, interest string) (*MemberSkill, error) {
+func (s *SkillStore) UpsertMemberSkill(ctx context.Context, userID, skillID, level, interest string, interestNote *string) (*MemberSkill, error) {
 	uid, err := parseUUID(userID)
 	if err != nil {
 		return nil, domain.ErrNotFound
@@ -143,10 +145,11 @@ func (s *SkillStore) UpsertMemberSkill(ctx context.Context, userID, skillID, lev
 		return nil, domain.ErrNotFound
 	}
 	r, err := s.q.UpsertMemberSkill(ctx, dbgen.UpsertMemberSkillParams{
-		UserID:   uid,
-		SkillID:  sid,
-		Level:    dbgen.SkillLevel(level),
-		Interest: dbgen.InterestLevel(interest),
+		UserID:       uid,
+		SkillID:      sid,
+		Level:        dbgen.SkillLevel(level),
+		Interest:     dbgen.InterestLevel(interest),
+		InterestNote: interestNote,
 	})
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -161,14 +164,15 @@ func (s *SkillStore) UpsertMemberSkill(ctx context.Context, userID, skillID, lev
 		return nil, err
 	}
 	return &MemberSkill{
-		SkillID:   uuidToString(r.SkillID),
-		SkillName: skill.Name,
-		Category:  skill.Category,
-		IsBuiltin: skill.IsBuiltin,
-		Level:     string(r.Level),
-		Interest:  string(r.Interest),
-		CreatedAt: r.CreatedAt.Time,
-		UpdatedAt: r.UpdatedAt.Time,
+		SkillID:      uuidToString(r.SkillID),
+		SkillName:    skill.Name,
+		Category:     skill.Category,
+		IsBuiltin:    skill.IsBuiltin,
+		Level:        string(r.Level),
+		Interest:     string(r.Interest),
+		InterestNote: r.InterestNote,
+		CreatedAt:    r.CreatedAt.Time,
+		UpdatedAt:    r.UpdatedAt.Time,
 	}, nil
 }
 
@@ -186,4 +190,79 @@ func (s *SkillStore) DeleteMemberSkill(ctx context.Context, userID, skillID stri
 		UserID:  uid,
 		SkillID: sid,
 	})
+}
+
+// SkillHistoryEntry is a single level-change event from member_skill_history.
+type SkillHistoryEntry struct {
+	ID        string     `json:"id"`
+	SkillID   string     `json:"skill_id"`
+	SkillName string     `json:"skill_name"`
+	LevelFrom *string    `json:"level_from"`
+	LevelTo   string     `json:"level_to"`
+	ChangedBy *string    `json:"changed_by"`
+	ChangedAt time.Time  `json:"changed_at"`
+}
+
+// RecordSkillLevelChange writes an immutable history entry. levelFrom is nil for first entry.
+func (s *SkillStore) RecordSkillLevelChange(ctx context.Context, userID, skillID string, levelFrom *string, levelTo, changedByID string) error {
+	uid, err := parseUUID(userID)
+	if err != nil {
+		return domain.ErrNotFound
+	}
+	sid, err := parseUUID(skillID)
+	if err != nil {
+		return domain.ErrNotFound
+	}
+	cby, err := parseUUID(changedByID)
+	if err != nil {
+		return domain.ErrNotFound
+	}
+	var lf *dbgen.SkillLevel
+	if levelFrom != nil {
+		v := dbgen.SkillLevel(*levelFrom)
+		lf = &v
+	}
+	_, err = s.q.CreateSkillHistoryEntry(ctx, dbgen.CreateSkillHistoryEntryParams{
+		UserID:    uid,
+		SkillID:   sid,
+		LevelFrom: lf,
+		LevelTo:   dbgen.SkillLevel(levelTo),
+		ChangedBy: cby,
+	})
+	return err
+}
+
+// ListSkillHistory returns the full growth timeline for a user, newest first.
+func (s *SkillStore) ListSkillHistory(ctx context.Context, userID string) ([]SkillHistoryEntry, error) {
+	uid, err := parseUUID(userID)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	rows, err := s.q.ListSkillHistory(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SkillHistoryEntry, len(rows))
+	for i, r := range rows {
+		var lf *string
+		if r.LevelFrom != nil {
+			v := string(*r.LevelFrom)
+			lf = &v
+		}
+		var cby *string
+		if r.ChangedBy.Valid {
+			v := uuidToString(r.ChangedBy)
+			cby = &v
+		}
+		out[i] = SkillHistoryEntry{
+			ID:        uuidToString(r.ID),
+			SkillID:   uuidToString(r.SkillID),
+			SkillName: r.SkillName,
+			LevelFrom: lf,
+			LevelTo:   string(r.LevelTo),
+			ChangedBy: cby,
+			ChangedAt: r.ChangedAt.Time,
+		}
+	}
+	return out, nil
 }

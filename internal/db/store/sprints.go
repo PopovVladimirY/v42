@@ -1,0 +1,270 @@
+package store
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	dbgen "github.com/vpo/v42/internal/db/gen"
+	"github.com/vpo/v42/internal/domain"
+)
+
+// Sprint is the store-level sprint representation.
+type Sprint struct {
+	ID            string    `json:"id"`
+	ProjectID     string    `json:"project_id"`
+	TeamID        *string   `json:"team_id"`
+	Name          string    `json:"name"`
+	Goal          *string   `json:"goal"`
+	Status        string    `json:"status"`
+	StartDate     *string   `json:"start_date"`
+	EndDate       *string   `json:"end_date"`
+	CapacityHours *int16    `json:"capacity_hours"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// SprintItem is a backlog item summarised for sprint view.
+type SprintItem struct {
+	ID            string    `json:"id"`
+	Title         string    `json:"title"`
+	Status        string    `json:"status"`
+	Type          string    `json:"type"`
+	Priority      float64   `json:"priority"`
+	Estimate      *string   `json:"estimate"`
+	AssigneeID    *string   `json:"assignee_id"`
+	SkillRequired *string   `json:"skill_required"`
+	AcSteps       *string   `json:"ac_steps"`
+	AcExpected    *string   `json:"ac_expected"`
+	AddedAt       time.Time `json:"added_at"`
+}
+
+// SprintStore wraps sqlc sprint queries.
+type SprintStore struct {
+	q *dbgen.Queries
+}
+
+// NewSprintStore returns a SprintStore.
+func NewSprintStore(q *dbgen.Queries) *SprintStore {
+	return &SprintStore{q: q}
+}
+
+func sprintFromRow(r dbgen.Sprint) Sprint {
+	s := Sprint{
+		ID:            uuidToString(r.ID),
+		ProjectID:     uuidToString(r.ProjectID),
+		Name:          r.Name,
+		Goal:          r.Goal,
+		Status:        string(r.Status),
+		CapacityHours: r.CapacityHours,
+		CreatedAt:     r.CreatedAt.Time,
+		UpdatedAt:     r.UpdatedAt.Time,
+	}
+	if r.TeamID.Valid {
+		v := uuidToString(r.TeamID)
+		s.TeamID = &v
+	}
+	if r.StartDate.Valid {
+		v := r.StartDate.Time.Format("2006-01-02")
+		s.StartDate = &v
+	}
+	if r.EndDate.Valid {
+		v := r.EndDate.Time.Format("2006-01-02")
+		s.EndDate = &v
+	}
+	return s
+}
+
+// List returns sprints for a project.
+func (s *SprintStore) List(ctx context.Context, projectID string) ([]Sprint, error) {
+	pid, err := parseUUID(projectID)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	rows, err := s.q.ListSprintsByProject(ctx, pid)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Sprint, len(rows))
+	for i, r := range rows {
+		out[i] = sprintFromRow(r)
+	}
+	return out, nil
+}
+
+// GetByID returns a sprint or ErrNotFound.
+func (s *SprintStore) GetByID(ctx context.Context, id string) (*Sprint, error) {
+	uid, err := parseUUID(id)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	r, err := s.q.GetSprintByID(ctx, uid)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	sp := sprintFromRow(r)
+	return &sp, nil
+}
+
+// Create inserts a new sprint.
+func (s *SprintStore) Create(ctx context.Context, projectID string, teamID *string, name string, goal *string, status string, startDate, endDate *string, capacityHours *int16) (*Sprint, error) {
+	pid, err := parseUUID(projectID)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	var tid pgtype.UUID
+	if teamID != nil {
+		if tid, err = parseUUID(*teamID); err != nil {
+			return nil, domain.ErrNotFound
+		}
+	}
+	var sd, ed pgtype.Date
+	if startDate != nil {
+		if err := sd.Scan(*startDate); err != nil {
+			return nil, err
+		}
+	}
+	if endDate != nil {
+		if err := ed.Scan(*endDate); err != nil {
+			return nil, err
+		}
+	}
+	r, err := s.q.CreateSprint(ctx, dbgen.CreateSprintParams{
+		ProjectID:     pid,
+		TeamID:        tid,
+		Name:          name,
+		Goal:          goal,
+		Status:        dbgen.SprintStatus(status),
+		StartDate:     sd,
+		EndDate:       ed,
+		CapacityHours: capacityHours,
+	})
+	if err != nil {
+		return nil, err
+	}
+	sp := sprintFromRow(r)
+	return &sp, nil
+}
+
+// Update partially updates a sprint.
+func (s *SprintStore) Update(ctx context.Context, id string, name, goal *string, status *string, startDate, endDate *string, capacityHours *int16) (*Sprint, error) {
+	uid, err := parseUUID(id)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	var st *dbgen.SprintStatus
+	if status != nil {
+		v := dbgen.SprintStatus(*status)
+		st = &v
+	}
+	var sd, ed pgtype.Date
+	if startDate != nil {
+		if err := sd.Scan(*startDate); err != nil {
+			return nil, err
+		}
+	}
+	if endDate != nil {
+		if err := ed.Scan(*endDate); err != nil {
+			return nil, err
+		}
+	}
+	r, err := s.q.UpdateSprint(ctx, dbgen.UpdateSprintParams{
+		ID:            uid,
+		Name:          name,
+		Goal:          goal,
+		Status:        st,
+		StartDate:     sd,
+		EndDate:       ed,
+		CapacityHours: capacityHours,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	sp := sprintFromRow(r)
+	return &sp, nil
+}
+
+// Delete removes a sprint.
+func (s *SprintStore) Delete(ctx context.Context, id string) error {
+	uid, err := parseUUID(id)
+	if err != nil {
+		return domain.ErrNotFound
+	}
+	return s.q.DeleteSprint(ctx, uid)
+}
+
+// AddItem adds a backlog item to a sprint.
+func (s *SprintStore) AddItem(ctx context.Context, sprintID, backlogItemID string) error {
+	sid, err := parseUUID(sprintID)
+	if err != nil {
+		return domain.ErrNotFound
+	}
+	bid, err := parseUUID(backlogItemID)
+	if err != nil {
+		return domain.ErrNotFound
+	}
+	return s.q.AddSprintItem(ctx, dbgen.AddSprintItemParams{
+		SprintID:      sid,
+		BacklogItemID: bid,
+	})
+}
+
+// RemoveItem removes a backlog item from a sprint.
+func (s *SprintStore) RemoveItem(ctx context.Context, sprintID, backlogItemID string) error {
+	sid, err := parseUUID(sprintID)
+	if err != nil {
+		return domain.ErrNotFound
+	}
+	bid, err := parseUUID(backlogItemID)
+	if err != nil {
+		return domain.ErrNotFound
+	}
+	return s.q.RemoveSprintItem(ctx, dbgen.RemoveSprintItemParams{
+		SprintID:      sid,
+		BacklogItemID: bid,
+	})
+}
+
+// ListItems returns backlog items committed to a sprint.
+func (s *SprintStore) ListItems(ctx context.Context, sprintID string) ([]SprintItem, error) {
+	sid, err := parseUUID(sprintID)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	rows, err := s.q.ListSprintItems(ctx, sid)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SprintItem, len(rows))
+	for i, r := range rows {
+		item := SprintItem{
+			ID:         uuidToString(r.ID),
+			Title:      r.Title,
+			Status:     string(r.Status),
+			Type:       string(r.Type),
+			Priority:   r.Priority,
+			Estimate:   r.Estimate,
+			AcSteps:    r.AcSteps,
+			AcExpected: r.AcExpected,
+			AddedAt:    r.AddedAt.Time,
+		}
+		if r.AssigneeID.Valid {
+			v := uuidToString(r.AssigneeID)
+			item.AssigneeID = &v
+		}
+		if r.SkillRequired.Valid {
+			v := uuidToString(r.SkillRequired)
+			item.SkillRequired = &v
+		}
+		out[i] = item
+	}
+	return out, nil
+}
