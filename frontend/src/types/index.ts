@@ -113,3 +113,81 @@ export interface ApiError {
   code: string;
   message: string;
 }
+
+// -- Projects ----------------------------------------------------------------
+
+export type ProjectStatus = 'active' | 'on_hold' | 'completed' | 'archived';
+
+export interface Project {
+  id: string;
+  team_id: string;
+  name: string;
+  description: string | null;
+  status: ProjectStatus;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// -- Epics -------------------------------------------------------------------
+
+export type EpicStatus = 'open' | 'in_progress' | 'done' | 'cancelled';
+
+export interface Epic {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string | null;
+  owner_id: string | null;
+  status: EpicStatus;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// -- Backlog -----------------------------------------------------------------
+
+export type BacklogItemType = 'story' | 'bug' | 'task' | 'spike';
+export type BacklogItemStatus = 'open' | 'in_progress' | 'in_review' | 'done' | 'cancelled';
+export type ClarityQuadrant = 'clear' | 'scoped' | 'tacit' | 'foggy' | 'unknown';
+
+export interface BacklogItem {
+  id: string;
+  project_id: string;
+  epic_id: string | null;
+  title: string;
+  description: string | null;
+  type: BacklogItemType;
+  status: BacklogItemStatus;
+  clarity: ClarityQuadrant;
+  estimate: string | null;
+  story_points: number | null;
+  assignee_id: string | null;
+  stage_id: string | null;
+  release_id: string | null;
+  order_index: number;
+  // ATDD fields
+  ac_setup: string | null;
+  ac_steps: string | null;
+  ac_expected: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ClarityColor = Record<ClarityQuadrant, string>;
+export const CLARITY_COLOR: ClarityColor = {
+  clear: 'bg-green-500',
+  scoped: 'bg-yellow-400',
+  tacit: 'bg-orange-400',
+  foggy: 'bg-red-500',
+  unknown: 'bg-gray-400',
+};
+
+export const CLARITY_LABEL: Record<ClarityQuadrant, string> = {
+  clear: 'Clear',
+  scoped: 'Scoped',
+  tacit: 'Tacit',
+  foggy: 'Foggy',
+  unknown: 'Unknown',
+};

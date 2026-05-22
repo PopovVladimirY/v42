@@ -355,6 +355,23 @@ export function TeamDetailPage() {
         )}
       </div>
 
+      {/* Projects shortcut */}
+      {id && (
+        <div className="mb-8">
+          <Link
+            to={`/teams/${id}/projects`}
+            data-testid="team-projects-link"
+            className="flex items-center justify-between rounded-xl px-4 py-3 hover:border-[var(--accent)] transition-colors"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+          >
+            <span className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>Projects</span>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </Link>
+        </div>
+      )}
+
       {/* Skill Radar */}
       {radarData.length > 0 && (
         <section className="mb-8">

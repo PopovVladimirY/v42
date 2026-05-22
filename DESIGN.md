@@ -1287,44 +1287,53 @@ Line-height: `1.5` for body, `1.25` for headings. No orphan lines.
 
 ---
 
-#### Фаза 8.4 -- Проекты и беклог (параллельно с Фазой 4)
+#### Фаза 8.4 -- Проекты и беклог (параллельно с Фазой 4) ✓ PARTIAL DONE
 
 Проекты открываются из контекста команды. `/teams/{id}/projects` -- не отдельный раздел.
 
 **Project list:**
-- [ ] `GET /projects?team_id={id}` -- проекты команды
-- [ ] Карточка проекта: название, статус, % закрытых айтемов, fog distribution mini-bar
-- [ ] Создать проект (форма: название, описание, team_id из текущей команды)
-- [ ] PATCH статуса (active / on_hold / completed / archived)
+- [x] `GET /projects?team_id={id}` -- проекты команды (`projectsApi.list`)
+- [x] Карточка проекта: название, статус (active / on_hold / completed / archived)
+- [x] Создать проект (модалка: название, описание; team_id из URL)
+- [ ] PATCH статуса проекта (заглушка в ProjectOverviewPage -- "coming soon")
+- [ ] % закрытых айтемов, fog distribution mini-bar -- нет данных с бэкенда
 
-**Project dashboard** (`/projects/{id}`):
-- [ ] Overview: items by status (сколько в каждом), velocity (last 3 sprints), fog distribution
-- [ ] Fog distribution: горизонтальный stacked bar (clear / scoped / tacit / foggy / unknown)
-  - `GET /projects/{id}/clarity-map`
-- [ ] Active sprint summary: risk score, items count, burndown mini-chart
-- [ ] Top epics: прогресс каждого эпика (% done)
+**Project shell** (`/projects/{id}`):
+- [x] Tab-навигация: Overview / Backlog / Epics / Sprints
+- [x] Breadcrumb: Teams → Projects → {name}
+- [x] Status badge (active / on_hold / completed / archived)
+- [x] `ProjectOverviewPage` -- быстрые ссылки на Backlog / Epics / Sprints + Danger Zone
+- [ ] Stats: items by status, velocity, fog distribution -- отложено до Phase 8.6
 
 **Backlog view** (`/projects/{id}/backlog`):
-- [ ] Список айтемов с фильтрами: status, clarity, epic_id, assignee_id, sprint
-- [ ] Clarity badge на каждой карточке (5 цветов по квадранту)
-  - unknown = серый, foggy = красный, tacit = оранжевый, scoped = жёлтый, clear = зелёный
-- [ ] Grooming filter: "Требуют уточнения" = foggy + unknown (кнопка-preset)
-- [ ] Drag-and-drop сортировка приоритетов (dnd-kit SortableContext по всему списку)
-  - `POST /projects/{id}/backlog/reorder`
-- [ ] Inline PATCH статуса: клик по бейджу статуса → меняет без открытия detail
-
-**Backlog item detail** (side panel или отдельная страница):
-- [ ] Все поля: title, description, type, status, estimate, story points
-- [ ] Acceptance criteria: ac_setup + ac_steps + ac_expected (textarea с preview)
-- [ ] Clarity selector: 5 кнопок-квадрантов с описанием (`PATCH /backlog/{id}/clarity`)
-- [ ] Tasks: список подзадач, создать задачу, assignee, статус
-- [ ] Comments: список (threading один уровень), новый комментарий, edit/delete (24h window)
-- [ ] Привязки: epic, stage, release -- dropdown с поиском
+- [x] Список айтемов с фильтрами: status, clarity, epic_id
+- [x] Clarity badge на каждой строке (4 цвета по квадранту)
+- [x] Inline PATCH статуса: клик по бейджу статуса → меняет без перехода
+- [x] Создать айтем: inline панель (title + type + epic)
+- [x] Удалить айтем (с confirm)
+- [ ] Grooming filter preset "Требуют уточнения" -- отложено
+- [ ] Drag-and-drop сортировка (dnd-kit) -- `POST /backlog/reorder` готов, UI не сделан
+- [ ] Backlog item detail (side panel / страница) -- отложено
 
 **Epic board** (`/projects/{id}/epics`):
-- [ ] Карточки эпиков: title, owner, status, прогресс (% done), clarity badge
-- [ ] Progress bar: закрытые / total backlog items
-- [ ] Клик → список айтемов эпика (использует backlog view с фильтром epic_id)
+- [x] Карточки эпиков: title, status badge
+- [x] Создать эпик (inline панель: title + description)
+- [x] Переименовать эпик (клик по title → inline edit)
+- [x] Сменить статус эпика (dropdown)
+- [x] Удалить эпик (с confirm)
+- [ ] Progress bar (% done backlog items) -- нет агрегатов с бэкенда
+- [ ] Клик → backlog с фильтром epic_id -- отложено
+
+**Роутинг и связность:**
+- [x] `/teams/:id/projects` -- `ProjectsPage`
+- [x] `/projects/:projectId` -- `ProjectShell` + `ProjectOverviewPage`
+- [x] `/projects/:projectId/backlog` -- `BacklogPage`
+- [x] `/projects/:projectId/epics` -- `EpicsPage`
+- [x] Ссылка "Projects" на `TeamDetailPage` (кнопка-ряд)
+
+**Тесты (Playwright e2e):**
+- [x] `e2e/projects.spec.ts` -- 14 структурных тестов (без бэкенда): redirect guards, page structure, modal open/close, form disable state
+- [ ] Backend flow тесты (CRUD) -- 3 теста написаны, пропускаются без `RUN_E2E_WITH_BACKEND=1`
 
 ---
 

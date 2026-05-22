@@ -7,6 +7,10 @@ import { TeamDetailPage } from '@/pages/TeamDetailPage';
 import { ProfilePage } from '@/pages/ProfilePage';
 import { AdminUsersPage } from '@/pages/AdminUsersPage';
 import { ChangePasswordPage } from '@/pages/ChangePasswordPage';
+import { ProjectsPage } from '@/pages/ProjectsPage';
+import { ProjectShell, ProjectOverviewPage } from '@/pages/ProjectShell';
+import { BacklogPage } from '@/pages/BacklogPage';
+import { EpicsPage } from '@/pages/EpicsPage';
 
 export const router = createBrowserRouter([
   {
@@ -28,8 +32,19 @@ export const router = createBrowserRouter([
           { index: true, element: <Navigate to="/teams" replace /> },
           { path: '/teams', element: <TeamsPage /> },
           { path: '/teams/:id', element: <TeamDetailPage /> },
+          { path: '/teams/:id/projects', element: <ProjectsPage /> },
           { path: '/profile', element: <ProfilePage /> },
           { path: '/admin/users', element: <AdminUsersPage /> },
+          // Project routes -- nested under ProjectShell (header + tab nav)
+          {
+            path: '/projects/:projectId',
+            element: <ProjectShell />,
+            children: [
+              { index: true, element: <ProjectOverviewPage /> },
+              { path: 'backlog', element: <BacklogPage /> },
+              { path: 'epics', element: <EpicsPage /> },
+            ],
+          },
         ],
       },
     ],
