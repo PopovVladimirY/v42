@@ -1261,9 +1261,9 @@ Line-height: `1.5` for body, `1.25` for headings. No orphan lines.
 - [x] Удалить члена команды
 - [x] Обновить capacity_hours члена
 - [x] `GET /skills` -- каталог навыков для выбора
-- [ ] Редактировать название / описание команды (PATCH endpoint есть, UI -- нет)
+- [x] Редактировать название / описание команды (`PATCH /teams/{id}`, inline форма в хедере TeamDetailPage)
 - [x] Создать команду (кнопка "New team" в хедере `/teams`, inline форма; только admin/maintainer)
-- [ ] Удалить команду (DELETE endpoint есть, UI -- нет)
+- [x] Удалить команду (`DELETE /teams/{id}`, confirm-диалог в хедере TeamDetailPage; только admin)
 
 **Профиль пользователя** (`/profile`):
 - [x] Страница `/profile` -- аватар, имя, email, роль, дата регистрации
