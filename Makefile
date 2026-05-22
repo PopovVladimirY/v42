@@ -56,7 +56,7 @@ migrate-down:
 
 # Generate typed Go code from SQL queries
 sqlc:
-	sqlc generate
+	sqlc generate --no-remote
 
 # Full stack: postgres + adminer + api (production-like)
 docker-up:

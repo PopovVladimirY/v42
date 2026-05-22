@@ -5,6 +5,7 @@
 --   -> projects -> epics -> releases -> stages
 --   -> backlog_items -> tasks -> sprints -> sprint_items
 --   -> tests -> test_dependencies -> time_entries -> sprint_test_results -> comments
+--   -> activity_log -> outbox
 
 -- ----------------------------------------------------------------
 -- ENUMs
@@ -118,7 +119,7 @@ CREATE TABLE member_skills (
 CREATE TABLE refresh_tokens (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token_hash TEXT NOT NULL UNIQUE,  -- bcrypt hash, never plaintext
+    token_hash TEXT NOT NULL UNIQUE,  -- SHA-256 hex hash of the raw token, never plaintext
     expires_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     revoked_at TIMESTAMPTZ           -- NULL = active; set on logout or rotation
@@ -410,3 +411,43 @@ CREATE INDEX idx_comments_backlog_item ON comments(backlog_item_id)  WHERE backl
 CREATE INDEX idx_comments_task         ON comments(task_id)          WHERE task_id          IS NOT NULL;
 CREATE INDEX idx_comments_test         ON comments(test_id)          WHERE test_id          IS NOT NULL;
 CREATE INDEX idx_comments_parent       ON comments(parent_id)        WHERE parent_id        IS NOT NULL;
+
+-- ----------------------------------------------------------------
+-- ACTIVITY LOG (event bus consumer writes here)
+-- Human-readable audit trail. Populated by the event bus consumer,
+-- not by application code directly. Read-only from the API.
+-- ----------------------------------------------------------------
+
+CREATE TABLE activity_log (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id  UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    actor_id    UUID REFERENCES users(id) ON DELETE SET NULL,  -- NULL = system/AI agent
+    entity_type TEXT NOT NULL,   -- 'backlog_item' | 'sprint' | 'test' | 'comment' | ...
+    entity_id   UUID NOT NULL,
+    action      TEXT NOT NULL,   -- 'status_changed' | 'assigned' | 'commented' | ...
+    payload     JSONB,           -- action-specific details (from, to, etc.)
+    occurred_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- activity_log is append-only: no updated_at, no soft delete.
+CREATE INDEX idx_activity_project ON activity_log(project_id, occurred_at DESC);
+CREATE INDEX idx_activity_entity  ON activity_log(entity_type, entity_id, occurred_at DESC);
+CREATE INDEX idx_activity_actor   ON activity_log(actor_id) WHERE actor_id IS NOT NULL;
+
+-- ----------------------------------------------------------------
+-- OUTBOX (transactional outbox pattern)
+-- Written in the same DB transaction as the entity change.
+-- Background publisher goroutine reads unpublished rows and sends
+-- them to the event bus. Guarantees no event loss even if the bus
+-- is temporarily unavailable. published_at = NULL means "not yet sent".
+-- ----------------------------------------------------------------
+
+CREATE TABLE outbox (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    topic        TEXT NOT NULL,         -- e.g. 'v42.events.items'
+    key          TEXT NOT NULL,         -- partition key, usually project_id
+    payload      JSONB NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    published_at TIMESTAMPTZ            -- NULL = pending; set when delivered to event bus
+);
+-- Partial index: only unpublished rows. Keeps the scan fast even at high volume.
+CREATE INDEX idx_outbox_unpublished ON outbox(created_at) WHERE published_at IS NULL;

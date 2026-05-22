@@ -13,34 +13,50 @@ import (
 
 	"github.com/vpo/v42/internal/api/middleware"
 	"github.com/vpo/v42/internal/config"
+	"github.com/vpo/v42/internal/domain"
 )
 
-func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger) *chi.Mux {
+func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc *domain.AuthService) *chi.Mux {
 	r := chi.NewRouter()
 
 	// global middleware stack -- order matters
+	// NOTE: chiware.RealIP is intentionally absent -- it would rewrite r.RemoteAddr from
+	// X-Forwarded-For/X-Real-IP before the rate limiter runs, letting anyone spoof their IP
+	// and bypass brute-force protection. Rate limiting must use the unforgeable TCP address.
+	// If deployed behind a trusted reverse proxy, handle IP extraction at the proxy layer.
 	r.Use(chiware.RequestID)
-	r.Use(chiware.RealIP) // must be before Logger so we log the real IP
 	r.Use(middleware.Logger(log))
 	r.Use(middleware.CORS(cfg))
 	r.Use(chiware.Recoverer)
 
-	// auth endpoints: 10 requests per minute per IP -- brute force protection from day one
+	// auth endpoints: burst of 10 then 1 per 6s per IP -- brute force protection from day one
 	authLimiter := middleware.NewRateLimiter(rate.Every(6*time.Second), 10)
+	jwtAuth := middleware.JWTAuth(cfg.JWTSecret)
+
+	auth := &authHandlers{
+		svc:        authSvc,
+		secure:     cfg.IsProduction(),
+		refreshTTL: cfg.JWTRefreshTTL,
+	}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", healthHandler(pool))
 
-		// auth: rate-limited group
+		// rate-limited: brute-force targets (login + refresh share the limiter)
 		r.Group(func(r chi.Router) {
 			r.Use(authLimiter.Middleware)
-			r.Post("/auth/login", notImplemented)
-			r.Post("/auth/refresh", notImplemented)
-			r.Post("/auth/logout", notImplemented)
-			r.Get("/auth/me", notImplemented)
+			r.Post("/auth/login", auth.Login)
+			r.Post("/auth/refresh", auth.Refresh)
 		})
 
-		// future route groups (phases 2-7) will be mounted here
+		// JWT-protected: require valid access token (DEF-1 fixed)
+		r.Group(func(r chi.Router) {
+			r.Use(jwtAuth)
+			r.Post("/auth/logout", auth.Logout)
+			r.Get("/auth/me", auth.Me)
+		})
+
+		// future route groups (phases 3-7) will be mounted here
 	})
 
 	return r

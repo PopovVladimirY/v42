@@ -1,5 +1,7 @@
 -- Drop in reverse creation order (respect FK dependencies).
 
+DROP TABLE IF EXISTS outbox;
+DROP TABLE IF EXISTS activity_log;
 DROP TABLE IF EXISTS comments;
 DROP TABLE IF EXISTS sprint_test_results;
 DROP TABLE IF EXISTS time_entries;

@@ -12,6 +12,7 @@ import (
 // TestMigrationsApply verifies that all 000002_schema.up.sql tables
 // exist in the public schema after migrations run.
 // Requires: make test-db-up && make test-migrate-up
+// Table count: 21 (19 original + activity_log + outbox)
 func TestMigrationsApply(t *testing.T) {
 	pool := testutil.NewDB(t)
 
@@ -37,6 +38,8 @@ func TestMigrationsApply(t *testing.T) {
 		"time_entries",
 		"sprint_test_results",
 		"comments",
+		"activity_log",
+		"outbox",
 	}
 
 	for _, tbl := range want {

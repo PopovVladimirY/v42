@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -12,10 +13,18 @@ import (
 // Connect opens a connection pool and verifies it with a ping.
 // Returns an error instead of panicking -- we respect the caller's right to handle it.
 func Connect(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
-	dsn := fmt.Sprintf(
-		"host=%s port=%s dbname=%s user=%s password=%s sslmode=%s pool_max_conns=25",
-		cfg.DBHost, cfg.DBPort, cfg.DBName, cfg.DBUser, cfg.DBPassword, cfg.DBSSLMode,
-	)
+	// Use URL format so url.UserPassword properly percent-encodes special chars in credentials.
+	// fmt.Sprintf into a DSN string would silently break on passwords containing '=', ' ', or '\'.
+	dsn := (&url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(cfg.DBUser, cfg.DBPassword),
+		Host:   fmt.Sprintf("%s:%s", cfg.DBHost, cfg.DBPort),
+		Path:   "/" + cfg.DBName,
+		RawQuery: url.Values{
+			"sslmode":        {cfg.DBSSLMode},
+			"pool_max_conns": {"25"},
+		}.Encode(),
+	}).String()
 
 	poolCfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {

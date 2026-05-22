@@ -102,11 +102,17 @@ func (c *Config) productionGuards() error {
 		return nil
 	}
 	var errs []string
+	if c.DBPassword == "changeme" {
+		errs = append(errs, "DB_PASSWORD=changeme is not allowed in production")
+	}
 	if c.SeedAdminPassword == "changeme" {
 		errs = append(errs, "SEED_ADMIN_PASSWORD=changeme is not allowed in production")
 	}
 	if c.JWTSecret == "change-this-to-a-long-random-secret-in-production" {
 		errs = append(errs, "JWT_SECRET is still the example value -- generate a real secret (openssl rand -hex 32)")
+	}
+	if len(c.JWTSecret) < 32 {
+		errs = append(errs, "JWT_SECRET must be at least 32 characters (256 bits) in production")
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf("production config rejected:\n  %s", strings.Join(errs, "\n  "))

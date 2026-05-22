@@ -120,6 +120,7 @@ v42/
 > -> projects -> epics -> releases -> stages
 > -> backlog_items -> tasks -> sprints -> sprint_items
 > -> tests -> test_dependencies -> time_entries -> sprint_test_results -> comments
+> -> activity_log -> outbox
 
 ### Ядро: пользователи и права
 
@@ -183,7 +184,7 @@ CREATE TABLE member_skills (
 CREATE TABLE refresh_tokens (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token_hash TEXT NOT NULL UNIQUE,  -- stored as bcrypt hash, never plaintext
+    token_hash TEXT NOT NULL UNIQUE,  -- SHA-256 hex hash of the raw token, never plaintext
     expires_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     revoked_at TIMESTAMPTZ           -- NULL = active; set on logout or rotation
@@ -556,6 +557,101 @@ CREATE INDEX idx_comments_parent       ON comments(parent_id)        WHERE paren
 
 ---
 
+## Событийная шина
+
+SQL-база -- один из игроков системы, не единственный. Есть разработчики, пользователи,
+клиенты, CI/CD, AI-агенты. Все они живут и общаются в реальном времени. Не через SQL.
+
+```
+                           [ Event Bus ]
+                                |
+     ┌──────────┬───────────────┼───────────────┬──────────┐
+     v          v               v               v          v
+ developer   user/UI         CI/CD          AI agent   V42 API
+  (push)   (SSE stream)  (build.passed)  (suggestion)  (handler)
+```
+
+**SQL фиксирует результат.** Шина несёт сигнал.
+
+### Граница: что в SQL, что в шине
+
+| В PostgreSQL (текущее состояние, ACID) | В шине (события, fan-out, интеграции) |
+|----------------------------------------|---------------------------------------|
+| Все entity-таблицы | `v42.events.items` -- status_changed, assigned |
+| `comments` (редактируемые, FK) | `v42.events.sprints` -- started, completed |
+| `sprint_test_results` (текущий статус) | `v42.events.tests` -- result_recorded |
+| `notifications` (is_read, счётчик) | `v42.events.comments` -- created (для @mentions) |
+| `activity_log` (consumer пишет сюда) | `v42.audit` -- полная копия, long retention |
+| `outbox` (transactional buffer) | `v42.notifications` -- push к конкретному юзеру |
+
+### Паттерн: Transactional Outbox
+
+В одной TX с основной записью пишем в `outbox`.
+Горутина-publisher асинхронно читает непосланные строки и льёт в шину.
+Гарантия: если TX откатилась -- outbox чистый. Если шина упала -- outbox ждёт.
+
+```
+handler:  BEGIN
+          UPDATE backlog_items SET status = 'done' WHERE id = $1
+          INSERT INTO outbox (topic, key, payload) VALUES (
+              'v42.events.items',
+              project_id::text,
+              '{"type":"status_changed","from":"review","to":"done",...}'
+          )
+          COMMIT
+          -- if COMMIT fails: nothing sent. if bus fails: outbox retries.
+
+publisher goroutine (runs every 200ms):
+          SELECT * FROM outbox WHERE published_at IS NULL ORDER BY created_at LIMIT 100
+          -> publish to bus
+          -> UPDATE outbox SET published_at = now() WHERE id = ...
+```
+
+### Таблицы (заложены в Phase 1 миграции)
+
+```sql
+-- Activity log: human-readable trail. Written by event bus consumer, not app code.
+CREATE TABLE activity_log (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id  UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    actor_id    UUID REFERENCES users(id) ON DELETE SET NULL,  -- NULL = system/AI agent
+    entity_type TEXT NOT NULL,   -- 'backlog_item' | 'sprint' | 'test' | 'comment' | ...
+    entity_id   UUID NOT NULL,
+    action      TEXT NOT NULL,   -- 'status_changed' | 'assigned' | 'commented' | ...
+    payload     JSONB,
+    occurred_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- append-only: no updated_at, no soft delete
+CREATE INDEX idx_activity_project ON activity_log(project_id, occurred_at DESC);
+CREATE INDEX idx_activity_entity  ON activity_log(entity_type, entity_id, occurred_at DESC);
+
+-- Outbox: transactional guarantee for event delivery.
+CREATE TABLE outbox (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    topic        TEXT NOT NULL,
+    key          TEXT NOT NULL,         -- partition key (usually project_id)
+    payload      JSONB NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    published_at TIMESTAMPTZ            -- NULL = pending
+);
+CREATE INDEX idx_outbox_unpublished ON outbox(created_at) WHERE published_at IS NULL;
+```
+
+### SSE без outbox vs с outbox
+
+| | Phase 7 без шины | Phase 7 с шиной |
+|-|------------------|-----------------|
+| Broadcaster | горутина внутри процесса | consumer каждого инстанса |
+| Масштабирование | один инстанс | горизонтально, без sticky sessions |
+| AI агенты | нет | подписываются как любой consumer |
+
+### Выбор шины
+
+Kafka vs NATS JetStream -- решение к Phase 7. Инфраструктура (`kv8-kafka`) уже есть.
+Outbox-паттерн не зависит от выбора -- меняется только один файл publisher-горутины.
+
+---
+
 ## API -- структура эндпоинтов v1
 
 Все эндпоинты под `/api/v1/`. Авторизация -- Bearer JWT в заголовке.
@@ -563,10 +659,10 @@ CREATE INDEX idx_comments_parent       ON comments(parent_id)        WHERE paren
 
 ```
 AUTH
-  POST   /api/v1/auth/login              -- { email, password } -> { token, refresh_token, user }
-  POST   /api/v1/auth/refresh            -- { refresh_token } -> { token }
-  POST   /api/v1/auth/logout             -- invalidate refresh token
-  GET    /api/v1/auth/me                 -- current user profile
+  POST   /api/v1/auth/login              -- { email, password } -> { access_token, user } + httpOnly refresh cookie
+  POST   /api/v1/auth/refresh            -- refresh_token cookie -> new access_token + rotated refresh cookie
+  POST   /api/v1/auth/logout             -- revoke refresh token (idempotent), clear cookie
+  GET    /api/v1/auth/me                 -- current user profile (requires Bearer token)
 
 USERS  [admin only for write]
   GET    /api/v1/users                   -- list users (filterable)
@@ -739,22 +835,25 @@ PATCH /api/v1/projects/{id}/backlog/reorder
 - [x] `golang-migrate` setup, первая пустая миграция
 - [x] `chi` router, базовый `/api/v1/health` endpoint
 - [x] CORS middleware (`cors.go`): разрешаем React dev server (`:5173`) и production origin
-- [x] Rate limit middleware (`ratelimit.go`): применяем к `/api/v1/auth/*` (IP-based, 10 req/min)
+- [x] Rate limit middleware (`ratelimit.go`): применяем к `/api/v1/auth/login` + `/auth/refresh` (IP-based, burst=10 then 1/6s per IP)
 - [x] Логгер (structured JSON logs)
 
-### Фаза 1 -- Схема данных (в работе)
+### Фаза 1 -- Схема данных ✓ DONE
 - [x] Все миграции из раздела "Схема" выше -- `000002_schema.up.sql`
-- [ ] `sqlc.yaml` config, базовые queries для всех таблиц
-- [ ] `make sqlc` -- генерируем Go-код
-- [ ] Проверяем на реальной БД (adminer -- наш друг)
+- [x] `sqlc.yaml` config, базовые queries для всех таблиц
+- [x] `make sqlc` -- генерируем Go-код
+- [x] Проверяем на реальной БД (adminer -- наш друг)
 
-### Фаза 2 -- Auth (2-3 дня)
-- [ ] `POST /auth/login` -- bcrypt проверка, выдача JWT
-- [ ] `POST /auth/refresh` -- refresh token rotation
-- [ ] `GET /auth/me`
-- [ ] JWT middleware (chi middleware)
-- [ ] Role middleware
-- [ ] Seed: один admin-пользователь при первом запуске
+### Фаза 2 -- Auth ✓ DONE (см. PHASE2_SUMMARY.md)
+- [x] `POST /auth/login` -- bcrypt check, JWT access token + httpOnly refresh cookie
+- [x] `POST /auth/refresh` -- token rotation, reuse detection (replay → RevokeAll)
+- [x] `POST /auth/logout` -- revoke refresh token, idempotent
+- [x] `GET /auth/me` -- profile from JWT claims
+- [x] JWT middleware -- Bearer validation, `*auth.Claims` injected into context
+- [x] Role middleware -- `RequireRole(...)`, chains after JWTAuth
+- [x] Rate limiter -- burst=10 then 1/6s per IP; `Retry-After` header; X-Forwarded-For bypass blocked
+- [x] Seed admin -- `SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD` at startup
+- [x] 15 integration tests; 4 security review rounds; 16 bugs found and fixed
 
 ### Фаза 3 -- Пользователи и команды (2-3 дня)
 - [ ] CRUD users

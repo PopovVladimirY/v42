@@ -600,3 +600,95 @@ GET /api/v1/projects/{id}/events   -- stream событий проекта
 - [ ] Real-time: SSE -- достаточно для v1?
 - [ ] Timeline view -- кастомный SVG или готовая библиотека (vis-timeline, frappe-gantt)?
 - [ ] OpenAPI: ручная аннотация (swaggo) или code-first генерация (ogen)?
+
+---
+
+## Kafka как событийный хаб
+
+**Статус**: надо подумать. Не включено в план реализации.
+**Актуально для**: Phase 7 (SSE) и далее.
+**Инфраструктура**: `kv8-kafka` уже крутится в Docker -- не гипотетика.
+
+### Проблема которую решаем
+
+У V.42 три разных потребности в "истории":
+1. **Хронология проекта** -- что изменилось, кто сделал, когда. Activity feed.
+2. **Real-time уведомления** -- SSE, @mentions, назначения.
+3. **Интеграции** -- CI/CD автозапуск тестов, Slack, webhooks.
+
+PostgreSQL справляется с #1 (через `activity_log` таблицу).
+С #2 -- при одном инстансе (через горутину-broadcaster).
+С #3 -- нет.
+
+Kafka решает все три, но добавляет операционную сложность.
+
+### Предлагаемая граница: SQL vs Kafka
+
+**В PostgreSQL остаётся** (текущее состояние, ACID, сложные запросы):
+- Все entity-таблицы: users, projects, epics, backlog_items, sprints...
+- `comments` -- редактируемые, пагинируемые, FK-целостность
+- `sprint_test_results` -- текущий статус для отчётов и JOIN
+- `notifications` -- is_read, счётчик непрочитанных
+- `activity_log` -- materialized из Kafka (consumer пишет сюда)
+- `outbox` -- transactional outbox буфер (ключевой паттерн)
+
+**В Kafka уходит** (история, fan-out, интеграции):
+
+| Topic | Тип событий | Зачем |
+|-------|-------------|-------|
+| `v42.events.items` | status_changed, assigned, reordered | SSE fan-out; velocity analytics |
+| `v42.events.sprints` | started, completed, item_added | CI/CD интеграция |
+| `v42.events.tests` | result_recorded, cascade_skipped | Audit trail |
+| `v42.events.comments` | created, edited, deleted | @mention уведомления |
+| `v42.notifications` | любые user-level уведомления | Push к конкретному юзеру |
+| `v42.audit` | копия всего, long retention | Compliance, replay, debug |
+
+### Ключевой паттерн: Transactional Outbox
+
+Проблема: "записали в БД, Kafka упала -- событие потеряно".
+Решение: в одной транзакции с основной записью пишем в `outbox`, горутина-publisher
+асинхронно льёт из outbox в Kafka. At-least-once delivery, idempotency key в payload.
+
+```sql
+CREATE TABLE outbox (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    topic        TEXT NOT NULL,
+    key          TEXT NOT NULL,        -- partition key (project_id)
+    payload      JSONB NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    published_at TIMESTAMPTZ           -- NULL = не отправлено
+);
+CREATE INDEX idx_outbox_unpublished ON outbox(created_at) WHERE published_at IS NULL;
+```
+
+### SSE с Kafka vs без
+
+| | Без Kafka (Phase 7 план) | С Kafka |
+|-|--------------------------|---------|
+| Broadcaster | горутина внутри процесса | Kafka consumer в каждом инстансе |
+| Масштабирование | один инстанс | горизонтально, без sticky sessions |
+| Сложность | низкая | средняя |
+| Нужно сейчас | нет | нет |
+
+### Что НЕ трогаем
+
+`comments` остаются в SQL -- они редактируемые, Kafka immutable, не совместимо
+как хранилище. В Kafka летит только event `comment.created` с body_preview для уведомлений.
+
+### Альтернативы Kafka
+
+| Вариант | Плюсы | Минусы |
+|---------|-------|--------|
+| PostgreSQL LISTEN/NOTIFY | Уже есть, без доп. зависимости | Только один инстанс, нет персистентности |
+| Redis Pub/Sub | Легче Kafka | Нет персистентности, нет replay |
+| NATS JetStream | Легче Kafka, персистентность | Меньше экосистема |
+| Kafka | Персистентность, replay, экосистема | Операционная сложность |
+
+### Вывод
+
+Не сейчас. `outbox` таблицу заложить в следующую миграцию -- ничего не ломает, просто ждёт.
+Kafka или NATS JetStream -- решить в Phase 7 когда делаем SSE. Тогда же понятно,
+нужен ли горизонтальный масштаб или хватит одного инстанса.
+
+- [ ] Kafka vs NATS JetStream: выбрать к Phase 7
+- [ ] outbox таблица: заложить в следующую миграцию?

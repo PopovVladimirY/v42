@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -65,12 +66,25 @@ func (rl *RateLimiter) cleanup() {
 // Responds with 429 and the standard error envelope when limit is exceeded.
 func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !rl.get(r.RemoteAddr).Allow() {
+		ip := realIP(r)
+		if !rl.get(ip).Allow() {
 			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Retry-After", "6")
 			w.WriteHeader(http.StatusTooManyRequests)
 			w.Write([]byte(`{"data":null,"meta":null,"error":{"code":"RATE_LIMIT_EXCEEDED","message":"too many requests, slow down"}}`)) //nolint:errcheck
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// realIP extracts the IP address from r.RemoteAddr, stripping the port.
+// chi's RealIP middleware already rewrites RemoteAddr from X-Real-IP/X-Forwarded-For
+// when behind a proxy -- we just need to strip the port for consistent map keys.
+func realIP(r *http.Request) string {
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr // fallback: already just an IP (no port)
+	}
+	return ip
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -10,10 +11,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/joho/godotenv"
 	"github.com/vpo/v42/internal/api"
+	"github.com/vpo/v42/internal/auth"
 	"github.com/vpo/v42/internal/config"
 	"github.com/vpo/v42/internal/db"
+	dbgen "github.com/vpo/v42/internal/db/gen"
+	"github.com/vpo/v42/internal/db/store"
+	"github.com/vpo/v42/internal/domain"
 )
 
 func main() {
@@ -42,14 +48,32 @@ func main() {
 
 	log.Info("db connected", "host", cfg.DBHost, "db", cfg.DBName)
 
-	router := api.NewRouter(cfg, pool, log)
+	queries := dbgen.New(pool)
+	userStore := store.NewUserStore(queries)
+	tokenStore := store.NewTokenStore(queries)
+
+	authSvc := &domain.AuthService{
+		Users:      userStore,
+		Tokens:     tokenStore,
+		JWTSecret:  cfg.JWTSecret,
+		AccessTTL:  cfg.JWTAccessTTL,
+		RefreshTTL: cfg.JWTRefreshTTL,
+	}
+
+	if err := seedAdmin(context.Background(), cfg, queries, log); err != nil {
+		log.Error("seed admin failed", "err", err)
+		os.Exit(1)
+	}
+
+	router := api.NewRouter(cfg, pool, log, authSvc)
 
 	srv := &http.Server{
-		Addr:         fmt.Sprintf("%s:%s", cfg.ServerHost, cfg.ServerPort),
-		Handler:      router,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:              fmt.Sprintf("%s:%s", cfg.ServerHost, cfg.ServerPort),
+		Handler:           router,
+		ReadHeaderTimeout: 5 * time.Second,  // Slowloris: cap header delivery time independently
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	// graceful shutdown on SIGINT / SIGTERM
@@ -77,6 +101,42 @@ func main() {
 
 	<-done // wait for graceful shutdown to complete
 	log.Info("server stopped")
+}
+
+// seedAdmin creates the initial admin user if SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD are set.
+// Idempotent: does nothing if the user already exists.
+func seedAdmin(ctx context.Context, cfg *config.Config, q *dbgen.Queries, log *slog.Logger) error {
+	if cfg.SeedAdminEmail == "" || cfg.SeedAdminPassword == "" {
+		return nil // seed disabled -- skip silently
+	}
+
+	// Check if user already exists.
+	_, err := q.GetUserByEmail(ctx, cfg.SeedAdminEmail)
+	if err == nil {
+		log.Info("seed admin already exists", "email", cfg.SeedAdminEmail)
+		return nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("seed admin check: %w", err)
+	}
+
+	hash, err := auth.HashPassword(cfg.SeedAdminPassword)
+	if err != nil {
+		return fmt.Errorf("seed admin hash: %w", err)
+	}
+
+	_, err = q.CreateUser(ctx, dbgen.CreateUserParams{
+		Email:        cfg.SeedAdminEmail,
+		PasswordHash: hash,
+		DisplayName:  "Admin",
+		Role:         dbgen.UserRoleAdmin,
+	})
+	if err != nil {
+		return fmt.Errorf("seed admin create: %w", err)
+	}
+
+	log.Info("seed admin created", "email", cfg.SeedAdminEmail)
+	return nil
 }
 
 func newLogger(level string) *slog.Logger {
