@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { LoginPage } from '@/pages/LoginPage';
 import { TeamsPage } from '@/pages/TeamsPage';
 import { TeamDetailPage } from '@/pages/TeamDetailPage';
+import { ProfilePage } from '@/pages/ProfilePage';
 
 export const router = createBrowserRouter([
   {
@@ -20,6 +21,7 @@ export const router = createBrowserRouter([
           { index: true, element: <Navigate to="/teams" replace /> },
           { path: '/teams', element: <TeamsPage /> },
           { path: '/teams/:id', element: <TeamDetailPage /> },
+          { path: '/profile', element: <ProfilePage /> },
         ],
       },
     ],

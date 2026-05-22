@@ -14,6 +14,21 @@ export interface User {
   created_at: string;
 }
 
+export type SkillLevel = 'beginner' | 'practitioner' | 'expert';
+export type InterestLevel = 'low' | 'medium' | 'high';
+
+export interface MemberSkill {
+  skill_id: string;
+  skill_name: string;
+  category: string;
+  is_builtin: boolean;
+  level: SkillLevel;
+  interest: InterestLevel;
+  interest_note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Generic API envelope -- matches Go's { data, meta, error }
 export interface ApiResponse<T> {
   data: T | null;

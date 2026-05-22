@@ -1,10 +1,6 @@
-import { NavLink, Outlet } from 'react-router-dom';
-import { useState } from 'react';
+import { NavLink, Outlet, Link } from 'react-router-dom';
 import { useAuthStore } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
-import { useThemeStore, THEMES } from '@/stores/useTheme';
-import type { Theme } from '@/stores/useTheme';
-import { authApi } from '@/api/endpoints/auth';
 
 // Nav item structure. Icons are inline SVG to avoid extra deps.
 const NAV_ITEMS = [
@@ -64,22 +60,10 @@ export function AppShell() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
-  const { theme: activeTheme, setTheme } = useThemeStore();
-  const [themePanelOpen, setThemePanelOpen] = useState(false);
 
   async function handleLogout() {
     await logout();
     navigate('/login', { replace: true });
-  }
-
-  async function handleThemeChange(t: Theme) {
-    setTheme(t);
-    setThemePanelOpen(false);
-    try {
-      await authApi.patchMe({ theme: t });
-    } catch {
-      // Non-critical -- theme is applied locally; server sync failure is silent
-    }
   }
 
   // initials for avatar
@@ -169,69 +153,35 @@ export function AppShell() {
           className="p-3 flex-shrink-0"
           style={{ borderTop: '1px solid var(--border)' }}
         >
-          {/* Theme panel -- opens above the user row */}
-          {themePanelOpen && (
-            <div
-              className="mb-2 rounded-lg p-2 grid grid-cols-2 gap-1"
-              style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}
-            >
-              {THEMES.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => void handleThemeChange(t)}
-                  className="px-2 py-1.5 rounded text-xs text-left truncate transition-colors"
-                  style={{
-                    background: activeTheme === t ? 'var(--accent)' : 'transparent',
-                    color: activeTheme === t ? 'var(--accent-fg)' : 'var(--text-2)',
-                    fontWeight: activeTheme === t ? 600 : 400,
-                  }}
-                  title={t}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          )}
-
           <div className="flex items-center gap-2.5">
-            {/* Avatar */}
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
-              style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
+            {/* Avatar + name: click → /profile */}
+            <Link
+              to="/profile"
+              className="flex items-center gap-2.5 flex-1 min-w-0 rounded-md px-1 py-1 transition-colors hover:bg-[var(--bg-hover)]"
             >
-              {initials}
-            </div>
-            <div className="flex-1 min-w-0">
               <div
-                className="text-sm font-medium truncate"
-                style={{ color: 'var(--text-1)' }}
-                title={user?.full_name ?? user?.display_name ?? user?.email}
+                className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
+                style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
               >
-                {user?.full_name ?? user?.display_name ?? user?.email}
+                {initials}
               </div>
-              <div
-                className="text-xs truncate"
-                style={{ color: 'var(--text-3)' }}
-                title={user?.email}
-              >
-                {user?.email}
+              <div className="flex-1 min-w-0">
+                <div
+                  className="text-sm font-medium truncate"
+                  style={{ color: 'var(--text-1)' }}
+                  title={user?.full_name ?? user?.display_name ?? user?.email}
+                >
+                  {user?.full_name ?? user?.display_name ?? user?.email}
+                </div>
+                <div
+                  className="text-xs truncate"
+                  style={{ color: 'var(--text-3)' }}
+                  title={user?.email}
+                >
+                  {user?.email}
+                </div>
               </div>
-            </div>
-            {/* Theme picker toggle */}
-            <button
-              onClick={() => setThemePanelOpen((v) => !v)}
-              title="Change theme"
-              className="flex-shrink-0 p-1 rounded transition-colors hover:bg-[var(--bg-hover)]"
-              style={{ color: themePanelOpen ? 'var(--accent)' : 'var(--text-3)' }}
-            >
-              {/* Palette icon */}
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.5" />
-                <circle cx="5.5" cy="6" r="1.2" fill="currentColor" />
-                <circle cx="10.5" cy="6" r="1.2" fill="currentColor" />
-                <circle cx="8" cy="10.5" r="1.2" fill="currentColor" />
-              </svg>
-            </button>
+            </Link>
             {/* Sign out */}
             <button
               onClick={() => void handleLogout()}
