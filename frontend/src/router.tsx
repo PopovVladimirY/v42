@@ -3,6 +3,7 @@ import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { AppShell } from '@/components/layout/AppShell';
 import { LoginPage } from '@/pages/LoginPage';
 import { TeamsPage } from '@/pages/TeamsPage';
+import { TeamDetailPage } from '@/pages/TeamDetailPage';
 
 export const router = createBrowserRouter([
   {
@@ -18,6 +19,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="/teams" replace /> },
           { path: '/teams', element: <TeamsPage /> },
+          { path: '/teams/:id', element: <TeamDetailPage /> },
         ],
       },
     ],
