@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	dbgen "github.com/vpo/v42/internal/db/gen"
 	"github.com/vpo/v42/internal/domain"
@@ -117,6 +118,11 @@ func (s *EpicStore) Create(ctx context.Context, projectID, title string, descrip
 		TargetDate:  td,
 	})
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			// FK violation — project_id does not exist
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	e := epicFromRow(r)
@@ -165,11 +171,15 @@ func (s *EpicStore) Update(ctx context.Context, id string, title, description *s
 	return &e, nil
 }
 
-// Delete removes an epic.
+// Delete removes an epic; returns ErrNotFound when the epic does not exist.
 func (s *EpicStore) Delete(ctx context.Context, id string) error {
 	uid, err := parseUUID(id)
 	if err != nil {
 		return domain.ErrNotFound
+	}
+	// GetByID detects missing epics — DeleteEpic returns nil even for 0 rows.
+	if _, err := s.GetByID(ctx, id); err != nil {
+		return err
 	}
 	return s.q.DeleteEpic(ctx, uid)
 }

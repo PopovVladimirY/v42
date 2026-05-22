@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/vpo/v42/internal/api/middleware"
@@ -47,10 +48,10 @@ func (h *commentHandlers) ListByTask(w http.ResponseWriter, r *http.Request) {
 
 // CreateForBacklogItem handles POST .../backlog/{backlog_item_id}/comments
 func (h *commentHandlers) CreateForBacklogItem(w http.ResponseWriter, r *http.Request) {
-	projectID := chi.URLParam(r, "project_id")
+	// backlog_item_id is the sole parent; project_id from URL is routing-only, not a comment parent.
 	backlogItemID := chi.URLParam(r, "backlog_item_id")
 	claims := middleware.ClaimsFromContext(r.Context())
-	comment, err := h.createComment(w, r, projectID, nil, &backlogItemID, nil, claims.UserID)
+	comment, err := h.createComment(w, r, "", nil, &backlogItemID, nil, claims.UserID)
 	if err != nil {
 		return
 	}
@@ -59,10 +60,10 @@ func (h *commentHandlers) CreateForBacklogItem(w http.ResponseWriter, r *http.Re
 
 // CreateForTask handles POST .../tasks/{task_id}/comments
 func (h *commentHandlers) CreateForTask(w http.ResponseWriter, r *http.Request) {
-	projectID := chi.URLParam(r, "project_id")
+	// task_id is the sole parent; project_id from URL is routing-only, not a comment parent.
 	taskID := chi.URLParam(r, "task_id")
 	claims := middleware.ClaimsFromContext(r.Context())
-	comment, err := h.createComment(w, r, projectID, nil, nil, &taskID, claims.UserID)
+	comment, err := h.createComment(w, r, "", nil, nil, &taskID, claims.UserID)
 	if err != nil {
 		return
 	}
@@ -79,12 +80,17 @@ func (h *commentHandlers) createComment(w http.ResponseWriter, r *http.Request, 
 		respondErr(w, http.StatusBadRequest, "INVALID_JSON", "request body is not valid JSON")
 		return nil, err
 	}
+	req.Body = strings.TrimSpace(req.Body)
 	if req.Body == "" {
 		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "body is required")
 		return nil, errors.New("empty body")
 	}
 	comment, err := h.comments.Create(r.Context(), projectID, epicID, backlogItemID, taskID, req.ParentID, req.Body, authorID)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "parent entity not found")
+			return nil, err
+		}
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create comment")
 		return nil, err
 	}
@@ -102,6 +108,7 @@ func (h *commentHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusBadRequest, "INVALID_JSON", "request body is not valid JSON")
 		return
 	}
+	req.Body = strings.TrimSpace(req.Body)
 	if req.Body == "" {
 		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "body is required")
 		return

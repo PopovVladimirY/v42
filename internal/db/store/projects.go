@@ -161,5 +161,9 @@ func (s *ProjectStore) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return domain.ErrNotFound
 	}
+	// GetByID detects missing rows — DeleteProject returns nil even for 0 rows deleted.
+	if _, err := s.GetByID(ctx, id); err != nil {
+		return err
+	}
 	return s.q.DeleteProject(ctx, uid)
 }

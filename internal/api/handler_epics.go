@@ -7,9 +7,13 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/vpo/v42/internal/api/middleware"
 	"github.com/vpo/v42/internal/db/store"
 	"github.com/vpo/v42/internal/domain"
 )
+
+// validEpicStatus is the set of accepted epic_status enum values.
+var validEpicStatus = map[string]bool{"draft": true, "active": true, "done": true, "cancelled": true}
 
 type epicHandlers struct {
 	epics *store.EpicStore
@@ -42,12 +46,18 @@ func (h *epicHandlers) Get(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get epic")
 		return
 	}
+	// Cross-project isolation: epic must belong to the project in the URL.
+	if e.ProjectID != chi.URLParam(r, "project_id") {
+		respondErr(w, http.StatusNotFound, "NOT_FOUND", "epic not found")
+		return
+	}
 	respond(w, http.StatusOK, e)
 }
 
 // Create handles POST /api/v1/projects/{project_id}/epics
 func (h *epicHandlers) Create(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "project_id")
+	claims := middleware.ClaimsFromContext(r.Context())
 	var req struct {
 		Title       string  `json:"title"`
 		Description *string `json:"description"`
@@ -69,9 +79,13 @@ func (h *epicHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Status == "" {
-		req.Status = "open"
+		req.Status = "draft"
 	}
-	e, err := h.epics.Create(r.Context(), projectID, req.Title, req.Description, req.Status, "", req.TargetDate)
+	if !validEpicStatus[req.Status] {
+		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid status value")
+		return
+	}
+	e, err := h.epics.Create(r.Context(), projectID, req.Title, req.Description, req.Status, claims.UserID, req.TargetDate)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			respondErr(w, http.StatusNotFound, "NOT_FOUND", "project not found")
@@ -86,6 +100,7 @@ func (h *epicHandlers) Create(w http.ResponseWriter, r *http.Request) {
 // Update handles PATCH /api/v1/projects/{project_id}/epics/{id}
 func (h *epicHandlers) Update(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	projectID := chi.URLParam(r, "project_id")
 	var req struct {
 		Title       *string `json:"title"`
 		Description *string `json:"description"`
@@ -108,6 +123,24 @@ func (h *epicHandlers) Update(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if req.Status != nil && !validEpicStatus[*req.Status] {
+		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid status value")
+		return
+	}
+	// Cross-project isolation: verify epic belongs to the URL's project before updating.
+	existing, err := h.epics.GetByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "epic not found")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update epic")
+		return
+	}
+	if existing.ProjectID != projectID {
+		respondErr(w, http.StatusNotFound, "NOT_FOUND", "epic not found")
+		return
+	}
 	e, err := h.epics.Update(r.Context(), id, req.Title, req.Description, req.Status, nil, req.TargetDate)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -123,11 +156,21 @@ func (h *epicHandlers) Update(w http.ResponseWriter, r *http.Request) {
 // Delete handles DELETE /api/v1/projects/{project_id}/epics/{id}
 func (h *epicHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	if err := h.epics.Delete(r.Context(), id); err != nil {
+	// Cross-project isolation + ErrNotFound: pre-fetch the epic before deleting.
+	existing, err := h.epics.GetByID(r.Context(), id)
+	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			respondErr(w, http.StatusNotFound, "NOT_FOUND", "epic not found")
 			return
 		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete epic")
+		return
+	}
+	if existing.ProjectID != chi.URLParam(r, "project_id") {
+		respondErr(w, http.StatusNotFound, "NOT_FOUND", "epic not found")
+		return
+	}
+	if err := h.epics.Delete(r.Context(), id); err != nil {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete epic")
 		return
 	}

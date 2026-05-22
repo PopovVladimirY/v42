@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	dbgen "github.com/vpo/v42/internal/db/gen"
 	"github.com/vpo/v42/internal/domain"
@@ -192,11 +193,15 @@ func (s *SprintStore) Update(ctx context.Context, id string, name, goal *string,
 	return &sp, nil
 }
 
-// Delete removes a sprint.
+// Delete removes a sprint; returns ErrNotFound when the sprint does not exist.
 func (s *SprintStore) Delete(ctx context.Context, id string) error {
 	uid, err := parseUUID(id)
 	if err != nil {
 		return domain.ErrNotFound
+	}
+	// Use GetByID to detect missing sprints — DeleteSprint returns nil even for 0 rows.
+	if _, err := s.GetByID(ctx, id); err != nil {
+		return err
 	}
 	return s.q.DeleteSprint(ctx, uid)
 }
@@ -211,13 +216,26 @@ func (s *SprintStore) AddItem(ctx context.Context, sprintID, backlogItemID strin
 	if err != nil {
 		return domain.ErrNotFound
 	}
-	return s.q.AddSprintItem(ctx, dbgen.AddSprintItemParams{
+	err = s.q.AddSprintItem(ctx, dbgen.AddSprintItemParams{
 		SprintID:      sid,
 		BacklogItemID: bid,
 	})
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "23503": // foreign_key_violation — sprint or backlog item does not exist
+				return domain.ErrNotFound
+			case "23505": // unique_violation — item already committed to this sprint
+				return domain.ErrConflict
+			}
+		}
+		return err
+	}
+	return nil
 }
 
-// RemoveItem removes a backlog item from a sprint.
+// RemoveItem removes a backlog item from a sprint; returns ErrNotFound when the item is not in the sprint.
 func (s *SprintStore) RemoveItem(ctx context.Context, sprintID, backlogItemID string) error {
 	sid, err := parseUUID(sprintID)
 	if err != nil {
@@ -227,10 +245,18 @@ func (s *SprintStore) RemoveItem(ctx context.Context, sprintID, backlogItemID st
 	if err != nil {
 		return domain.ErrNotFound
 	}
-	return s.q.RemoveSprintItem(ctx, dbgen.RemoveSprintItemParams{
+	// RemoveSprintItem now uses RETURNING: pgx.ErrNoRows means item was not in the sprint.
+	_, err = s.q.RemoveSprintItem(ctx, dbgen.RemoveSprintItemParams{
 		SprintID:      sid,
 		BacklogItemID: bid,
 	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrNotFound
+		}
+		return err
+	}
+	return nil
 }
 
 // ListItems returns backlog items committed to a sprint.

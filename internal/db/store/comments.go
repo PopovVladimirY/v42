@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	dbgen "github.com/vpo/v42/internal/db/gen"
 	"github.com/vpo/v42/internal/domain"
@@ -104,9 +105,13 @@ func (s *CommentStore) GetByID(ctx context.Context, id string) (*Comment, error)
 
 // Create inserts a new comment. Exactly one of backlogItemID, taskID must be non-nil (DB constraint enforces).
 func (s *CommentStore) Create(ctx context.Context, projectID string, epicID, backlogItemID, taskID, parentID *string, body string, authorID string) (*Comment, error) {
-	pid, err := parseUUID(projectID)
-	if err != nil {
-		return nil, domain.ErrNotFound
+	// projectID is the "project-level comment" parent — pass empty string to leave it NULL.
+	var pid pgtype.UUID
+	if projectID != "" {
+		var err error
+		if pid, err = parseUUID(projectID); err != nil {
+			return nil, domain.ErrNotFound
+		}
 	}
 	aid, err := parseUUID(authorID)
 	if err != nil {
@@ -143,6 +148,11 @@ func (s *CommentStore) Create(ctx context.Context, projectID string, epicID, bac
 		ParentID:      par,
 	})
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			// FK violation — parent entity (backlog item, task, etc.) does not exist
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	c := commentFromListRow(r.ID, r.AuthorID, r.ParentID, r.Body, r.DeletedAt, r.CreatedAt, r.UpdatedAt)
@@ -174,6 +184,10 @@ func (s *CommentStore) SoftDelete(ctx context.Context, id string) error {
 	uid, err := parseUUID(id)
 	if err != nil {
 		return domain.ErrNotFound
+	}
+	// GetByID detects missing comments — SoftDeleteComment returns nil for 0 rows affected.
+	if _, err := s.GetByID(ctx, id); err != nil {
+		return err
 	}
 	return s.q.SoftDeleteComment(ctx, uid)
 }

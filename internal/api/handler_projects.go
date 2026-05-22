@@ -7,9 +7,13 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/vpo/v42/internal/api/middleware"
 	"github.com/vpo/v42/internal/db/store"
 	"github.com/vpo/v42/internal/domain"
 )
+
+// validProjectStatus is the set of accepted project_status enum values.
+var validProjectStatus = map[string]bool{"active": true, "on_hold": true, "archived": true}
 
 type projectHandlers struct {
 	projects *store.ProjectStore
@@ -33,9 +37,9 @@ func (h *projectHandlers) List(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, projects)
 }
 
-// Get handles GET /api/v1/projects/{id}
+// Get handles GET /api/v1/projects/{project_id}
 func (h *projectHandlers) Get(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	id := chi.URLParam(r, "project_id")
 	p, err := h.projects.GetByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -50,6 +54,7 @@ func (h *projectHandlers) Get(w http.ResponseWriter, r *http.Request) {
 
 // Create handles POST /api/v1/projects
 func (h *projectHandlers) Create(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFromContext(r.Context())
 	var req struct {
 		TeamID      *string `json:"team_id"`
 		Name        string  `json:"name"`
@@ -73,7 +78,11 @@ func (h *projectHandlers) Create(w http.ResponseWriter, r *http.Request) {
 	if req.Status == "" {
 		req.Status = "active"
 	}
-	p, err := h.projects.Create(r.Context(), req.Name, req.Description, req.Status, "", req.TeamID)
+	if !validProjectStatus[req.Status] {
+		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid status value")
+		return
+	}
+	p, err := h.projects.Create(r.Context(), req.Name, req.Description, req.Status, claims.UserID, req.TeamID)
 	if err != nil {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create project")
 		return
@@ -81,9 +90,9 @@ func (h *projectHandlers) Create(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusCreated, p)
 }
 
-// Update handles PATCH /api/v1/projects/{id}
+// Update handles PATCH /api/v1/projects/{project_id}
 func (h *projectHandlers) Update(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	id := chi.URLParam(r, "project_id")
 	var req struct {
 		TeamID      *string `json:"team_id"`
 		Name        *string `json:"name"`
@@ -106,6 +115,10 @@ func (h *projectHandlers) Update(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if req.Status != nil && !validProjectStatus[*req.Status] {
+		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid status value")
+		return
+	}
 	p, err := h.projects.Update(r.Context(), id, req.Name, req.Description, req.Status, req.TeamID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -118,9 +131,9 @@ func (h *projectHandlers) Update(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, p)
 }
 
-// Delete handles DELETE /api/v1/projects/{id}
+// Delete handles DELETE /api/v1/projects/{project_id}
 func (h *projectHandlers) Delete(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	id := chi.URLParam(r, "project_id")
 	if err := h.projects.Delete(r.Context(), id); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			respondErr(w, http.StatusNotFound, "NOT_FOUND", "project not found")

@@ -119,13 +119,15 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 
 			// Projects
 			r.Get("/projects", projectH.List)
-			r.Get("/projects/{id}", projectH.Get)
 			r.With(middleware.RequireRole("admin", "maintainer")).Post("/projects", projectH.Create)
-			r.With(middleware.RequireRole("admin", "maintainer")).Patch("/projects/{id}", projectH.Update)
-			r.With(middleware.RequireRole("admin")).Delete("/projects/{id}", projectH.Delete)
 
-			// Epics (nested under project)
+			// Project-specific + all nested resources share one subrouter so chi does not
+			// shadow the top-level /{id} routes with the nested /{project_id} mount.
 			r.Route("/projects/{project_id}", func(r chi.Router) {
+				// Project CRUD on the identified project
+				r.Get("/", projectH.Get)
+				r.With(middleware.RequireRole("admin", "maintainer")).Patch("/", projectH.Update)
+				r.With(middleware.RequireRole("admin")).Delete("/", projectH.Delete)
 				r.Get("/epics", epicH.List)
 				r.Get("/epics/{id}", epicH.Get)
 				r.With(middleware.RequireRole("admin", "maintainer")).Post("/epics", epicH.Create)

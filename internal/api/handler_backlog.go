@@ -12,6 +12,24 @@ import (
 	"github.com/vpo/v42/internal/domain"
 )
 
+// validBacklogItemStatus is the set of accepted item_status enum values.
+var validBacklogItemStatus = map[string]bool{
+	"backlog":     true,
+	"ready":       true,
+	"in_progress": true,
+	"review":      true,
+	"done":        true,
+	"cancelled":   true,
+}
+
+// validBacklogItemType is the set of accepted item_type enum values.
+var validBacklogItemType = map[string]bool{
+	"story":          true,
+	"bug":            true,
+	"feature":        true,
+	"technical_debt": true,
+}
+
 type backlogHandlers struct {
 	backlog *store.BacklogStore
 }
@@ -51,6 +69,11 @@ func (h *backlogHandlers) Get(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get backlog item")
 		return
 	}
+	// Cross-project isolation: item must belong to the project in the URL.
+	if item.ProjectID != chi.URLParam(r, "project_id") {
+		respondErr(w, http.StatusNotFound, "NOT_FOUND", "backlog item not found")
+		return
+	}
 	respond(w, http.StatusOK, item)
 }
 
@@ -88,8 +111,16 @@ func (h *backlogHandlers) Create(w http.ResponseWriter, r *http.Request) {
 	if req.Type == "" {
 		req.Type = "story"
 	}
+	if !validBacklogItemType[req.Type] {
+		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid type value")
+		return
+	}
 	if req.Status == "" {
-		req.Status = "open"
+		req.Status = "backlog"
+	}
+	if !validBacklogItemStatus[req.Status] {
+		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid status value")
+		return
 	}
 	priority := 0.0
 	if req.Priority != nil {
@@ -114,6 +145,10 @@ func (h *backlogHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		CreatedBy:     claims.UserID,
 	})
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "project not found")
+			return
+		}
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create backlog item")
 		return
 	}
@@ -150,6 +185,28 @@ func (h *backlogHandlers) Update(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if req.Type != nil && !validBacklogItemType[*req.Type] {
+		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid type value")
+		return
+	}
+	if req.Status != nil && !validBacklogItemStatus[*req.Status] {
+		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid status value")
+		return
+	}
+	// Cross-project isolation: verify item belongs to the URL's project before updating.
+	existing, err := h.backlog.GetByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "backlog item not found")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update backlog item")
+		return
+	}
+	if existing.ProjectID != chi.URLParam(r, "project_id") {
+		respondErr(w, http.StatusNotFound, "NOT_FOUND", "backlog item not found")
+		return
+	}
 	item, err := h.backlog.Update(r.Context(), store.UpdateBacklogItemRequest{
 		ID:            id,
 		EpicID:        req.EpicID,
@@ -180,11 +237,21 @@ func (h *backlogHandlers) Update(w http.ResponseWriter, r *http.Request) {
 // Delete handles DELETE /api/v1/projects/{project_id}/backlog/{id}
 func (h *backlogHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	if err := h.backlog.Delete(r.Context(), id); err != nil {
+	// Cross-project isolation: verify item belongs to the URL's project before deleting.
+	existing, err := h.backlog.GetByID(r.Context(), id)
+	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			respondErr(w, http.StatusNotFound, "NOT_FOUND", "backlog item not found")
 			return
 		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete backlog item")
+		return
+	}
+	if existing.ProjectID != chi.URLParam(r, "project_id") {
+		respondErr(w, http.StatusNotFound, "NOT_FOUND", "backlog item not found")
+		return
+	}
+	if err := h.backlog.Delete(r.Context(), id); err != nil {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete backlog item")
 		return
 	}

@@ -71,7 +71,9 @@ func newTestEnv(t *testing.T) *testEnv {
 func (e *testEnv) seedUser(t *testing.T, email, password, role string) {
 	t.Helper()
 
-	// Remove any stale user from a previous failed run.
+	// Remove any stale data from a previous failed run. Order matters: children first.
+	e.pool.Exec(context.Background(), "DELETE FROM projects WHERE owner_id = (SELECT id FROM users WHERE email = $1)", email) //nolint:errcheck
+	e.pool.Exec(context.Background(), "DELETE FROM backlog_items WHERE created_by = (SELECT id FROM users WHERE email = $1)", email) //nolint:errcheck
 	e.pool.Exec(context.Background(), "DELETE FROM users WHERE email = $1", email) //nolint:errcheck
 
 	hash, err := auth.HashPassword(password)

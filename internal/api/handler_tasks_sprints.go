@@ -5,12 +5,19 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/vpo/v42/internal/api/middleware"
 	"github.com/vpo/v42/internal/db/store"
 	"github.com/vpo/v42/internal/domain"
 )
+
+// validTaskStatus is the set of accepted task_status enum values.
+var validTaskStatus = map[string]bool{"todo": true, "in_progress": true, "done": true, "cancelled": true}
+
+// validSprintStatus is the set of accepted sprint_status enum values.
+var validSprintStatus = map[string]bool{"planning": true, "active": true, "completed": true, "cancelled": true}
 
 type taskHandlers struct {
 	tasks *store.TaskStore
@@ -43,6 +50,11 @@ func (h *taskHandlers) Get(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get task")
 		return
 	}
+	// Cross-backlog-item isolation: task must belong to the backlog item in the URL.
+	if t.BacklogItemID != chi.URLParam(r, "backlog_item_id") {
+		respondErr(w, http.StatusNotFound, "NOT_FOUND", "task not found")
+		return
+	}
 	respond(w, http.StatusOK, t)
 }
 
@@ -71,7 +83,7 @@ func (h *taskHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Status == "" {
-		req.Status = "open"
+		req.Status = "todo"
 	}
 	orderIndex := 0.0
 	if req.OrderIndex != nil {
@@ -79,6 +91,10 @@ func (h *taskHandlers) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	t, err := h.tasks.Create(r.Context(), backlogItemID, req.Title, req.Description, req.Status, req.Estimate, orderIndex, req.AssigneeID, req.SkillRequired, req.ReviewerID, claims.UserID)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "backlog item not found")
+			return
+		}
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create task")
 		return
 	}
@@ -109,6 +125,24 @@ func (h *taskHandlers) Update(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if req.Status != nil && !validTaskStatus[*req.Status] {
+		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid status value")
+		return
+	}
+	// Cross-backlog-item isolation: verify task belongs to the URL's backlog item before updating.
+	existingTask, err := h.tasks.GetByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "task not found")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update task")
+		return
+	}
+	if existingTask.BacklogItemID != chi.URLParam(r, "backlog_item_id") {
+		respondErr(w, http.StatusNotFound, "NOT_FOUND", "task not found")
+		return
+	}
 	t, err := h.tasks.Update(r.Context(), id, req.Title, req.Description, req.Status, req.Estimate, req.AssigneeID, req.SkillRequired, req.ReviewerID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -124,11 +158,21 @@ func (h *taskHandlers) Update(w http.ResponseWriter, r *http.Request) {
 // Delete handles DELETE .../{backlog_item_id}/tasks/{id}
 func (h *taskHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	if err := h.tasks.Delete(r.Context(), id); err != nil {
+	// Cross-backlog-item isolation: verify task belongs to the URL's backlog item before deleting.
+	existing, err := h.tasks.GetByID(r.Context(), id)
+	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			respondErr(w, http.StatusNotFound, "NOT_FOUND", "task not found")
 			return
 		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete task")
+		return
+	}
+	if existing.BacklogItemID != chi.URLParam(r, "backlog_item_id") {
+		respondErr(w, http.StatusNotFound, "NOT_FOUND", "task not found")
+		return
+	}
+	if err := h.tasks.Delete(r.Context(), id); err != nil {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete task")
 		return
 	}
@@ -168,6 +212,11 @@ func (h *sprintHandlers) Get(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get sprint")
 		return
 	}
+	// Cross-project isolation: sprint must belong to the project in the URL.
+	if s.ProjectID != chi.URLParam(r, "project_id") {
+		respondErr(w, http.StatusNotFound, "NOT_FOUND", "sprint not found")
+		return
+	}
 	respond(w, http.StatusOK, s)
 }
 
@@ -196,6 +245,23 @@ func (h *sprintHandlers) Create(w http.ResponseWriter, r *http.Request) {
 	if req.Status == "" {
 		req.Status = "planning"
 	}
+	if !validSprintStatus[req.Status] {
+		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid status value")
+		return
+	}
+	// Validate date formats before hitting the store (prevents raw pgtype errors bubbling up).
+	if req.StartDate != nil {
+		if _, err := time.Parse("2006-01-02", *req.StartDate); err != nil {
+			respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "start_date must be in YYYY-MM-DD format")
+			return
+		}
+	}
+	if req.EndDate != nil {
+		if _, err := time.Parse("2006-01-02", *req.EndDate); err != nil {
+			respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "end_date must be in YYYY-MM-DD format")
+			return
+		}
+	}
 	s, err := h.sprints.Create(r.Context(), projectID, req.TeamID, req.Name, req.Goal, req.Status, req.StartDate, req.EndDate, req.CapacityHours)
 	if err != nil {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create sprint")
@@ -220,6 +286,29 @@ func (h *sprintHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusBadRequest, "INVALID_JSON", "request body is not valid JSON")
 		return
 	}
+	if req.Name != nil {
+		*req.Name = strings.TrimSpace(*req.Name)
+		if *req.Name == "" {
+			respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "name must not be empty")
+			return
+		}
+	}
+	if req.Status != nil && !validSprintStatus[*req.Status] {
+		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid status value")
+		return
+	}
+	if req.StartDate != nil {
+		if _, err := time.Parse("2006-01-02", *req.StartDate); err != nil {
+			respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "start_date must be in YYYY-MM-DD format")
+			return
+		}
+	}
+	if req.EndDate != nil {
+		if _, err := time.Parse("2006-01-02", *req.EndDate); err != nil {
+			respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "end_date must be in YYYY-MM-DD format")
+			return
+		}
+	}
 	s, err := h.sprints.Update(r.Context(), id, req.Name, req.Goal, req.Status, req.StartDate, req.EndDate, req.CapacityHours)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -236,6 +325,10 @@ func (h *sprintHandlers) Update(w http.ResponseWriter, r *http.Request) {
 func (h *sprintHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if err := h.sprints.Delete(r.Context(), id); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "sprint not found")
+			return
+		}
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete sprint")
 		return
 	}
@@ -273,6 +366,14 @@ func (h *sprintHandlers) AddItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.sprints.AddItem(r.Context(), sprintID, req.BacklogItemID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "sprint or backlog item not found")
+			return
+		}
+		if errors.Is(err, domain.ErrConflict) {
+			respondErr(w, http.StatusConflict, "CONFLICT", "backlog item already in sprint")
+			return
+		}
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to add item to sprint")
 		return
 	}
@@ -284,6 +385,10 @@ func (h *sprintHandlers) RemoveItem(w http.ResponseWriter, r *http.Request) {
 	sprintID := chi.URLParam(r, "id")
 	backlogItemID := chi.URLParam(r, "backlog_item_id")
 	if err := h.sprints.RemoveItem(r.Context(), sprintID, backlogItemID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "sprint item not found")
+			return
+		}
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to remove item from sprint")
 		return
 	}

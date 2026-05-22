@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	dbgen "github.com/vpo/v42/internal/db/gen"
@@ -217,6 +218,11 @@ func (s *BacklogStore) Create(ctx context.Context, req CreateBacklogItemRequest)
 		CreatedBy:     cby,
 	})
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			// FK violation — project_id (or epic/assignee) does not exist
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	b := backlogItemFromRow(r)

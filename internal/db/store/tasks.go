@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	dbgen "github.com/vpo/v42/internal/db/gen"
 	"github.com/vpo/v42/internal/domain"
@@ -223,6 +224,11 @@ func (s *TaskStore) Create(ctx context.Context, backlogItemID, title string, des
 		CreatedBy:     cby,
 	})
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			// FK violation — backlog item (or assignee/reviewer) does not exist
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	t := taskFromCreateRow(r)
@@ -281,6 +287,10 @@ func (s *TaskStore) Delete(ctx context.Context, id string) error {
 	uid, err := parseUUID(id)
 	if err != nil {
 		return domain.ErrNotFound
+	}
+	// GetByID detects missing rows — DeleteTask returns nil even for 0 rows deleted.
+	if _, err := s.GetByID(ctx, id); err != nil {
+		return err
 	}
 	return s.q.DeleteTask(ctx, uid)
 }

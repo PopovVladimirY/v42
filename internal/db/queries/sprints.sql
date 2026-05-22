@@ -31,11 +31,11 @@ DELETE FROM sprints WHERE id = $1;
 
 -- name: AddSprintItem :exec
 INSERT INTO sprint_items (sprint_id, backlog_item_id)
-VALUES ($1, $2)
-ON CONFLICT DO NOTHING;
+VALUES ($1, $2);
 
--- name: RemoveSprintItem :exec
-DELETE FROM sprint_items WHERE sprint_id = $1 AND backlog_item_id = $2;
+-- name: RemoveSprintItem :one
+DELETE FROM sprint_items WHERE sprint_id = $1 AND backlog_item_id = $2
+RETURNING sprint_id;
 
 -- name: ListSprintItems :many
 -- Items committed to a sprint, ordered by priority.
