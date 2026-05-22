@@ -33,15 +33,16 @@ func (s *UserStore) GetByEmail(ctx context.Context, email string) (*domain.Store
 	}
 	return &domain.StoredUser{
 		User: domain.User{
-			ID:          uuidToString(row.ID),
-			Email:       row.Email,
-			DisplayName: row.DisplayName,
-			Role:        string(row.Role),
-			IsActive:    row.IsActive,
-			AvatarURL:   row.AvatarUrl,
-			Theme:       row.Theme,
-			CreatedAt:   row.CreatedAt.Time,
-			UpdatedAt:   row.UpdatedAt.Time,
+			ID:                 uuidToString(row.ID),
+			Email:              row.Email,
+			DisplayName:        row.DisplayName,
+			Role:               string(row.Role),
+			IsActive:           row.IsActive,
+			MustChangePassword: row.MustChangePassword,
+			AvatarURL:          row.AvatarUrl,
+			Theme:              row.Theme,
+			CreatedAt:          row.CreatedAt.Time,
+			UpdatedAt:          row.UpdatedAt.Time,
 		},
 		PasswordHash: row.PasswordHash,
 	}, nil
@@ -60,38 +61,41 @@ func (s *UserStore) GetByID(ctx context.Context, id string) (*domain.User, error
 		return nil, err
 	}
 	return &domain.User{
-		ID:          uuidToString(row.ID),
-		Email:       row.Email,
-		DisplayName: row.DisplayName,
-		Role:        string(row.Role),
-		IsActive:    row.IsActive,
-		AvatarURL:   row.AvatarUrl,
-		Theme:       row.Theme,
-		CreatedAt:   row.CreatedAt.Time,
-		UpdatedAt:   row.UpdatedAt.Time,
+		ID:                 uuidToString(row.ID),
+		Email:              row.Email,
+		DisplayName:        row.DisplayName,
+		Role:               string(row.Role),
+		IsActive:           row.IsActive,
+		MustChangePassword: row.MustChangePassword,
+		AvatarURL:          row.AvatarUrl,
+		Theme:              row.Theme,
+		CreatedAt:          row.CreatedAt.Time,
+		UpdatedAt:          row.UpdatedAt.Time,
 	}, nil
 }
 
-func (s *UserStore) Create(ctx context.Context, email, passwordHash, displayName, role string) (*domain.User, error) {
+func (s *UserStore) Create(ctx context.Context, email, passwordHash, displayName, role string, mustChangePassword bool) (*domain.User, error) {
 	row, err := s.q.CreateUser(ctx, dbgen.CreateUserParams{
-		Email:        email,
-		PasswordHash: passwordHash,
-		DisplayName:  displayName,
-		Role:         dbgen.UserRole(role),
+		Email:              email,
+		PasswordHash:       passwordHash,
+		DisplayName:        displayName,
+		Role:               dbgen.UserRole(role),
+		MustChangePassword: mustChangePassword,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &domain.User{
-		ID:          uuidToString(row.ID),
-		Email:       row.Email,
-		DisplayName: row.DisplayName,
-		Role:        string(row.Role),
-		IsActive:    row.IsActive,
-		AvatarURL:   row.AvatarUrl,
-		Theme:       row.Theme,
-		CreatedAt:   row.CreatedAt.Time,
-		UpdatedAt:   row.UpdatedAt.Time,
+		ID:                 uuidToString(row.ID),
+		Email:              row.Email,
+		DisplayName:        row.DisplayName,
+		Role:               string(row.Role),
+		IsActive:           row.IsActive,
+		MustChangePassword: row.MustChangePassword,
+		AvatarURL:          row.AvatarUrl,
+		Theme:              row.Theme,
+		CreatedAt:          row.CreatedAt.Time,
+		UpdatedAt:          row.UpdatedAt.Time,
 	}, nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	authpkg "github.com/vpo/v42/internal/auth"
 	"github.com/vpo/v42/internal/api/middleware"
 	"github.com/vpo/v42/internal/domain"
 )
@@ -143,6 +144,7 @@ type patchMeRequest struct {
 var validThemes = map[string]bool{
 	"deep-dive": true, "night-sky": true, "classic-dark": true,
 	"ocean-blue": true, "paper-white": true, "sunrise": true, "high-contrast": true,
+	"new-york": true,
 }
 
 // PatchMe handles PATCH /auth/me.
@@ -170,6 +172,76 @@ func (h *authHandlers) PatchMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond(w, http.StatusOK, u)
+}
+
+// ChangePassword handles POST /auth/change-password.
+// If JWT has MustChangePassword=true, skips current_password check.
+// Returns a new access token with MustChangePassword=false.
+func (h *authHandlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFromContext(r.Context())
+	if claims == nil {
+		respondErr(w, http.StatusUnauthorized, "UNAUTHORIZED", "not authenticated")
+		return
+	}
+
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondErr(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body")
+		return
+	}
+	if len(req.NewPassword) < 8 {
+		respondErr(w, http.StatusBadRequest, "WEAK_PASSWORD", "new password must be at least 8 characters")
+		return
+	}
+
+	// Always verify the current password -- even on a forced change.
+	// This confirms the user actually knows their temporary password.
+	if req.CurrentPassword == "" {
+		respondErr(w, http.StatusBadRequest, "BAD_REQUEST", "current_password is required")
+		return
+	}
+	u, err := h.svc.Users.GetByID(r.Context(), claims.UserID)
+	if err != nil {
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to fetch user")
+		return
+	}
+	stored, err := h.svc.Users.GetByEmail(r.Context(), u.Email)
+	if err != nil {
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to verify password")
+		return
+	}
+	if !authpkg.VerifyPassword(req.CurrentPassword, stored.PasswordHash) {
+		respondErr(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "current password is incorrect")
+		return
+	}
+
+	newHash, err := authpkg.HashPassword(req.NewPassword)
+	if err != nil {
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to hash password")
+		return
+	}
+
+	u, err = h.svc.Users.ChangePassword(r.Context(), claims.UserID, newHash, false)
+	if err != nil {
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to change password")
+		return
+	}
+
+	// Issue a fresh access token with MustChangePassword=false.
+	newToken, err := authpkg.GenerateAccessToken(h.svc.JWTSecret, u.ID, u.Role, false, h.svc.AccessTTL)
+	if err != nil {
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to issue token")
+		return
+	}
+
+	respond(w, http.StatusOK, map[string]any{
+		"access_token": newToken,
+		"user":         u,
+	})
 }
 
 // -- cookie helpers ----------------------------------------------------------

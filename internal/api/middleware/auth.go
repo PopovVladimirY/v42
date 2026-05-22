@@ -51,3 +51,20 @@ func ClaimsFromContext(ctx context.Context) *auth.Claims {
 	c, _ := v.(*auth.Claims)
 	return c
 }
+
+// RequirePasswordChanged blocks all requests when the JWT has MustChangePassword=true.
+// Exempt routes (change-password, logout, me) should be registered BEFORE this middleware.
+func RequirePasswordChanged() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims := ClaimsFromContext(r.Context())
+			if claims != nil && claims.MustChangePassword {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte(`{"data":null,"meta":null,"error":{"code":"PASSWORD_CHANGE_REQUIRED","message":"you must change your password before continuing"}}`)) //nolint:errcheck
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}

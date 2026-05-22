@@ -1,31 +1,33 @@
 @import "tailwindcss";
 @import "@fontsource-variable/inter";
 
-/* ── DeepDive (default) ──────────────────────────────────── */
-:root {
-  --bg-base:       #0b0f1a;
-  --bg-surface:    #141929;
-  --bg-elevated:   #1d2540;
-  --bg-hover:      #252d4a;
-  --bg-active:     #2e3857;
+/* ── DeepDive (default) -- deep ocean abyss, bioluminescent ─ */
+:root,
+[data-theme="deep-dive"] {
+  --bg-base:       #050d14;
+  --bg-surface:    #0a1a24;
+  --bg-elevated:   #0f2535;
+  --bg-hover:      #163040;
+  --bg-active:     #1c3c50;
 
-  --text-1: #e2e6f0;
-  --text-2: #8892aa;
-  --text-3: #4d5573;
+  --text-1: #c8e4ef;
+  --text-2: #5a8fa8;
+  --text-3: #2e5468;
 
-  --accent:       #5b7cf6;
-  --accent-hover: #7b96ff;
-  --accent-fg:    #ffffff;
+  /* Bioluminescent teal -- like an anglerfish in the abyss */
+  --accent:       #00c4b8;
+  --accent-hover: #00e5d4;
+  --accent-fg:    #001a18;
 
-  --color-success: #22c55e;
+  --color-success: #10b89a;
   --color-warning: #f59e0b;
-  --color-danger:  #ef4444;
-  --color-info:    #38bdf8;
+  --color-danger:  #e05555;
+  --color-info:    #22d3ee;
 
-  --border:        rgba(255 255 255 / 0.07);
-  --border-strong: rgba(255 255 255 / 0.14);
-  --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.4);
-  --shadow-md: 0 8px 24px rgba(0 0 0 / 0.6);
+  --border:        rgba(0 180 220 / 0.07);
+  --border-strong: rgba(0 180 220 / 0.14);
+  --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.5);
+  --shadow-md: 0 8px 24px rgba(0 0 0 / 0.7);
 
   --radius-sm: 4px;
   --radius:    6px;
@@ -35,27 +37,62 @@
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
-/* ── NightSky ────────────────────────────────────────────── */
+/* ── NightSky -- stellar classification palette ─────────── */
+/* O/B: blue-violet | G: yellow | K: orange | M: muted red  */
 [data-theme="night-sky"] {
-  --bg-base:       #0e0e18;
-  --bg-surface:    #16162a;
-  --bg-elevated:   #1f1f3a;
-  --bg-hover:      #292945;
-  --bg-active:     #33335a;
-  --text-1: #dde2f5;
-  --text-2: #7c84b0;
-  --text-3: #454d70;
-  --accent:       #818cf8;
-  --accent-hover: #a5b4fc;
-  --accent-fg:    #ffffff;
-  --color-success: #4ade80;
-  --color-warning: #fbbf24;
-  --color-danger:  #f87171;
-  --color-info:    #67e8f9;
-  --border:        rgba(255 255 255 / 0.07);
-  --border-strong: rgba(255 255 255 / 0.13);
-  --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.5);
-  --shadow-md: 0 8px 24px rgba(0 0 0 / 0.7);
+  --bg-base:       #08060f;
+  --bg-surface:    #100e1e;
+  --bg-elevated:   #1a1630;
+  --bg-hover:      #231e40;
+  --bg-active:     #2c2550;
+
+  --text-1: #e4e0f8;
+  --text-2: #8a7fc0;
+  --text-3: #4d4580;
+
+  /* O/B-type star: blue-violet hot young giant */
+  --accent:       #b89aff;
+  --accent-hover: #cdb8ff;
+  --accent-fg:    #0a0818;
+
+  /* Stellar class colors, all tastefully muted */
+  --color-success: #3dba6e;
+  --color-warning: #f5a623;
+  --color-danger:  #e06060;
+  --color-info:    #7eb8ff;
+
+  --border:        rgba(180 160 255 / 0.07);
+  --border-strong: rgba(180 160 255 / 0.14);
+  --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.55);
+  --shadow-md: 0 8px 24px rgba(0 0 0 / 0.75);
+}
+
+/* ── NewYork -- cabs, Central Park, bums, sketchy subway ─── */
+[data-theme="new-york"] {
+  --bg-base:       #0e0d0b;
+  --bg-surface:    #181613;
+  --bg-elevated:   #221f1a;
+  --bg-hover:      #2c2820;
+  --bg-active:     #383026;
+
+  --text-1: #e8e0d0;
+  --text-2: #8c8070;
+  --text-3: #524840;
+
+  /* TAXI YELLOW -- because obviously */
+  --accent:       #f5c518;
+  --accent-hover: #ffd740;
+  --accent-fg:    #0a0800;
+
+  --color-success: #76a832;
+  --color-warning: #e07820;
+  --color-danger:  #d94040;
+  --color-info:    #4488cc;
+
+  --border:        rgba(245 200 80 / 0.06);
+  --border-strong: rgba(245 200 80 / 0.12);
+  --shadow-sm: 0 1px 4px rgba(0 0 0 / 0.5);
+  --shadow-md: 0 8px 32px rgba(0 0 0 / 0.7);
 }
 
 /* ── ClassicDark ─────────────────────────────────────────── */

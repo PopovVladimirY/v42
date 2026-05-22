@@ -12,6 +12,15 @@ export const usersApi = {
   list: () =>
     apiClient.get<{ data: User[] }>('/users').then((r) => unwrap(r.data)),
 
+  create: (body: { email: string; password: string; display_name: string; role?: string }) =>
+    apiClient.post<{ data: User }>('/users', body).then((r) => unwrap(r.data)),
+
+  update: (id: string, body: { display_name?: string; role?: string; is_active?: boolean }) =>
+    apiClient.patch<{ data: User }>(`/users/${id}`, body).then((r) => unwrap(r.data)),
+
+  resetPassword: (id: string, password: string) =>
+    apiClient.patch<{ data: User }>(`/users/${id}/reset-password`, { password }).then((r) => unwrap(r.data)),
+
   getSkills: (id: string) =>
     apiClient.get<{ data: MemberSkill[] }>(`/users/${id}/skills`).then((r) => unwrap(r.data)),
 

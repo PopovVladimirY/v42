@@ -21,15 +21,16 @@ func (s *UserStore) ListAll(ctx context.Context) ([]*domain.User, error) {
 	out := make([]*domain.User, len(rows))
 	for i, r := range rows {
 		out[i] = &domain.User{
-			ID:          uuidToString(r.ID),
-			Email:       r.Email,
-			DisplayName: r.DisplayName,
-			Role:        string(r.Role),
-			IsActive:    r.IsActive,
-			AvatarURL:   r.AvatarUrl,
-			Theme:       r.Theme,
-			CreatedAt:   r.CreatedAt.Time,
-			UpdatedAt:   r.UpdatedAt.Time,
+			ID:                 uuidToString(r.ID),
+			Email:              r.Email,
+			DisplayName:        r.DisplayName,
+			Role:               string(r.Role),
+			IsActive:           r.IsActive,
+			MustChangePassword: r.MustChangePassword,
+			AvatarURL:          r.AvatarUrl,
+			Theme:              r.Theme,
+			CreatedAt:          r.CreatedAt.Time,
+			UpdatedAt:          r.UpdatedAt.Time,
 		}
 	}
 	return out, nil
@@ -44,15 +45,16 @@ func (s *UserStore) ListActive(ctx context.Context) ([]*domain.User, error) {
 	out := make([]*domain.User, len(rows))
 	for i, r := range rows {
 		out[i] = &domain.User{
-			ID:          uuidToString(r.ID),
-			Email:       r.Email,
-			DisplayName: r.DisplayName,
-			Role:        string(r.Role),
-			IsActive:    r.IsActive,
-			AvatarURL:   r.AvatarUrl,
-			Theme:       r.Theme,
-			CreatedAt:   r.CreatedAt.Time,
-			UpdatedAt:   r.UpdatedAt.Time,
+			ID:                 uuidToString(r.ID),
+			Email:              r.Email,
+			DisplayName:        r.DisplayName,
+			Role:               string(r.Role),
+			IsActive:           r.IsActive,
+			MustChangePassword: r.MustChangePassword,
+			AvatarURL:          r.AvatarUrl,
+			Theme:              r.Theme,
+			CreatedAt:          r.CreatedAt.Time,
+			UpdatedAt:          r.UpdatedAt.Time,
 		}
 	}
 	return out, nil
@@ -78,15 +80,16 @@ func (s *UserStore) Update(ctx context.Context, u *domain.User) (*domain.User, e
 		return nil, err
 	}
 	return &domain.User{
-		ID:          uuidToString(row.ID),
-		Email:       row.Email,
-		DisplayName: row.DisplayName,
-		Role:        string(row.Role),
-		IsActive:    row.IsActive,
-		AvatarURL:   row.AvatarUrl,
-		Theme:       row.Theme,
-		CreatedAt:   row.CreatedAt.Time,
-		UpdatedAt:   row.UpdatedAt.Time,
+		ID:                 uuidToString(row.ID),
+		Email:              row.Email,
+		DisplayName:        row.DisplayName,
+		Role:               string(row.Role),
+		IsActive:           row.IsActive,
+		MustChangePassword: row.MustChangePassword,
+		AvatarURL:          row.AvatarUrl,
+		Theme:              row.Theme,
+		CreatedAt:          row.CreatedAt.Time,
+		UpdatedAt:          row.UpdatedAt.Time,
 	}, nil
 }
 
@@ -113,19 +116,51 @@ func (s *UserStore) UpdateTheme(ctx context.Context, userID, theme string) (*dom
 		return nil, err
 	}
 	return &domain.User{
-		ID:          uuidToString(row.ID),
-		Email:       row.Email,
-		DisplayName: row.DisplayName,
-		Role:        string(row.Role),
-		IsActive:    row.IsActive,
-		AvatarURL:   row.AvatarUrl,
-		Theme:       row.Theme,
-		CreatedAt:   row.CreatedAt.Time,
-		UpdatedAt:   row.UpdatedAt.Time,
+		ID:                 uuidToString(row.ID),
+		Email:              row.Email,
+		DisplayName:        row.DisplayName,
+		Role:               string(row.Role),
+		IsActive:           row.IsActive,
+		MustChangePassword: row.MustChangePassword,
+		AvatarURL:          row.AvatarUrl,
+		Theme:              row.Theme,
+		CreatedAt:          row.CreatedAt.Time,
+		UpdatedAt:          row.UpdatedAt.Time,
 	}, nil
 }
 
-// -- pgtype helpers reused from auth.go (same package, accessible without export) --
+// ChangePassword updates the user's password hash and must_change_password flag.
+func (s *UserStore) ChangePassword(ctx context.Context, userID, passwordHash string, mustChange bool) (*domain.User, error) {
+	uid, err := parseUUID(userID)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	row, err := s.q.UpdateUserPassword(ctx, dbgen.UpdateUserPasswordParams{
+		ID:                 uid,
+		PasswordHash:       passwordHash,
+		MustChangePassword: mustChange,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	return &domain.User{
+		ID:                 uuidToString(row.ID),
+		Email:              row.Email,
+		DisplayName:        row.DisplayName,
+		Role:               string(row.Role),
+		IsActive:           row.IsActive,
+		MustChangePassword: row.MustChangePassword,
+		AvatarURL:          row.AvatarUrl,
+		Theme:              row.Theme,
+		CreatedAt:          row.CreatedAt.Time,
+		UpdatedAt:          row.UpdatedAt.Time,
+	}, nil
+}
+
+// -- pgtype helpers reused from auth.go
 
 // newUUID parses a string UUID into pgtype.UUID for use in queries.
 // Wraps parseUUID for callers outside the auth.go context.

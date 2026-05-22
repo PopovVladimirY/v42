@@ -47,6 +47,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 	userH := &userHandlers{
 		users:  store.NewUserStore(queries),
 		skills: skillStore,
+		auth:   authSvc,
 	}
 	skillH := &skillHandlers{skills: skillStore}
 	teamH := &teamHandlers{teams: store.NewTeamStore(queries)}
@@ -72,30 +73,37 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 		r.Group(func(r chi.Router) {
 			r.Use(jwtAuth)
 
-			// Auth
+			// Auth routes exempt from RequirePasswordChanged -- change-password must be accessible even when forced.
 			r.Post("/auth/logout", auth.Logout)
 			r.Get("/auth/me", auth.Me)
 			r.Patch("/auth/me", auth.PatchMe)
+			r.Post("/auth/change-password", auth.ChangePassword)
 
-			// Users + member skills (any authenticated user can read; writes are permission-checked in handler)
-			r.Get("/users", userH.List)
-			r.Get("/users/{id}", userH.Get)
-			r.Patch("/users/{id}", userH.Update)
-			r.Get("/users/{id}/skills", userH.ListSkills)
-			r.Put("/users/{id}/skills/{skill_id}", userH.UpsertSkill)
-			r.Delete("/users/{id}/skills/{skill_id}", userH.DeleteSkill)
-
-			// Skills: read for all, write for admin only
-			r.Get("/skills", skillH.List)
-			r.With(middleware.RequireRole("admin")).Post("/skills", skillH.Create)
-
-			// Teams: read for all authenticated users
-			r.Get("/teams", teamH.List)
-			r.Get("/teams/{id}", teamH.Get)
-
-			// Teams: write for admin/maintainer
+			// All other routes require password to not be in forced-change state.
 			r.Group(func(r chi.Router) {
-				r.Use(middleware.RequireRole("admin", "maintainer"))
+				r.Use(middleware.RequirePasswordChanged())
+
+				// Users + member skills (any authenticated user can read; writes are permission-checked in handler)
+				r.With(middleware.RequireRole("admin")).Post("/users", userH.Create)
+				r.With(middleware.RequireRole("admin")).Patch("/users/{id}/reset-password", userH.ResetPassword)
+				r.Get("/users", userH.List)
+				r.Get("/users/{id}", userH.Get)
+				r.Patch("/users/{id}", userH.Update)
+				r.Get("/users/{id}/skills", userH.ListSkills)
+				r.Put("/users/{id}/skills/{skill_id}", userH.UpsertSkill)
+				r.Delete("/users/{id}/skills/{skill_id}", userH.DeleteSkill)
+
+				// Skills: read for all, write for admin only
+				r.Get("/skills", skillH.List)
+				r.With(middleware.RequireRole("admin")).Post("/skills", skillH.Create)
+
+				// Teams: read for all authenticated users
+				r.Get("/teams", teamH.List)
+				r.Get("/teams/{id}", teamH.Get)
+
+				// Teams: write for admin/maintainer
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireRole("admin", "maintainer"))
 				r.Post("/teams", teamH.Create)
 				r.Patch("/teams/{id}", teamH.Update)
 				r.Post("/teams/{id}/members", teamH.AddMember)
@@ -168,6 +176,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 				r.Post("/sprints/{id}/items", sprintH.AddItem)
 				r.Delete("/sprints/{id}/items/{backlog_item_id}", sprintH.RemoveItem)
 			})
+			}) // end RequirePasswordChanged group
 		})
 	})
 

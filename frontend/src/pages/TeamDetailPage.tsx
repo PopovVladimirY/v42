@@ -9,7 +9,7 @@ import { usersApi } from '@/api/endpoints/users';
 import { capacityApi } from '@/api/endpoints/capacity';
 import { useAuthStore } from '@/hooks/useAuth';
 import type { TeamMember } from '@/types/teams';
-import type { MatrixEntry } from '@/types/index';
+import type { MatrixEntry, TandemPair, TeamMemberAppetite } from '@/types/index';
 
 // Formats "2024-01-15T..." to "Jan 2024"
 function fmtDate(iso: string) {
@@ -96,9 +96,6 @@ function MemberCard({
   );
 }
 
-  );
-}
-
 // Aggregates matrix entries into radar-friendly [{skill, avgLevel}] array
 function buildRadarData(matrix: MatrixEntry[]) {
   const map = new Map<string, { sum: number; count: number }>();
@@ -141,6 +138,18 @@ export function TeamDetailPage() {
   const { data: matrix } = useQuery({
     queryKey: ['team-skill-matrix', id],
     queryFn: () => capacityApi.teamSkillMatrix(id!),
+    enabled: !!id,
+  });
+
+  const { data: tandems } = useQuery({
+    queryKey: ['team-tandems', id],
+    queryFn: () => capacityApi.teamTandems(id!),
+    enabled: !!id,
+  });
+
+  const { data: appetite } = useQuery({
+    queryKey: ['team-learning-appetite', id],
+    queryFn: () => capacityApi.teamLearningAppetite(id!),
     enabled: !!id,
   });
 
@@ -254,7 +263,7 @@ export function TeamDetailPage() {
                     color: 'var(--text-1)',
                     fontSize: '12px',
                   }}
-                  formatter={(v: number) => [v.toFixed(1), 'Avg level']}
+                  formatter={(v) => [typeof v === 'number' ? v.toFixed(1) : v, 'Avg level']}
                 />
                 <Radar
                   name="Team"
@@ -359,6 +368,79 @@ export function TeamDetailPage() {
           ))
         }
       </div>
+
+      {/* Tandem Opportunities */}
+      {tandems && tandems.length > 0 && (() => {
+        const memberMap = new Map<string, string>(
+          (team?.members ?? []).map((m) => [m.user_id, m.display_name || m.email])
+        );
+        const bySkill = tandems.reduce<Record<string, { pairs: TandemPair[] }>>((acc, t) => {
+          if (!acc[t.skill_name]) acc[t.skill_name] = { pairs: [] };
+          acc[t.skill_name].pairs.push(t);
+          return acc;
+        }, {});
+        return (
+          <section className="mt-8">
+            <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
+              Tandem Opportunities
+            </h2>
+            <div className="flex flex-col gap-2">
+              {Object.entries(bySkill).map(([skill, { pairs }]) => (
+                <div key={skill} className="rounded-lg px-3 py-3" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+                  <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-2)' }}>{skill}</p>
+                  {pairs.map((p, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs mb-1 last:mb-0">
+                      <span className="px-1.5 py-0.5 rounded truncate max-w-24" style={{ background: 'var(--bg-elevated)', color: 'var(--color-info)' }}>
+                        {memberMap.get(p.learner_id) ?? p.learner_id.slice(0, 8)}
+                      </span>
+                      <span className="capitalize" style={{ color: 'var(--text-3)' }}>{p.learner_level}</span>
+                      <span style={{ color: 'var(--accent)' }}>\u2192</span>
+                      <span className="px-1.5 py-0.5 rounded truncate max-w-24" style={{ background: 'var(--bg-elevated)', color: 'var(--color-success)' }}>
+                        {memberMap.get(p.mentor_id) ?? p.mentor_id.slice(0, 8)}
+                      </span>
+                      <span className="capitalize" style={{ color: 'var(--text-3)' }}>{p.mentor_level}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      })()}
+
+      {/* Learning Appetite */}
+      {appetite && appetite.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
+            Learning Appetite
+          </h2>
+          <div className="flex flex-col gap-2">
+            {(appetite as TeamMemberAppetite[]).map((a) => {
+              const member = team?.members.find((m) => m.user_id === a.user_id);
+              const name = member?.display_name || member?.email || a.user_id.slice(0, 8);
+              return (
+                <div
+                  key={a.user_id}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg"
+                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+                >
+                  <p className="flex-1 text-sm font-medium truncate min-w-0" style={{ color: 'var(--text-1)' }}>{name}</p>
+                  <div className="flex items-center gap-4 flex-shrink-0">
+                    <div className="text-center">
+                      <p className="text-sm font-semibold" style={{ color: 'var(--accent)' }}>{a.reaching_count}</p>
+                      <p className="text-xs" style={{ color: 'var(--text-3)' }}>growing</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-2)' }}>{a.curious_breadth}</p>
+                      <p className="text-xs" style={{ color: 'var(--text-3)' }}>curious</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

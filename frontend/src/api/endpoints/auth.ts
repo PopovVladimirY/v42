@@ -36,4 +36,7 @@ export const authApi = {
 
   patchMe: (patch: { theme: string }): Promise<User> =>
     client.patch<ApiResponse<User>>('/auth/me', patch).then(unwrap),
+
+  changePassword: (body: { current_password?: string; new_password: string }): Promise<{ access_token: string; user: User }> =>
+    client.post<ApiResponse<{ access_token: string; user: User }>>('/auth/change-password', body).then(unwrap),
 };

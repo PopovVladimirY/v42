@@ -5,6 +5,7 @@ import { persist } from 'zustand/middleware';
 export const THEMES = [
   'deep-dive',
   'night-sky',
+  'new-york',
   'classic-dark',
   'ocean-blue',
   'paper-white',

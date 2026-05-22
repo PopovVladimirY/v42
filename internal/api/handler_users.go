@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	authpkg "github.com/vpo/v42/internal/auth"
 	"github.com/vpo/v42/internal/api/middleware"
 	"github.com/vpo/v42/internal/db/store"
 	"github.com/vpo/v42/internal/domain"
@@ -21,6 +22,7 @@ var validRoles = map[string]bool{
 type userHandlers struct {
 	users  *store.UserStore
 	skills *store.SkillStore
+	auth   *domain.AuthService
 }
 
 // List handles GET /api/v1/users
@@ -264,4 +266,100 @@ func (h *userHandlers) DeleteSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond(w, http.StatusNoContent, nil)
+}
+
+// Create handles POST /api/v1/users (admin only).
+// Creates a new user account with a hashed password.
+func (h *userHandlers) Create(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email       string `json:"email"`
+		Password    string `json:"password"`
+		DisplayName string `json:"display_name"`
+		Role        string `json:"role"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondErr(w, http.StatusBadRequest, "INVALID_JSON", "request body is not valid JSON")
+		return
+	}
+
+	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+	req.DisplayName = strings.TrimSpace(req.DisplayName)
+	req.Role = strings.TrimSpace(req.Role)
+
+	if req.Email == "" || req.Password == "" || req.DisplayName == "" {
+		respondErr(w, http.StatusBadRequest, "MISSING_FIELDS", "email, password, and display_name are required")
+		return
+	}
+	if len(req.Password) < 8 {
+		respondErr(w, http.StatusBadRequest, "WEAK_PASSWORD", "password must be at least 8 characters")
+		return
+	}
+	if req.Role == "" {
+		req.Role = "developer"
+	}
+	if !validRoles[req.Role] {
+		respondErr(w, http.StatusBadRequest, "INVALID_ROLE", "role must be one of: admin, maintainer, developer, tester, observer")
+		return
+	}
+
+	hash, err := authpkg.HashPassword(req.Password)
+	if err != nil {
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to process password")
+		return
+	}
+
+	user, err := h.users.Create(r.Context(), req.Email, hash, req.DisplayName, req.Role, true)
+	if err != nil {
+		// SQLSTATE 23505: unique_violation -- email already taken
+		if strings.Contains(err.Error(), "23505") || strings.Contains(err.Error(), "unique") {
+			respondErr(w, http.StatusConflict, "EMAIL_TAKEN", "a user with this email already exists")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create user")
+		return
+	}
+	respond(w, http.StatusCreated, user)
+}
+
+// ResetPassword handles PATCH /api/v1/users/{id}/reset-password (admin only).
+// Sets a new password and forces the user to change it on next login.
+func (h *userHandlers) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var req struct {
+		Password string `json:"password"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondErr(w, http.StatusBadRequest, "INVALID_JSON", "request body is not valid JSON")
+		return
+	}
+	if len(req.Password) < 8 {
+		respondErr(w, http.StatusBadRequest, "WEAK_PASSWORD", "password must be at least 8 characters")
+		return
+	}
+
+	hash, err := authpkg.HashPassword(req.Password)
+	if err != nil {
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to process password")
+		return
+	}
+
+	user, err := h.users.ChangePassword(r.Context(), id, hash, true)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "user not found")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to reset password")
+		return
+	}
+
+	// Revoke all active sessions -- forces re-login with new password.
+	if h.auth != nil {
+		_ = h.auth.Tokens.RevokeAll(r.Context(), id)
+	}
+
+	respond(w, http.StatusOK, user)
 }

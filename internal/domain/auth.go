@@ -39,15 +39,16 @@ var (
 
 // User is the domain user without the password hash (safe to pass to handlers).
 type User struct {
-	ID          string    `json:"id"`
-	Email       string    `json:"email"`
-	DisplayName string    `json:"display_name"`
-	Role        string    `json:"role"`
-	IsActive    bool      `json:"is_active"`
-	AvatarURL   *string   `json:"avatar_url"`
-	Theme       string    `json:"theme"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID                 string    `json:"id"`
+	Email              string    `json:"email"`
+	DisplayName        string    `json:"display_name"`
+	Role               string    `json:"role"`
+	IsActive           bool      `json:"is_active"`
+	MustChangePassword bool      `json:"must_change_password"`
+	AvatarURL          *string   `json:"avatar_url"`
+	Theme              string    `json:"theme"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 // StoredUser includes the password hash -- only used inside Login for verification.
@@ -70,8 +71,9 @@ type RefreshToken struct {
 type UserRepo interface {
 	GetByEmail(ctx context.Context, email string) (*StoredUser, error)
 	GetByID(ctx context.Context, id string) (*User, error)
-	Create(ctx context.Context, email, passwordHash, displayName, role string) (*User, error)
+	Create(ctx context.Context, email, passwordHash, displayName, role string, mustChangePassword bool) (*User, error)
 	UpdateTheme(ctx context.Context, userID, theme string) (*User, error)
+	ChangePassword(ctx context.Context, userID, passwordHash string, mustChange bool) (*User, error)
 }
 
 // TokenRepo is the storage interface for refresh token operations.
@@ -118,7 +120,7 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (*Login
 		return nil, ErrUserInactive
 	}
 
-	accessToken, err := auth.GenerateAccessToken(s.JWTSecret, u.ID, u.Role, s.AccessTTL)
+	accessToken, err := auth.GenerateAccessToken(s.JWTSecret, u.ID, u.Role, u.MustChangePassword, s.AccessTTL)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +185,7 @@ func (s *AuthService) Refresh(ctx context.Context, rawToken string) (*RefreshRes
 		return nil, err
 	}
 
-	accessToken, err := auth.GenerateAccessToken(s.JWTSecret, u.ID, u.Role, s.AccessTTL)
+	accessToken, err := auth.GenerateAccessToken(s.JWTSecret, u.ID, u.Role, u.MustChangePassword, s.AccessTTL)
 	if err != nil {
 		return nil, err
 	}

@@ -1,14 +1,15 @@
 import apiClient from '@/api/client';
-import type { MatrixEntry, TandemPair } from '@/types/index';
+import type {
+  MatrixEntry,
+  TandemPair,
+  RadarSkill,
+  LearningAppetite,
+  EngagementScore,
+  TeamMemberAppetite,
+} from '@/types/index';
 
 function unwrap<T>(res: { data: T }): T {
   return res.data;
-}
-
-export interface TeamMemberAppetite {
-  user_id: string;
-  reaching_count: number;
-  curious_breadth: number;
 }
 
 export const capacityApi = {
@@ -25,5 +26,20 @@ export const capacityApi = {
   teamLearningAppetite: (teamId: string) =>
     apiClient
       .get<{ data: TeamMemberAppetite[] }>(`/teams/${teamId}/learning-appetite`)
+      .then((r) => unwrap(r.data)),
+
+  personalRadar: (userId: string) =>
+    apiClient
+      .get<{ data: RadarSkill[] }>(`/users/${userId}/skill-radar`)
+      .then((r) => unwrap(r.data)),
+
+  userLearningAppetite: (userId: string) =>
+    apiClient
+      .get<{ data: LearningAppetite }>(`/users/${userId}/learning-appetite`)
+      .then((r) => unwrap(r.data)),
+
+  userEngagement: (userId: string) =>
+    apiClient
+      .get<{ data: EngagementScore }>(`/users/${userId}/engagement`)
       .then((r) => unwrap(r.data)),
 };

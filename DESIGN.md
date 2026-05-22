@@ -1142,30 +1142,31 @@ UI строится итерационно -- каждый шаг синхрон
 **DeepDive tokens (reference implementation):**
 
 ```css
+/* Deep ocean abyss -- bioluminescent accent, zero warmth */
 [data-theme="deep-dive"] {
-  --bg-base:      #0b0f1a;
-  --bg-surface:   #141929;
-  --bg-elevated:  #1d2540;
-  --bg-hover:     #252d4a;
-  --bg-active:    #2e3857;
+  --bg-base:      #050d14;
+  --bg-surface:   #0a1a24;
+  --bg-elevated:  #0f2535;
+  --bg-hover:     #163040;
+  --bg-active:    #1c3c50;
 
-  --text-1:  #e2e6f0;
-  --text-2:  #8892aa;
-  --text-3:  #4d5573;
+  --text-1:  #c8e4ef;
+  --text-2:  #5a8fa8;
+  --text-3:  #2e5468;
 
-  --accent:       #5b7cf6;
-  --accent-hover: #7b96ff;
-  --accent-fg:    #ffffff;
+  --accent:       #00c4b8;   /* bioluminescent teal */
+  --accent-hover: #00e5d4;
+  --accent-fg:    #001a18;
 
-  --color-success: #22c55e;
+  --color-success: #10b89a;
   --color-warning: #f59e0b;
-  --color-danger:  #ef4444;
-  --color-info:    #38bdf8;
+  --color-danger:  #e05555;
+  --color-info:    #22d3ee;
 
-  --border:        rgba(255 255 255 / 0.07);
-  --border-strong: rgba(255 255 255 / 0.14);
-  --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.4);
-  --shadow-md: 0 8px 24px rgba(0 0 0 / 0.6);
+  --border:        rgba(0 180 220 / 0.07);
+  --border-strong: rgba(0 180 220 / 0.14);
+  --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.5);
+  --shadow-md: 0 8px 24px rgba(0 0 0 / 0.7);
 }
 ```
 
@@ -1218,7 +1219,7 @@ Line-height: `1.5` for body, `1.25` for headings. No orphan lines.
 **Checklist:**
 
 - [x] `@fontsource-variable/inter` -- установить, импортировать в `index.css`
-- [x] `index.css` -- полный реестр CSS-токенов для всех 7 тем
+- [x] `index.css` -- полный реестр CSS-токенов для всех 8 тем
 - [x] `src/stores/useTheme.ts` -- Zustand store: `theme`, `setTheme()`, persist в localStorage
 - [x] `src/components/ThemeProvider.tsx` -- ставит `data-theme` на `<html>` при монтировании и смене
 - [x] `main.tsx` -- обернуть приложение в `<ThemeProvider />`
@@ -1227,6 +1228,8 @@ Line-height: `1.5` for body, `1.25` for headings. No orphan lines.
 - [x] Smoke test: смена темы в `localStorage` -- страница перерисовывается правильно
 - [x] **BONUS:** Тема сохраняется на сервере (`users.theme`, migration 000006, `PATCH /auth/me`)
 - [x] **BONUS:** WebGL2 bubble easter egg -- 3 режима (classic / rainbow / вращающиеся квадраты) + idle detection 30s
+- [x] **BONUS:** DeepDive и NightSky разведены -- разные палитры, разные характеры
+- [x] **BONUS:** Тема `new-york` -- тёплый асфальт, cab yellow accent (migration 000008)
 
 ---
 
@@ -1248,28 +1251,43 @@ Line-height: `1.5` for body, `1.25` for headings. No orphan lines.
 - [x] Члены команды: имя, email, роль (с цветом по токену), capacity_hours
 - [x] Статистика: кол-во участников, суммарная ёмкость, дата создания
 - [x] Skeleton при загрузке, back link → `/teams`, error state
+- [x] Skill radar (recharts RadarChart): покрытие навыков в команде (`GET /teams/{id}/skill-matrix`)
 - [ ] Capacity bars: available vs assigned за текущий период
-- [ ] Skill radar (recharts RadarChart): покрытие навыков в команде
-  - Серый контур = capacity, залитый = effective (с учётом level_factor)
-  - `GET /teams/{id}/skill-matrix`
-- [ ] Tandem opportunities: кто кого может менторить
-  - `GET /teams/{id}/tandems`
-- [ ] Learning appetite: кто хочет расти в каком навыке
-  - `GET /teams/{id}/learning-appetite`
+- [ ] Tandem opportunities UI: кто кого может менторить
+  - endpoint `GET /teams/{id}/tandems` реализован, UI -- нет
+- [ ] Learning appetite UI: кто хочет расти в каком навыке
+  - endpoint `GET /teams/{id}/learning-appetite` реализован, UI -- нет
 
 **Управление командой** (admin/maintainer):
-- [ ] Добавить/удалить члена команды
-- [ ] Обновить capacity_hours члена
-- [ ] `GET /skills` -- каталог навыков для выбора
+- [x] Добавить члена команды (форма: user dropdown + capacity)
+- [x] Удалить члена команды
+- [x] Обновить capacity_hours члена
+- [x] `GET /skills` -- каталог навыков для выбора
+- [ ] Редактировать название / описание команды (PATCH endpoint есть, UI -- нет)
+- [ ] Создать / удалить команду (endpoints есть, UI -- нет)
 
-**Профиль пользователя** (`/users/{id}`):
-- [ ] Мои навыки: уровень + interest (редактируемые через `PUT /users/{id}/skills/{skill_id}`)
+**Профиль пользователя** (`/profile`):
+- [x] Страница `/profile` -- аватар, имя, email, роль, дата регистрации
+- [x] Theme switcher перенесён сюда из sidebar (8 тем, активная выделена)
+- [x] Список навыков пользователя (уровень + interest badge + note)
+- [x] Добавить / редактировать / удалить навык (`PUT /users/{id}/skills/{skill_id}`)
+- [x] Список команд пользователя
+- [x] Sidebar bottom: аватар+имя → link `/profile`; только кнопка sign out
+- [x] Ссылка на смену пароля → `/change-password`
 - [ ] Skill radar (персональный): мои компетенции по Дрейфусу
-  - `GET /users/{id}/skill-radar`
+  - endpoint `GET /users/{id}/skill-radar` реализован, UI -- нет
 - [ ] Learning appetite: trajectory (куда хочу расти)
-  - `GET /users/{id}/learning-appetite`
+  - endpoint `GET /users/{id}/learning-appetite` реализован, UI -- нет
 - [ ] Engagement score: как активно участвую в задачах
   - `GET /users/{id}/engagement`
+
+**Безопасность и администрирование:**
+- [x] `ChangePasswordPage` (`/change-password`) -- всегда 3 поля: текущий + новый + подтверждение
+- [x] Backend: current_password всегда верифицируется (no skip)
+- [x] Forced flow: `must_change_password=true` → redirect до входа в приложение
+- [x] Migration 000007: `users.must_change_password BOOLEAN NOT NULL DEFAULT false`
+- [x] `AdminUsersPage` (`/admin/users`) -- список, создать, активировать/деактивировать, сбросить пароль
+- [x] autoComplete на всех password-полях формы (защита от autofill-бага браузера)
 
 ---
 

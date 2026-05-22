@@ -1,6 +1,6 @@
 // Core domain types -- mirrors the Go backend models
 
-export type UserRole = 'admin' | 'maintainer' | 'developer';
+export type UserRole = 'admin' | 'maintainer' | 'developer' | 'tester' | 'observer';
 
 export interface User {
   id: string;
@@ -9,6 +9,7 @@ export interface User {
   display_name: string;
   role: UserRole;
   is_active: boolean;
+  must_change_password: boolean;
   avatar_url?: string;
   theme?: string;
   created_at: string;
@@ -68,6 +69,25 @@ export interface TandemPair {
   mentor_level: SkillLevel;
   skill_id: string;
   skill_name: string;
+}
+
+export interface LearningAppetite {
+  reaching_count: number;
+  curious_breadth: number;
+  total_skills: number;
+  recent_level_ups: number;
+}
+
+export interface EngagementScore {
+  engaged_skills: number;
+  declared_expert_count: number;
+  grounded_expert_count: number;
+}
+
+export interface TeamMemberAppetite {
+  user_id: string;
+  reaching_count: number;
+  curious_breadth: number;
 }
 
 // Generic API envelope -- matches Go's { data, meta, error }

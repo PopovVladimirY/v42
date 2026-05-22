@@ -1,11 +1,16 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer,
+} from 'recharts';
 import { useAuthStore } from '@/hooks/useAuth';
 import { useThemeStore, THEMES } from '@/stores/useTheme';
 import type { Theme } from '@/stores/useTheme';
 import { authApi } from '@/api/endpoints/auth';
 import { usersApi, skillsApi } from '@/api/endpoints/users';
 import { teamsApi } from '@/api/endpoints/teams';
+import { capacityApi } from '@/api/endpoints/capacity';
 import type { MemberSkill, SkillLevel, InterestLevel, Skill } from '@/types/index';
 
 // ------------------------------------------------------------------
@@ -56,8 +61,9 @@ const ROLE_LABEL: Record<string, string> = {
 };
 
 const ACCENT_MAP: Record<string, string> = {
-  'deep-dive': '#5b7cf6',
-  'night-sky': '#7b6ef6',
+  'deep-dive': '#00c4b8',
+  'night-sky': '#b89aff',
+  'new-york': '#f5c518',
   'classic-dark': '#6b7280',
   'ocean-blue': '#3b82f6',
   'paper-white': '#d97706',
@@ -310,6 +316,24 @@ export function ProfilePage() {
     enabled: !!userId,
   });
 
+  const { data: personalRadar } = useQuery({
+    queryKey: ['personal-radar', userId],
+    queryFn: () => capacityApi.personalRadar(userId),
+    enabled: !!userId,
+  });
+
+  const { data: myAppetite } = useQuery({
+    queryKey: ['my-appetite', userId],
+    queryFn: () => capacityApi.userLearningAppetite(userId),
+    enabled: !!userId,
+  });
+
+  const { data: myEngagement } = useQuery({
+    queryKey: ['my-engagement', userId],
+    queryFn: () => capacityApi.userEngagement(userId),
+    enabled: !!userId,
+  });
+
   const deleteSkill = useMutation({
     mutationFn: (skillId: string) => usersApi.deleteSkill(userId, skillId),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['user-skills', userId] }),
@@ -493,6 +517,101 @@ export function ProfilePage() {
               ))}
             </div>
           )}
+        </section>
+
+        {/* Skill Radar */}
+        {personalRadar && personalRadar.length > 0 && (
+          <section className="mb-8">
+            <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
+              Skill Radar
+            </h2>
+            <div className="rounded-xl p-4" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+              <ResponsiveContainer width="100%" height={240}>
+                <RadarChart data={personalRadar.map((s) => ({ skill: s.skill_name, level: s.level_rank }))} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
+                  <PolarGrid stroke="var(--border)" />
+                  <PolarAngleAxis dataKey="skill" tick={{ fill: 'var(--text-3)', fontSize: 11 }} />
+                  <Radar name="Me" dataKey="level" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.25} />
+                </RadarChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
+        )}
+
+        {/* Learning Appetite */}
+        {myAppetite && (
+          <section className="mb-8">
+            <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
+              Learning Appetite
+            </h2>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg px-4 py-3" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+                <p className="text-xl font-semibold" style={{ color: 'var(--accent)' }}>{myAppetite.reaching_count}</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>Skills actively growing</p>
+              </div>
+              <div className="rounded-lg px-4 py-3" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+                <p className="text-xl font-semibold" style={{ color: 'var(--text-1)' }}>{myAppetite.curious_breadth}</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>Areas explored</p>
+              </div>
+              <div className="rounded-lg px-4 py-3" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+                <p className="text-xl font-semibold" style={{ color: 'var(--text-1)' }}>{myAppetite.total_skills}</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>Total skills</p>
+              </div>
+              <div className="rounded-lg px-4 py-3" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+                <p className="text-xl font-semibold" style={{ color: 'var(--color-success, #22c55e)' }}>{myAppetite.recent_level_ups}</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>Level-ups last 90d</p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Engagement */}
+        {myEngagement && (
+          <section className="mb-8">
+            <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
+              Skill Calibration
+            </h2>
+            <div
+              className="rounded-lg px-4 py-3 flex items-center justify-between"
+              style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+            >
+              <div>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>
+                  {myEngagement.grounded_expert_count} / {myEngagement.declared_expert_count} experts grounded
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
+                  {myEngagement.engaged_skills} skill{myEngagement.engaged_skills !== 1 ? 's' : ''} with interest signal
+                </p>
+              </div>
+              {myEngagement.declared_expert_count > 0 && (
+                <div
+                  className="w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
+                  style={{
+                    background: 'var(--bg-elevated)',
+                    color: myEngagement.grounded_expert_count >= myEngagement.declared_expert_count ? 'var(--color-success, #22c55e)' : 'var(--color-warning, #f59e0b)',
+                    border: '2px solid var(--border)',
+                  }}
+                >
+                  {Math.round((myEngagement.grounded_expert_count / myEngagement.declared_expert_count) * 100)}%
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* Account security */}
+        <section>
+          <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-2)' }}>Security</h2>
+          <Link
+            to="/change-password"
+            className="inline-flex items-center gap-2 text-sm px-4 py-2 rounded-lg border transition-colors"
+            style={{
+              color: 'var(--text-1)',
+              borderColor: 'var(--border)',
+              textDecoration: 'none',
+            }}
+          >
+            Change password
+          </Link>
         </section>
 
       </div>

@@ -146,6 +146,30 @@ export function AppShell() {
               )}
             </NavLink>
           ))}
+
+          {/* Admin-only: Users management */}
+          {user?.role === 'admin' && (
+            <NavLink
+              to="/admin/users"
+              className={({ isActive }) =>
+                [
+                  'flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium mb-0.5 transition-colors',
+                  isActive ? '' : 'hover:bg-[var(--bg-hover)]',
+                ].join(' ')
+              }
+              style={({ isActive }) => ({
+                background: isActive ? 'var(--bg-active)' : undefined,
+                color: isActive ? 'var(--text-1)' : 'var(--text-2)',
+              })}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M3 13c0-2.761 2.239-5 5-5s5 2.239 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                <path d="M12.5 7v3M11 8.5h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              <span>Users</span>
+            </NavLink>
+          )}
         </nav>
 
         {/* User section */}
