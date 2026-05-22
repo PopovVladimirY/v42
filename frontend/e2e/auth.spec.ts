@@ -14,23 +14,23 @@ test.describe('Auth -- unauthenticated', () => {
 
   test('login page renders form elements', async ({ page }) => {
     await page.goto('/login');
-    await expect(page.getByLabel('Email')).toBeVisible();
-    await expect(page.getByLabel('Пароль')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Войти' })).toBeVisible();
+    await expect(page.getByLabel('Email address')).toBeVisible();
+    await expect(page.getByLabel('Password')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
   });
 
   test('shows validation error on empty submit', async ({ page }) => {
     await page.goto('/login');
-    await page.getByRole('button', { name: 'Войти' }).click();
-    await expect(page.getByText('Некорректный email')).toBeVisible();
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await expect(page.getByText('Invalid email address')).toBeVisible();
   });
 
   test('shows validation error on invalid email', async ({ page }) => {
     await page.goto('/login');
-    await page.getByLabel('Email').fill('not-an-email');
-    await page.getByLabel('Пароль').fill('pass');
-    await page.getByRole('button', { name: 'Войти' }).click();
-    await expect(page.getByText('Некорректный email')).toBeVisible();
+    await page.getByLabel('Email address').fill('not-an-email');
+    await page.getByLabel('Password').fill('pass');
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await expect(page.getByText('Invalid email address')).toBeVisible();
   });
 });
 
@@ -41,15 +41,15 @@ test.describe('Auth -- with backend', () => {
 
   test('logs in and redirects to dashboard', async ({ page }) => {
     await page.goto('/login');
-    await page.getByLabel('Email').fill(process.env.E2E_ADMIN_EMAIL ?? 'admin@v42.dev');
-    await page.getByLabel('Пароль').fill(process.env.E2E_ADMIN_PASSWORD ?? 'changeme');
-    await page.getByRole('button', { name: 'Войти' }).click();
-    await expect(page).toHaveURL('/');
+    await page.getByLabel('Email address').fill(process.env.E2E_ADMIN_EMAIL ?? 'admin@v42.dev');
+    await page.getByLabel('Password').fill(process.env.E2E_ADMIN_PASSWORD ?? 'changeme');
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await expect(page).toHaveURL('/teams');
   });
 
   test('logout clears session and redirects to login', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: 'Выйти' }).click();
+    await page.getByRole('button', { name: 'Sign out' }).click();
     await expect(page).toHaveURL('/login');
   });
 });

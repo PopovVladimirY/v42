@@ -1,23 +1,202 @@
 @import "tailwindcss";
+@import "@fontsource-variable/inter";
 
+/* ── DeepDive (default) ──────────────────────────────────── */
 :root {
-  --background: 0 0% 100%;
-  --foreground: 240 10% 3.9%;
-  --muted: 240 4.8% 95.9%;
-  --muted-foreground: 240 3.8% 46.1%;
-  --border: 240 5.9% 90%;
-  --primary: 272 100% 57%;
-  --primary-foreground: 0 0% 100%;
-  --radius: 0.5rem;
+  --bg-base:       #0b0f1a;
+  --bg-surface:    #141929;
+  --bg-elevated:   #1d2540;
+  --bg-hover:      #252d4a;
+  --bg-active:     #2e3857;
+
+  --text-1: #e2e6f0;
+  --text-2: #8892aa;
+  --text-3: #4d5573;
+
+  --accent:       #5b7cf6;
+  --accent-hover: #7b96ff;
+  --accent-fg:    #ffffff;
+
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger:  #ef4444;
+  --color-info:    #38bdf8;
+
+  --border:        rgba(255 255 255 / 0.07);
+  --border-strong: rgba(255 255 255 / 0.14);
+  --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.4);
+  --shadow-md: 0 8px 24px rgba(0 0 0 / 0.6);
+
+  --radius-sm: 4px;
+  --radius:    6px;
+  --radius-lg: 10px;
+
+  --font-sans: 'Inter Variable', 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
-* {
-  box-sizing: border-box;
+/* ── NightSky ────────────────────────────────────────────── */
+[data-theme="night-sky"] {
+  --bg-base:       #0e0e18;
+  --bg-surface:    #16162a;
+  --bg-elevated:   #1f1f3a;
+  --bg-hover:      #292945;
+  --bg-active:     #33335a;
+  --text-1: #dde2f5;
+  --text-2: #7c84b0;
+  --text-3: #454d70;
+  --accent:       #818cf8;
+  --accent-hover: #a5b4fc;
+  --accent-fg:    #ffffff;
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+  --color-danger:  #f87171;
+  --color-info:    #67e8f9;
+  --border:        rgba(255 255 255 / 0.07);
+  --border-strong: rgba(255 255 255 / 0.13);
+  --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.5);
+  --shadow-md: 0 8px 24px rgba(0 0 0 / 0.7);
 }
+
+/* ── ClassicDark ─────────────────────────────────────────── */
+[data-theme="classic-dark"] {
+  --bg-base:       #1e1e1e;
+  --bg-surface:    #252526;
+  --bg-elevated:   #2d2d30;
+  --bg-hover:      #37373d;
+  --bg-active:     #404044;
+  --text-1: #d4d4d4;
+  --text-2: #9d9d9d;
+  --text-3: #5c5c5c;
+  --accent:       #4ec9b0;
+  --accent-hover: #7de8d4;
+  --accent-fg:    #000000;
+  --color-success: #4ec9b0;
+  --color-warning: #dcdcaa;
+  --color-danger:  #f44747;
+  --color-info:    #9cdcfe;
+  --border:        rgba(255 255 255 / 0.08);
+  --border-strong: rgba(255 255 255 / 0.15);
+  --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.4);
+  --shadow-md: 0 8px 24px rgba(0 0 0 / 0.6);
+}
+
+/* ── OceanBlue ───────────────────────────────────────────── */
+[data-theme="ocean-blue"] {
+  --bg-base:       #f0f4f8;
+  --bg-surface:    #ffffff;
+  --bg-elevated:   #e8f0fe;
+  --bg-hover:      #dce8ff;
+  --bg-active:     #c7d9ff;
+  --text-1: #1a2040;
+  --text-2: #4a5680;
+  --text-3: #8892aa;
+  --accent:       #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-fg:    #ffffff;
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-danger:  #dc2626;
+  --color-info:    #0284c7;
+  --border:        rgba(0 0 0 / 0.08);
+  --border-strong: rgba(0 0 0 / 0.15);
+  --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.08);
+  --shadow-md: 0 8px 24px rgba(0 0 0 / 0.12);
+}
+
+/* ── PaperWhite ──────────────────────────────────────────── */
+[data-theme="paper-white"] {
+  --bg-base:       #f5f0eb;
+  --bg-surface:    #fffdf9;
+  --bg-elevated:   #fdf5e8;
+  --bg-hover:      #f0e8d8;
+  --bg-active:     #e8dcc8;
+  --text-1: #2d1f0e;
+  --text-2: #6b5640;
+  --text-3: #a08060;
+  --accent:       #b45309;
+  --accent-hover: #92400e;
+  --accent-fg:    #ffffff;
+  --color-success: #15803d;
+  --color-warning: #b45309;
+  --color-danger:  #b91c1c;
+  --color-info:    #0369a1;
+  --border:        rgba(0 0 0 / 0.08);
+  --border-strong: rgba(0 0 0 / 0.15);
+  --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.08);
+  --shadow-md: 0 8px 24px rgba(0 0 0 / 0.1);
+}
+
+/* ── Sunrise ─────────────────────────────────────────────── */
+[data-theme="sunrise"] {
+  --bg-base:       #fff9f0;
+  --bg-surface:    #ffffff;
+  --bg-elevated:   #fff3e0;
+  --bg-hover:      #ffe8c8;
+  --bg-active:     #ffd9a8;
+  --text-1: #1a0f00;
+  --text-2: #5c3d00;
+  --text-3: #9a6800;
+  --accent:       #ea580c;
+  --accent-hover: #c2410c;
+  --accent-fg:    #ffffff;
+  --color-success: #15803d;
+  --color-warning: #b45309;
+  --color-danger:  #b91c1c;
+  --color-info:    #0369a1;
+  --border:        rgba(0 0 0 / 0.08);
+  --border-strong: rgba(0 0 0 / 0.15);
+  --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.08);
+  --shadow-md: 0 8px 24px rgba(0 0 0 / 0.1);
+}
+
+/* ── HighContrast (WCAG AAA) ─────────────────────────────── */
+[data-theme="high-contrast"] {
+  --bg-base:       #000000;
+  --bg-surface:    #0a0a0a;
+  --bg-elevated:   #141414;
+  --bg-hover:      #1f1f1f;
+  --bg-active:     #2a2a2a;
+  --text-1: #ffffff;
+  --text-2: #cccccc;
+  --text-3: #999999;
+  --accent:       #ffff00;
+  --accent-hover: #ffff66;
+  --accent-fg:    #000000;
+  --color-success: #00ff88;
+  --color-warning: #ffaa00;
+  --color-danger:  #ff4444;
+  --color-info:    #00aaff;
+  --border:        rgba(255 255 255 / 0.3);
+  --border-strong: rgba(255 255 255 / 0.6);
+  --shadow-sm: none;
+  --shadow-md: none;
+}
+
+/* ── Base reset ──────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { font-size: 14px; }
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--text-1);
+  background-color: var(--bg-base);
   -webkit-font-smoothing: antialiased;
-  background-color: rgb(249 250 251);
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbar (dark themes) ─────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+/* ── Focus ring ──────────────────────────────────────────── */
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

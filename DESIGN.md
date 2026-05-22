@@ -1076,6 +1076,157 @@ UI строится итерационно -- каждый шаг синхрон
 
 ---
 
+#### Фаза 8.1 -- Design System & Theme Engine (предусловие для всех следующих фаз)
+
+Закладывается один раз, используется везде. Без этого фундамента каждый следующий экран
+будет стилизован "на глаз" и окажется несовместим с предыдущим.
+
+**Принципы:**
+- UI language: **English only.** No mixed-language labels -- ever.
+- Density: compact but not cramped. Information fits the screen; scrolling is the exception.
+- Readability first: contrast, type scale, line-height. Everything else is secondary.
+- Theming via CSS custom properties (`data-theme` attribute on `<html>`). Zero runtime JS cost.
+
+---
+
+**Темы (реестр):**
+
+| ID              | Family | Character                                                           | Default |
+|-----------------|--------|---------------------------------------------------------------------|---------|
+| `deep-dive`     | Dark   | Deep navy, electric-blue accent. Focus mode -- zero distraction.    | YES     |
+| `night-sky`     | Dark   | Near-black with indigo tones. Warmer than DeepDive.                 |         |
+| `classic-dark`  | Dark   | Classic dark grey like most IDEs. Familiar, safe.                   |         |
+| `ocean-blue`    | Light  | Cool blue-grey surfaces, crisp borders. Professional daytime.       |         |
+| `paper-white`   | Light  | Off-white + warm accents. Easy on the eyes in natural light.        |         |
+| `sunrise`       | Light  | Warm amber tones. Energetic, high-contrast.                         |         |
+| `high-contrast` | Any    | WCAG AAA -- black/white base + saturated accent. For color-blind.   |         |
+
+Пользователь выбирает тему в своём профиле. Сохраняется в `localStorage` + на сервере (Phase 6+).
+
+---
+
+**Цветовые токены (CSS custom properties per theme):**
+
+```
+-- Layer colors --
+--bg-base        base page background
+--bg-surface     cards, panels
+--bg-elevated    dropdowns, popovers, modals
+--bg-hover       interactive hover state
+--bg-active      selected/active item
+
+-- Text --
+--text-1         primary: headings, labels
+--text-2         secondary: descriptions, subtitles
+--text-3         muted: timestamps, metadata, placeholders
+
+-- Accent (primary action) --
+--accent         button bg, links, focus rings
+--accent-hover
+--accent-fg      text on accent bg (always passes WCAG AA)
+
+-- Semantic --
+--color-success  done, passing tests
+--color-warning  at-risk, needs attention
+--color-danger   blocked, failed, overdue
+--color-info     neutral callouts
+
+-- Chrome --
+--border         default border (subtle)
+--border-strong  emphasized dividers, table headers
+--shadow-sm      subtle elevation
+--shadow-md      modal / popover elevation
+```
+
+**DeepDive tokens (reference implementation):**
+
+```css
+[data-theme="deep-dive"] {
+  --bg-base:      #0b0f1a;
+  --bg-surface:   #141929;
+  --bg-elevated:  #1d2540;
+  --bg-hover:     #252d4a;
+  --bg-active:    #2e3857;
+
+  --text-1:  #e2e6f0;
+  --text-2:  #8892aa;
+  --text-3:  #4d5573;
+
+  --accent:       #5b7cf6;
+  --accent-hover: #7b96ff;
+  --accent-fg:    #ffffff;
+
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger:  #ef4444;
+  --color-info:    #38bdf8;
+
+  --border:        rgba(255 255 255 / 0.07);
+  --border-strong: rgba(255 255 255 / 0.14);
+  --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.4);
+  --shadow-md: 0 8px 24px rgba(0 0 0 / 0.6);
+}
+```
+
+---
+
+**Типографика:**
+
+Font: **Inter Variable** (`@fontsource-variable/inter`) -- shipped with the bundle, no CDN.
+Fallback: `system-ui, sans-serif`.
+Mono (code, IDs, hashes): `'JetBrains Mono', 'Fira Code', monospace`.
+
+| Scale token  | Size  | Weight | Use                                     |
+|--------------|-------|--------|-----------------------------------------|
+| `--text-xs`  | 11px  | 400    | badges, table metadata                  |
+| `--text-sm`  | 13px  | 400    | body, form labels, sidebar items        |
+| `--text-base`| 14px  | 400    | default body                            |
+| `--text-md`  | 15px  | 500    | card titles, section headers            |
+| `--text-lg`  | 18px  | 600    | page headings                           |
+| `--text-xl`  | 22px  | 700    | primary view title                      |
+
+Line-height: `1.5` for body, `1.25` for headings. No orphan lines.
+
+---
+
+**Плотность и сетка:**
+
+Базовая единица: `4px`. Все отступы кратны 4.
+
+| Context              | Padding         | Gap    |
+|----------------------|-----------------|--------|
+| Page container       | `24px` H        |        |
+| Card / panel         | `16px`          |        |
+| Compact table row    | `8px` V / `12px` H | `8px`  |
+| Sidebar item         | `8px` V / `12px` H |        |
+| Form group           | `12px` bottom   |        |
+| Inline badge         | `2px` V / `6px` H |        |
+
+---
+
+**Длинные строки и таблицы:**
+
+- Text cells: `truncate` (`text-overflow: ellipsis`) по умолчанию + `title` tooltip с полным текстом.
+- Многострочность включается классом `.multiline` или настройкой пользователя.
+- Таблицы: drag-to-reorder columns (dnd-kit), resize handle, per-column visibility toggle.
+  Настройки сохраняются в `localStorage` под ключом `v42-table-prefs:{viewName}`.
+- Минимальная ширина колонки: `60px`. Максимум по умолчанию: `320px`.
+
+---
+
+**Checklist:**
+
+- [ ] `@fontsource-variable/inter` -- установить, импортировать в `index.css`
+- [ ] `index.css` -- полный реестр CSS-токенов для всех 7 тем
+- [ ] `src/stores/useTheme.ts` -- Zustand store: `theme`, `setTheme()`, persist в localStorage
+- [ ] `src/components/ThemeProvider.tsx` -- ставит `data-theme` на `<html>` при монтировании и смене
+- [ ] `main.tsx` -- обернуть приложение в `<ThemeProvider />`
+- [ ] `src/lib/cn.ts` -- утилита `cn(...classes)` (clsx + tailwind-merge)
+- [ ] Переписать `LoginPage` и `DashboardPage` под токены DeepDive
+- [ ] Smoke test: смена темы в `localStorage` -- страница перерисовывается правильно
+
+---
+
 #### Фаза 8.3 -- Команды и люди (параллельно с Фазой 3 | уже можно)
 
 Бэкенд Фазы 3 сделан. Teams UI -- первый экран после логина.

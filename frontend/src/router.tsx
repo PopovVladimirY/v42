@@ -1,7 +1,8 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
+import { AppShell } from '@/components/layout/AppShell';
 import { LoginPage } from '@/pages/LoginPage';
-import { DashboardPage } from '@/pages/DashboardPage';
+import { TeamsPage } from '@/pages/TeamsPage';
 
 export const router = createBrowserRouter([
   {
@@ -9,11 +10,17 @@ export const router = createBrowserRouter([
     element: <LoginPage />,
   },
   {
-    // All authenticated routes under one guard
+    // Auth guard wraps everything; AppShell provides the sidebar layout.
     element: <ProtectedRoute />,
     children: [
-      { index: true, element: <DashboardPage /> },
-      { path: '/teams', element: <DashboardPage /> }, // Phase 8.3 placeholder
+      {
+        element: <AppShell />,
+        children: [
+          { index: true, element: <Navigate to="/teams" replace /> },
+          { path: '/teams', element: <TeamsPage /> },
+        ],
+      },
     ],
   },
 ]);
+
