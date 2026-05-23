@@ -44,3 +44,8 @@ Desktop.ini
 # --- Temp / Build ---
 tmp/
 *.tmp
+
+backups/*.dump
+exports/*.sql
+exports/*.json
+exports/*.csv

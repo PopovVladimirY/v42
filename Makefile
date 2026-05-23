@@ -1,6 +1,7 @@
 .PHONY: dev build test lint migrate-up migrate-down sqlc \
         docker-up docker-down docker-dev docker-dev-down \
         test-db-up test-db-down test-migrate-up test-migrate-down test-integration \
+        db-dump db-restore \
         clean
 
 -include .env
@@ -42,11 +43,14 @@ vet:
 lint:
 	golangci-lint run ./...
 
-# Apply all pending migrations
-migrate-up:
-	migrate \
-		-database "postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=$(DB_SSL_MODE)" \
-		-path migrations up
+# Apply all pending migrations (auto-dumps DB first as safety net)
+migrate-up: db-dump
+	docker run --rm \
+		-v "$(CURDIR)/migrations:/migrations" \
+		--network v42_default \
+		migrate/migrate \
+		-database "postgres://$(DB_USER):$(DB_PASSWORD)@postgres:5432/$(DB_NAME)?sslmode=$(DB_SSL_MODE)" \
+		-path /migrations up
 
 # Roll back one migration
 migrate-down:
@@ -77,6 +81,31 @@ docker-dev-down:
 # Remove built binary
 clean:
 	rm -rf bin/
+
+# ----------------------------------------------------------------
+# Database backup / restore
+# ----------------------------------------------------------------
+
+DB_CONTAINER := v42-postgres-1
+
+# Dump current DB to ./backups/v42_YYYYMMDD_HHMMSS.dump
+db-dump:
+	@mkdir -p backups
+	$(eval STAMP := $(shell date +%Y%m%d_%H%M%S))
+	@docker exec $(DB_CONTAINER) pg_dump \
+		-U $(DB_USER) -d $(DB_NAME) --no-owner --no-acl -Fc \
+		-f /tmp/v42_$(STAMP).dump
+	@docker cp $(DB_CONTAINER):/tmp/v42_$(STAMP).dump ./backups/v42_$(STAMP).dump
+	@echo "Backup saved: backups/v42_$(STAMP).dump"
+
+# Restore DB from a dump file: make db-restore FILE=backups/v42_....dump
+db-restore:
+	@test -n "$(FILE)" || (echo "Usage: make db-restore FILE=backups/v42_YYYYMMDD_HHMMSS.dump" && exit 1)
+	@echo "Restoring from $(FILE) ..."
+	@docker cp $(FILE) $(DB_CONTAINER):/tmp/restore.dump
+	@docker exec $(DB_CONTAINER) pg_restore \
+		-U $(DB_USER) -d $(DB_NAME) --clean --if-exists /tmp/restore.dump
+	@echo "Restore complete."
 
 # ----------------------------------------------------------------
 # Test infrastructure
