@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	dbgen "github.com/vpo/v42/internal/db/gen"
 	"github.com/vpo/v42/internal/domain"
 )
@@ -17,7 +16,6 @@ type Project struct {
 	Name        string    `json:"name"`
 	Description *string   `json:"description"`
 	Status      string    `json:"status"`
-	TeamID      *string   `json:"team_id"`
 	OwnerID     string    `json:"owner_id"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
@@ -34,7 +32,7 @@ func NewProjectStore(q *dbgen.Queries) *ProjectStore {
 }
 
 func projectFromRow(r dbgen.Project) Project {
-	p := Project{
+	return Project{
 		ID:          uuidToString(r.ID),
 		Name:        r.Name,
 		Description: r.Description,
@@ -43,29 +41,31 @@ func projectFromRow(r dbgen.Project) Project {
 		CreatedAt:   r.CreatedAt.Time,
 		UpdatedAt:   r.UpdatedAt.Time,
 	}
-	if r.TeamID.Valid {
-		v := uuidToString(r.TeamID)
-		p.TeamID = &v
-	}
-	return p
 }
 
 // List returns projects, optionally filtered by teamID or status.
 func (s *ProjectStore) List(ctx context.Context, teamID *string, status *string) ([]Project, error) {
-	var tid pgtype.UUID
-	if teamID != nil {
-		var err error
-		tid, err = parseUUID(*teamID)
-		if err != nil {
-			return nil, domain.ErrNotFound
-		}
-	}
 	var st *dbgen.ProjectStatus
 	if status != nil {
 		v := dbgen.ProjectStatus(*status)
 		st = &v
 	}
-	rows, err := s.q.ListProjects(ctx, dbgen.ListProjectsParams{TeamID: tid, Status: st})
+	if teamID != nil {
+		tid, err := parseUUID(*teamID)
+		if err != nil {
+			return nil, domain.ErrNotFound
+		}
+		rows, err := s.q.ListProjectsByTeam(ctx, dbgen.ListProjectsByTeamParams{TeamID: tid, Status: st})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]Project, len(rows))
+		for i, r := range rows {
+			out[i] = projectFromRow(r)
+		}
+		return out, nil
+	}
+	rows, err := s.q.ListProjects(ctx, st)
 	if err != nil {
 		return nil, err
 	}
@@ -99,29 +99,31 @@ func (s *ProjectStore) Create(ctx context.Context, name string, description *str
 	if err != nil {
 		return nil, domain.ErrNotFound
 	}
-	var tid pgtype.UUID
-	if teamID != nil {
-		tid, err = parseUUID(*teamID)
-		if err != nil {
-			return nil, domain.ErrNotFound
-		}
-	}
 	r, err := s.q.CreateProject(ctx, dbgen.CreateProjectParams{
 		Name:        name,
 		Description: description,
 		Status:      dbgen.ProjectStatus(status),
-		TeamID:      tid,
 		OwnerID:     oid,
 	})
 	if err != nil {
 		return nil, err
 	}
 	p := projectFromRow(r)
+	// Optionally wire up first team immediately.
+	if teamID != nil {
+		tid, err := parseUUID(*teamID)
+		if err == nil {
+			_ = s.q.AddTeamToProject(ctx, dbgen.AddTeamToProjectParams{
+				ProjectID: r.ID,
+				TeamID:    tid,
+			})
+		}
+	}
 	return &p, nil
 }
 
 // Update partially updates a project (PATCH semantics).
-func (s *ProjectStore) Update(ctx context.Context, id string, name, description *string, status *string, teamID *string) (*Project, error) {
+func (s *ProjectStore) Update(ctx context.Context, id string, name, description *string, status *string) (*Project, error) {
 	uid, err := parseUUID(id)
 	if err != nil {
 		return nil, domain.ErrNotFound
@@ -131,19 +133,11 @@ func (s *ProjectStore) Update(ctx context.Context, id string, name, description 
 		v := dbgen.ProjectStatus(*status)
 		st = &v
 	}
-	var tid pgtype.UUID
-	if teamID != nil {
-		tid, err = parseUUID(*teamID)
-		if err != nil {
-			return nil, domain.ErrNotFound
-		}
-	}
 	r, err := s.q.UpdateProject(ctx, dbgen.UpdateProjectParams{
 		ID:          uid,
 		Name:        name,
 		Description: description,
 		Status:      st,
-		TeamID:      tid,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

@@ -17,6 +17,7 @@ var validProjectStatus = map[string]bool{"active": true, "on_hold": true, "archi
 
 type projectHandlers struct {
 	projects *store.ProjectStore
+	teams    *store.ProjectTeamStore
 }
 
 // List handles GET /api/v1/projects
@@ -94,7 +95,6 @@ func (h *projectHandlers) Create(w http.ResponseWriter, r *http.Request) {
 func (h *projectHandlers) Update(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "project_id")
 	var req struct {
-		TeamID      *string `json:"team_id"`
 		Name        *string `json:"name"`
 		Description *string `json:"description"`
 		Status      *string `json:"status"`
@@ -119,7 +119,7 @@ func (h *projectHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid status value")
 		return
 	}
-	p, err := h.projects.Update(r.Context(), id, req.Name, req.Description, req.Status, req.TeamID)
+	p, err := h.projects.Update(r.Context(), id, req.Name, req.Description, req.Status)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			respondErr(w, http.StatusNotFound, "NOT_FOUND", "project not found")
@@ -129,6 +129,58 @@ func (h *projectHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond(w, http.StatusOK, p)
+}
+
+// ListTeams handles GET /api/v1/projects/{project_id}/teams
+func (h *projectHandlers) ListTeams(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "project_id")
+	teams, err := h.teams.ListTeams(r.Context(), id)
+	if err != nil {
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to list teams")
+		return
+	}
+	respond(w, http.StatusOK, teams)
+}
+
+// AddTeam handles POST /api/v1/projects/{project_id}/teams
+func (h *projectHandlers) AddTeam(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "project_id")
+	var req struct {
+		TeamID string `json:"team_id"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1024)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondErr(w, http.StatusBadRequest, "INVALID_JSON", "request body is not valid JSON")
+		return
+	}
+	if req.TeamID == "" {
+		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "team_id is required")
+		return
+	}
+	if err := h.teams.AddTeam(r.Context(), id, req.TeamID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "project or team not found")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to add team")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// RemoveTeam handles DELETE /api/v1/projects/{project_id}/teams/{team_id}
+func (h *projectHandlers) RemoveTeam(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "project_id")
+	teamID := chi.URLParam(r, "team_id")
+	if err := h.teams.RemoveTeam(r.Context(), projectID, teamID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "project or team not found")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to remove team")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Delete handles DELETE /api/v1/projects/{project_id}

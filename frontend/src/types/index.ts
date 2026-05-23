@@ -121,13 +121,21 @@ export type ProjectStatus = 'active' | 'on_hold' | 'completed' | 'archived';
 
 export interface Project {
   id: string;
-  team_id: string;
   name: string;
   description: string | null;
   status: ProjectStatus;
-  created_by: string;
+  owner_id: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface ProjectTeamEntry {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+  added_at: string;
 }
 
 // -- Epics -------------------------------------------------------------------

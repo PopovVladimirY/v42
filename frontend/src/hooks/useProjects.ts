@@ -10,6 +10,7 @@ export const projectKeys = {
   all: ['projects'] as const,
   byTeam: (teamId: string) => ['projects', 'team', teamId] as const,
   detail: (id: string) => ['projects', id] as const,
+  teams: (id: string) => ['projects', id, 'teams'] as const,
 };
 
 export function useProjects(teamId: string) {
@@ -31,6 +32,33 @@ export function useProject(id: string) {
       return data.data;
     },
     enabled: !!id,
+  });
+}
+
+export function useProjectTeams(projectId: string) {
+  return useQuery({
+    queryKey: projectKeys.teams(projectId),
+    queryFn: async () => {
+      const { data } = await projectsApi.listTeams(projectId);
+      return data.data ?? [];
+    },
+    enabled: !!projectId,
+  });
+}
+
+export function useAddProjectTeam(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (teamId: string) => projectsApi.addTeam(projectId, teamId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.teams(projectId) }),
+  });
+}
+
+export function useRemoveProjectTeam(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (teamId: string) => projectsApi.removeTeam(projectId, teamId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.teams(projectId) }),
   });
 }
 

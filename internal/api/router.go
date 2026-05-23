@@ -51,7 +51,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 	}
 	skillH := &skillHandlers{skills: skillStore}
 	teamH := &teamHandlers{teams: store.NewTeamStore(queries)}
-	projectH := &projectHandlers{projects: store.NewProjectStore(queries)}
+	projectH := &projectHandlers{projects: store.NewProjectStore(queries), teams: store.NewProjectTeamStore(queries)}
 	epicH := &epicHandlers{epics: store.NewEpicStore(queries)}
 	backlogH := &backlogHandlers{backlog: store.NewBacklogStore(queries, pool)}
 	taskH := &taskHandlers{tasks: store.NewTaskStore(queries)}
@@ -141,6 +141,11 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 				r.Get("/", projectH.Get)
 				r.With(middleware.RequireRole("admin", "maintainer")).Patch("/", projectH.Update)
 				r.With(middleware.RequireRole("admin")).Delete("/", projectH.Delete)
+
+				// Project teams (M:M)
+				r.Get("/teams", projectH.ListTeams)
+				r.With(middleware.RequireRole("admin", "maintainer")).Post("/teams", projectH.AddTeam)
+				r.With(middleware.RequireRole("admin", "maintainer")).Delete("/teams/{team_id}", projectH.RemoveTeam)
 				r.Get("/epics", epicH.List)
 				r.Get("/epics/{id}", epicH.Get)
 				r.With(middleware.RequireRole("admin", "maintainer")).Post("/epics", epicH.Create)
