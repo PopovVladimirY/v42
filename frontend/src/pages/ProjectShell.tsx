@@ -24,12 +24,13 @@ export function ProjectShell() {
 
   if (isLoading) {
     return (
-      <div className="max-w-5xl mx-auto px-4 py-8">
-        <p className="text-sm" style={{ color: 'var(--text-3)' }}>Loading...</p>
-        {/* Tab nav rendered even during load so tests / deep links don't 404 */}
-        <div className="flex gap-1 mt-4 border-b" style={{ borderColor: 'var(--border)' }}>
+      <div className="h-full flex flex-col overflow-hidden">
+        <div className="flex-shrink-0 flex items-center gap-2 px-4 border-b" style={{ height: 40, borderColor: 'var(--border)' }}>
+          <p className="text-xs" style={{ color: 'var(--text-3)' }}>Loading...</p>
+        </div>
+        <div className="flex-shrink-0 flex border-b px-4" style={{ borderColor: 'var(--border)' }}>
           {TABS.map((tab) => (
-            <span key={tab.label} data-testid={`project-tab-${tab.label.toLowerCase()}`} className="px-4 py-2 text-sm font-medium text-[var(--text-3)]">
+            <span key={tab.label} data-testid={`project-tab-${tab.label.toLowerCase()}`} className="px-4 py-2 text-sm font-medium" style={{ color: 'var(--text-3)' }}>
               {tab.label}
             </span>
           ))}
@@ -41,36 +42,29 @@ export function ProjectShell() {
   const badge = project ? STATUS_BADGE[project.status] : null;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6">
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-xs mb-4" style={{ color: 'var(--text-3)' }}>
-        <Link to="/teams" className="hover:underline" style={{ color: 'var(--accent)' }}>Teams</Link>
-        <span>/</span>
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* Compact header: breadcrumb + name + status on one line */}
+      <div className="flex-shrink-0 flex items-center gap-2 px-4 border-b" style={{ height: 40, borderColor: 'var(--border)' }}>
+        <Link to="/teams" className="text-xs hover:underline flex-shrink-0" style={{ color: 'var(--accent)' }}>Teams</Link>
         {project?.team_id && (
           <>
-            <Link to={`/teams/${project.team_id}/projects`} className="hover:underline" style={{ color: 'var(--accent)' }}>
-              Projects
-            </Link>
-            <span>/</span>
+            <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-3)' }}>/</span>
+            <Link to={`/teams/${project.team_id}/projects`} className="text-xs hover:underline flex-shrink-0" style={{ color: 'var(--accent)' }}>Projects</Link>
           </>
         )}
-        <span style={{ color: 'var(--text-1)' }}>{project?.name ?? '...'}</span>
-      </nav>
-
-      {/* Project title + status */}
-      <div className="flex items-center gap-3 mb-5">
-        <h1 className="text-xl font-semibold" style={{ color: 'var(--text-1)' }}>
+        <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-3)' }}>/</span>
+        <h1 className="text-sm font-semibold truncate" style={{ color: 'var(--text-1)' }}>
           {project?.name}
         </h1>
         {badge && (
-          <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ color: badge.color, background: 'var(--bg-elevated)' }}>
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0" style={{ color: badge.color, background: 'var(--bg-elevated)' }}>
             {badge.label}
           </span>
         )}
       </div>
 
       {/* Tab navigation */}
-      <div className="flex gap-1 mb-6 border-b" style={{ borderColor: 'var(--border)' }}>
+      <div className="flex-shrink-0 flex border-b px-4" style={{ borderColor: 'var(--border)' }}>
         {TABS.map((tab) => (
           <NavLink
             key={tab.label}
@@ -91,8 +85,10 @@ export function ProjectShell() {
         ))}
       </div>
 
-      {/* Routed content */}
-      <Outlet />
+      {/* Routed content -- full height, each child owns its scroll */}
+      <div className="flex-1 overflow-hidden">
+        <Outlet />
+      </div>
     </div>
   );
 }
@@ -105,7 +101,7 @@ export function ProjectOverviewPage() {
   const canEdit = user?.role === 'admin' || user?.role === 'maintainer';
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="h-full overflow-y-auto px-6 py-4 flex flex-col gap-6">
       {project?.description && (
         <section
           className="rounded-xl p-4"

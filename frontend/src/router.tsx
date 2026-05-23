@@ -11,6 +11,8 @@ import { ProjectsPage } from '@/pages/ProjectsPage';
 import { ProjectShell, ProjectOverviewPage } from '@/pages/ProjectShell';
 import { BacklogPage } from '@/pages/BacklogPage';
 import { EpicsPage } from '@/pages/EpicsPage';
+import { SprintsPage } from '@/pages/SprintsPage';
+import { SprintDetailPage } from '@/pages/SprintDetailPage';
 
 export const router = createBrowserRouter([
   {
@@ -43,6 +45,8 @@ export const router = createBrowserRouter([
               { index: true, element: <ProjectOverviewPage /> },
               { path: 'backlog', element: <BacklogPage /> },
               { path: 'epics', element: <EpicsPage /> },
+              { path: 'sprints', element: <SprintsPage /> },
+              { path: 'sprints/:sprintId', element: <SprintDetailPage /> },
             ],
           },
         ],

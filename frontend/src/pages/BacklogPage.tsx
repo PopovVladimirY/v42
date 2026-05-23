@@ -13,30 +13,27 @@ import type { BacklogItem, BacklogItemStatus, BacklogItemType, ClarityQuadrant }
 // -- Constants ---------------------------------------------------------------
 
 const TYPE_OPTS: { value: BacklogItemType; label: string }[] = [
-  { value: 'story',   label: 'Story'   },
-  { value: 'defect',  label: 'Defect'  },
-  { value: 'spike',   label: 'Spike'   },
-  { value: 'test_set', label: 'Test Set' },
+  { value: 'story', label: 'Story' },
+  { value: 'bug',   label: 'Bug'   },
+  { value: 'task',  label: 'Task'  },
+  { value: 'spike', label: 'Spike' },
 ];
 
 const STATUS_OPTS: { value: BacklogItemStatus; label: string; color: string }[] = [
-  { value: 'backlog',     label: 'Backlog',     color: 'var(--text-3)'        },
-  { value: 'ready',       label: 'Ready',       color: 'var(--color-info)'    },
+  { value: 'open',        label: 'Open',        color: 'var(--text-3)'        },
+  { value: 'in_review',   label: 'In Review',   color: 'var(--color-info)'    },
   { value: 'in_progress', label: 'In Progress', color: 'var(--accent)'        },
   { value: 'done',        label: 'Done',        color: 'var(--color-success)' },
   { value: 'cancelled',   label: 'Cancelled',   color: 'var(--text-3)'        },
 ];
 
 const CLARITY_OPTS: { value: ClarityQuadrant; label: string }[] = [
-  { value: 'clear',          label: CLARITY_LABEL.clear          },
-  { value: 'needs_grooming', label: CLARITY_LABEL.needs_grooming },
-  { value: 'risky',          label: CLARITY_LABEL.risky          },
-  { value: 'unclear',        label: CLARITY_LABEL.unclear        },
+  { value: 'clear',   label: CLARITY_LABEL.clear   },
+  { value: 'scoped',  label: CLARITY_LABEL.scoped  },
+  { value: 'tacit',   label: CLARITY_LABEL.tacit   },
+  { value: 'foggy',   label: CLARITY_LABEL.foggy   },
+  { value: 'unknown', label: CLARITY_LABEL.unknown  },
 ];
-
-function statusColor(status: BacklogItemStatus) {
-  return STATUS_OPTS.find((s) => s.value === status)?.color ?? 'var(--text-3)';
-}
 
 // -- Inline status selector --------------------------------------------------
 
@@ -289,7 +286,7 @@ export function BacklogPage() {
   if (!projectId) return null;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="h-full overflow-y-auto px-6 py-4 flex flex-col gap-4">
       {/* Filter bar */}
       <div className="flex flex-wrap gap-2 items-center">
         <select

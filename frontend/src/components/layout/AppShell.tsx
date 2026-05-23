@@ -26,34 +26,6 @@ const NAV_ITEMS = [
       </svg>
     ),
   },
-  {
-    to: '/projects',
-    label: 'Projects',
-    soon: true,
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-        <rect x="1.5" y="1.5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" />
-        <rect x="9.5" y="1.5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" />
-        <rect x="1.5" y="9.5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" />
-        <rect x="9.5" y="9.5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" />
-      </svg>
-    ),
-  },
-  {
-    to: '/sprints',
-    label: 'Sprints',
-    soon: true,
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-        <path
-          d="M2 8a6 6 0 1 1 12 0 6 6 0 0 1-12 0Z"
-          stroke="currentColor"
-          strokeWidth="1.5"
-        />
-        <path d="M8 5v3l2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    ),
-  },
 ];
 
 export function AppShell() {

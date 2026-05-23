@@ -229,7 +229,7 @@ export function EpicsPage() {
   if (!projectId) return null;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="h-full overflow-y-auto px-6 py-4 flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium" style={{ color: 'var(--text-3)' }}>
           {epics.length} epic{epics.length !== 1 ? 's' : ''}
