@@ -13,7 +13,8 @@ import (
 )
 
 // validEpicStatus is the set of accepted epic_status enum values.
-var validEpicStatus = map[string]bool{"draft": true, "active": true, "done": true, "cancelled": true}
+var validEpicStatus = map[string]bool{"open": true, "in_progress": true, "done": true, "cancelled": true}
+var validEpicClarity = map[string]bool{"clear": true, "scoped": true, "tacit": true, "foggy": true, "unknown": true}
 
 type epicHandlers struct {
 	epics *store.EpicStore
@@ -62,6 +63,7 @@ func (h *epicHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		Title       string  `json:"title"`
 		Description *string `json:"description"`
 		Status      string  `json:"status"`
+		Clarity     string  `json:"clarity"`
 		TargetDate  *string `json:"target_date"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4096)
@@ -79,10 +81,17 @@ func (h *epicHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Status == "" {
-		req.Status = "draft"
+		req.Status = "open"
 	}
 	if !validEpicStatus[req.Status] {
 		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid status value")
+		return
+	}
+	if req.Clarity == "" {
+		req.Clarity = "unknown"
+	}
+	if !validEpicClarity[req.Clarity] {
+		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid clarity value")
 		return
 	}
 	e, err := h.epics.Create(r.Context(), projectID, req.Title, req.Description, req.Status, claims.UserID, req.TargetDate)
@@ -105,6 +114,7 @@ func (h *epicHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		Title       *string `json:"title"`
 		Description *string `json:"description"`
 		Status      *string `json:"status"`
+		Clarity     *string `json:"clarity"`
 		TargetDate  *string `json:"target_date"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4096)
@@ -127,6 +137,10 @@ func (h *epicHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid status value")
 		return
 	}
+	if req.Clarity != nil && !validEpicClarity[*req.Clarity] {
+		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid clarity value")
+		return
+	}
 	// Cross-project isolation: verify epic belongs to the URL's project before updating.
 	existing, err := h.epics.GetByID(r.Context(), id)
 	if err != nil {
@@ -141,7 +155,7 @@ func (h *epicHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusNotFound, "NOT_FOUND", "epic not found")
 		return
 	}
-	e, err := h.epics.Update(r.Context(), id, req.Title, req.Description, req.Status, nil, req.TargetDate)
+	e, err := h.epics.Update(r.Context(), id, req.Title, req.Description, req.Status, nil, req.Clarity, req.TargetDate)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			respondErr(w, http.StatusNotFound, "NOT_FOUND", "epic not found")

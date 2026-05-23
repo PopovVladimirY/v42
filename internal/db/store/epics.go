@@ -16,9 +16,11 @@ import (
 type Epic struct {
 	ID          string    `json:"id"`
 	ProjectID   string    `json:"project_id"`
+	Number      int64     `json:"number"`
 	Title       string    `json:"title"`
 	Description *string   `json:"description"`
 	Status      string    `json:"status"`
+	Clarity     string    `json:"clarity"`
 	OwnerID     *string   `json:"owner_id"`
 	TargetDate  *string   `json:"target_date"` // ISO date string "2026-12-31"
 	CreatedAt   time.Time `json:"created_at"`
@@ -35,22 +37,28 @@ func NewEpicStore(q *dbgen.Queries) *EpicStore {
 	return &EpicStore{q: q}
 }
 
-func epicFromRow(r dbgen.Epic) Epic {
+// buildEpic assembles a store.Epic from the raw pgtype fields shared by all
+// sqlc-generated epic row types (CreateEpicRow, GetEpicByIDRow, etc.).
+func buildEpic(id, projectID pgtype.UUID, number int64, title string, description *string,
+	status dbgen.EpicStatus, clarity string, ownerID pgtype.UUID, targetDate pgtype.Date,
+	createdAt, updatedAt pgtype.Timestamptz) Epic {
 	e := Epic{
-		ID:          uuidToString(r.ID),
-		ProjectID:   uuidToString(r.ProjectID),
-		Title:       r.Title,
-		Description: r.Description,
-		Status:      string(r.Status),
-		CreatedAt:   r.CreatedAt.Time,
-		UpdatedAt:   r.UpdatedAt.Time,
+		ID:          uuidToString(id),
+		ProjectID:   uuidToString(projectID),
+		Number:      number,
+		Title:       title,
+		Description: description,
+		Status:      string(status),
+		Clarity:     clarity,
+		CreatedAt:   createdAt.Time,
+		UpdatedAt:   updatedAt.Time,
 	}
-	if r.OwnerID.Valid {
-		v := uuidToString(r.OwnerID)
+	if ownerID.Valid {
+		v := uuidToString(ownerID)
 		e.OwnerID = &v
 	}
-	if r.TargetDate.Valid {
-		v := r.TargetDate.Time.Format("2006-01-02")
+	if targetDate.Valid {
+		v := targetDate.Time.Format("2006-01-02")
 		e.TargetDate = &v
 	}
 	return e
@@ -68,7 +76,7 @@ func (s *EpicStore) List(ctx context.Context, projectID string) ([]Epic, error) 
 	}
 	out := make([]Epic, len(rows))
 	for i, r := range rows {
-		out[i] = epicFromRow(r)
+		out[i] = buildEpic(r.ID, r.ProjectID, r.Number, r.Title, r.Description, r.Status, r.Clarity, r.OwnerID, r.TargetDate, r.CreatedAt, r.UpdatedAt)
 	}
 	return out, nil
 }
@@ -86,7 +94,7 @@ func (s *EpicStore) GetByID(ctx context.Context, id string) (*Epic, error) {
 		}
 		return nil, err
 	}
-	e := epicFromRow(r)
+	e := buildEpic(r.ID, r.ProjectID, r.Number, r.Title, r.Description, r.Status, r.Clarity, r.OwnerID, r.TargetDate, r.CreatedAt, r.UpdatedAt)
 	return &e, nil
 }
 
@@ -125,12 +133,12 @@ func (s *EpicStore) Create(ctx context.Context, projectID, title string, descrip
 		}
 		return nil, err
 	}
-	e := epicFromRow(r)
+	e := buildEpic(r.ID, r.ProjectID, r.Number, r.Title, r.Description, r.Status, r.Clarity, r.OwnerID, r.TargetDate, r.CreatedAt, r.UpdatedAt)
 	return &e, nil
 }
 
 // Update partially updates an epic.
-func (s *EpicStore) Update(ctx context.Context, id string, title, description *string, status, ownerID *string, targetDate *string) (*Epic, error) {
+func (s *EpicStore) Update(ctx context.Context, id string, title, description *string, status, ownerID *string, clarity *string, targetDate *string) (*Epic, error) {
 	uid, err := parseUUID(id)
 	if err != nil {
 		return nil, domain.ErrNotFound
@@ -158,6 +166,7 @@ func (s *EpicStore) Update(ctx context.Context, id string, title, description *s
 		Title:       title,
 		Description: description,
 		Status:      st,
+		Clarity:     clarity,
 		OwnerID:     oid,
 		TargetDate:  td,
 	})
@@ -167,7 +176,7 @@ func (s *EpicStore) Update(ctx context.Context, id string, title, description *s
 		}
 		return nil, err
 	}
-	e := epicFromRow(r)
+	e := buildEpic(r.ID, r.ProjectID, r.Number, r.Title, r.Description, r.Status, r.Clarity, r.OwnerID, r.TargetDate, r.CreatedAt, r.UpdatedAt)
 	return &e, nil
 }
 

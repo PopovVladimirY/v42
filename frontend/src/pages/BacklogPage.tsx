@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   useBacklog,
@@ -7,8 +7,11 @@ import {
   useDeleteBacklogItem,
 } from '@/hooks/useProjects';
 import { useEpics } from '@/hooks/useProjects';
-import { CLARITY_COLOR, CLARITY_LABEL } from '@/types';
+import { useSprints } from '@/hooks/useSprints';
+import { CLARITY_COLOR, CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
 import type { BacklogItem, BacklogItemStatus, BacklogItemType, ClarityQuadrant } from '@/types';
+import { usePaginationStore } from '@/stores/usePagination';
+import { Paginator } from '@/components/Paginator';
 
 // -- Constants ---------------------------------------------------------------
 
@@ -19,12 +22,8 @@ const TYPE_OPTS: { value: BacklogItemType; label: string }[] = [
   { value: 'spike', label: 'Spike' },
 ];
 
-const STATUS_OPTS: { value: BacklogItemStatus; label: string; color: string }[] = [
-  { value: 'open',        label: 'Open',        color: 'var(--text-3)'        },
-  { value: 'in_review',   label: 'In Review',   color: 'var(--color-info)'    },
-  { value: 'in_progress', label: 'In Progress', color: 'var(--accent)'        },
-  { value: 'done',        label: 'Done',        color: 'var(--color-success)' },
-  { value: 'cancelled',   label: 'Cancelled',   color: 'var(--text-3)'        },
+const STATUS_OPTS: BacklogItemStatus[] = [
+  'planned', 'request', 'on_hold', 'open', 'in_progress', 'in_review', 'done', 'cancelled', 'rejected',
 ];
 
 const CLARITY_OPTS: { value: ClarityQuadrant; label: string }[] = [
@@ -46,7 +45,7 @@ function StatusPill({
 }) {
   const update = useUpdateBacklogItem(projectId);
   const [open, setOpen] = useState(false);
-  const current = STATUS_OPTS.find((s) => s.value === item.status);
+  const col = STATUS_COLOR[item.status] ?? { bg: '#6B7280', fg: '#fff' };
 
   return (
     <div className="relative">
@@ -54,32 +53,35 @@ function StatusPill({
         data-testid={`status-pill-${item.id}`}
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
         className="text-xs px-2 py-0.5 rounded-full font-medium"
-        style={{ color: current?.color ?? 'var(--text-3)', background: 'var(--bg-elevated)' }}
+        style={{ background: col.bg, color: col.fg }}
       >
-        {current?.label ?? item.status}
+        {STATUS_LABEL[item.status] ?? item.status}
       </button>
       {open && (
         <div
           className="absolute left-0 top-full mt-1 rounded-lg overflow-hidden z-30 py-1 min-w-32"
           style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', boxShadow: '0 4px 16px rgba(0,0,0,.2)' }}
         >
-          {STATUS_OPTS.map((s) => (
-            <button
-              key={s.value}
-              data-testid={`status-opt-${s.value}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                setOpen(false);
-                if (s.value !== item.status) {
-                  void update.mutate({ itemId: item.id, status: s.value });
-                }
-              }}
-              className="w-full text-left text-xs px-3 py-1.5 hover:bg-[var(--bg-elevated)]"
-              style={{ color: s.color }}
-            >
-              {s.label}
-            </button>
-          ))}
+          {STATUS_OPTS.map((s) => {
+            const c = STATUS_COLOR[s];
+            return (
+              <button
+                key={s}
+                data-testid={`status-opt-${s}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOpen(false);
+                  if (s !== item.status) {
+                    void update.mutate({ itemId: item.id, status: s });
+                  }
+                }}
+                className="w-full text-left text-xs px-3 py-1.5 flex items-center gap-2 hover:bg-[var(--bg-elevated)]"
+              >
+                <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ background: c.bg }} />
+                <span style={{ color: 'var(--text-1)' }}>{STATUS_LABEL[s]}</span>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -100,63 +102,7 @@ function ClarityBadge({ clarity }: { clarity: ClarityQuadrant }) {
   );
 }
 
-// -- Row in the backlog list -------------------------------------------------
 
-function BacklogRow({
-  item,
-  projectId,
-  onDelete,
-}: {
-  item: BacklogItem;
-  projectId: string;
-  onDelete: (id: string) => void;
-}) {
-  return (
-    <div
-      data-testid={`backlog-row-${item.id}`}
-      className="flex items-center gap-3 px-4 py-3 rounded-lg group"
-      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-    >
-      {/* Type chip */}
-      <span className="text-xs font-mono uppercase opacity-50 w-16 flex-shrink-0" style={{ color: 'var(--text-3)' }}>
-        {item.type}
-      </span>
-
-      {/* Title */}
-      <Link
-        to={`/projects/${projectId}/backlog/${item.id}`}
-        className="flex-1 text-sm truncate hover:underline"
-        style={{ color: 'var(--text-1)' }}
-      >
-        {item.title}
-      </Link>
-
-      {/* Clarity */}
-      <ClarityBadge clarity={item.clarity} />
-
-      {/* Status pill */}
-      <StatusPill item={item} projectId={projectId} />
-
-      {/* Estimate */}
-      {item.estimate && (
-        <span className="text-xs font-medium flex-shrink-0" style={{ color: 'var(--text-3)' }}>
-          {item.estimate}
-        </span>
-      )}
-
-      {/* Delete (maintainer+ only, hover reveals) */}
-      <button
-        data-testid={`delete-item-${item.id}`}
-        onClick={() => onDelete(item.id)}
-        className="opacity-0 group-hover:opacity-100 transition-opacity text-xs px-1.5 py-0.5 rounded"
-        style={{ color: 'var(--color-danger)', background: 'var(--danger-muted)' }}
-        title="Delete"
-      >
-        x
-      </button>
-    </div>
-  );
-}
 
 // -- Create item panel -------------------------------------------------------
 
@@ -263,46 +209,109 @@ function CreateItemPanel({
 
 // Persist backlog filters per project in localStorage
 function _filtersKey(projectId: string) { return `v42-backlog-filters-${projectId}`; }
-function _loadFilters(projectId: string) {
+type SavedFilters = { status: BacklogItemStatus | ''; clarity: ClarityQuadrant | ''; epicId: string; sprintId: string; text: string };
+function _loadFilters(projectId: string): SavedFilters | null {
   try {
     const raw = localStorage.getItem(_filtersKey(projectId));
-    return raw ? (JSON.parse(raw) as { status: BacklogItemStatus | ''; clarity: ClarityQuadrant | ''; epicId: string }) : null;
+    return raw ? (JSON.parse(raw) as SavedFilters) : null;
   } catch { return null; }
 }
-function _saveFilters(projectId: string, status: BacklogItemStatus | '', clarity: ClarityQuadrant | '', epicId: string) {
-  try { localStorage.setItem(_filtersKey(projectId), JSON.stringify({ status, clarity, epicId })); } catch { /* quota */ }
+function _saveFilters(projectId: string, f: SavedFilters) {
+  try { localStorage.setItem(_filtersKey(projectId), JSON.stringify(f)); } catch { /* quota */ }
+}
+
+type SortField = 'title' | 'type' | 'clarity' | 'status' | 'sprint';
+type SortDir   = 'asc' | 'desc' | null;
+
+// Cycle: null -> asc -> desc -> null
+function nextSort(cur: SortDir): SortDir {
+  if (cur === null)   return 'asc';
+  if (cur === 'asc')  return 'desc';
+  return null;
 }
 
 export function BacklogPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [showCreate, setShowCreate] = useState(false);
+  const [page, setPage] = useState(1);
+  const pageSize = usePaginationStore((s) => s.getPageSize('backlog'));
 
   // Filter state -- persisted per project
   const saved = projectId ? _loadFilters(projectId) : null;
-  const [filterStatus, setFilterStatusRaw] = useState<BacklogItemStatus | ''>(saved?.status ?? '');
-  const [filterClarity, setFilterClarityRaw] = useState<ClarityQuadrant | ''>(saved?.clarity ?? '');
-  const [filterEpicId, setFilterEpicIdRaw] = useState(saved?.epicId ?? '');
+  const [filterStatus,   setFilterStatusRaw]   = useState<BacklogItemStatus | ''>(saved?.status ?? '');
+  const [filterClarity,  setFilterClarityRaw]  = useState<ClarityQuadrant | ''>(saved?.clarity ?? '');
+  const [filterEpicId,   setFilterEpicIdRaw]   = useState(saved?.epicId ?? '');
+  const [filterSprintId, setFilterSprintIdRaw] = useState(saved?.sprintId ?? '');
+  const [filterText,     setFilterTextRaw]     = useState(saved?.text ?? '');
+  const [sortField,      setSortField]          = useState<SortField | null>(null);
+  const [sortDir,        setSortDir]            = useState<SortDir>(null);
 
-  function setFilterStatus(v: BacklogItemStatus | '') {
-    setFilterStatusRaw(v);
-    if (projectId) _saveFilters(projectId, v, filterClarity, filterEpicId);
+  function _save(overrides: Partial<SavedFilters>) {
+    if (projectId) _saveFilters(projectId, { status: filterStatus, clarity: filterClarity, epicId: filterEpicId, sprintId: filterSprintId, text: filterText, ...overrides });
   }
-  function setFilterClarity(v: ClarityQuadrant | '') {
-    setFilterClarityRaw(v);
-    if (projectId) _saveFilters(projectId, filterStatus, v, filterEpicId);
+  function setFilterStatus(v: BacklogItemStatus | '')   { setFilterStatusRaw(v);   setPage(1); _save({ status: v }); }
+  function setFilterClarity(v: ClarityQuadrant | '')    { setFilterClarityRaw(v);  setPage(1); _save({ clarity: v }); }
+  function setFilterEpicId(v: string)                   { setFilterEpicIdRaw(v);   setPage(1); _save({ epicId: v }); }
+  function setFilterSprintId(v: string)                 { setFilterSprintIdRaw(v); setPage(1); _save({ sprintId: v }); }
+  function setFilterText(v: string)                     { setFilterTextRaw(v);     setPage(1); _save({ text: v }); }
+  function toggleSort(field: SortField) {
+    if (sortField !== field) { setSortField(field); setSortDir('asc'); }
+    else { const d = nextSort(sortDir); setSortDir(d); if (d === null) setSortField(null); }
+    setPage(1);
   }
-  function setFilterEpicId(v: string) {
-    setFilterEpicIdRaw(v);
-    if (projectId) _saveFilters(projectId, filterStatus, filterClarity, v);
+  // Sort indicator ASCII: [^] asc, [v] desc, nothing for neutral
+  function sortMark(field: SortField) {
+    if (sortField !== field || sortDir === null) return '';
+    return sortDir === 'asc' ? ' [^]' : ' [v]';
   }
 
   const { data: epics = [] } = useEpics(projectId ?? '');
-  const { data: items = [], isLoading, isError } = useBacklog(projectId ?? '', {
+  const { data: sprints = [] } = useSprints(projectId ?? '');
+  const { data: backlog = [], isLoading, isError } = useBacklog(projectId ?? '', {
     status: filterStatus || undefined,
     clarity: filterClarity || undefined,
     epic_id: filterEpicId || undefined,
   });
   const deleteItem = useDeleteBacklogItem(projectId ?? '');
+
+  // Client-side text + sprint filter + sort (server handles status/clarity/epic)
+  const items = useMemo(() => {
+    let list = backlog;
+    if (filterText.trim()) {
+      const q = filterText.trim().toLowerCase();
+      list = list.filter((it) =>
+        it.title.toLowerCase().includes(q) ||
+        (it.description ?? '').toLowerCase().includes(q)
+      );
+    }
+    if (filterSprintId === '__none__') {
+      list = list.filter((it) => !it.sprint_id);
+    } else if (filterSprintId) {
+      list = list.filter((it) => it.sprint_id === filterSprintId);
+    }
+    if (sortField && sortDir) {
+      list = [...list].sort((a, b) => {
+        let cmp = 0;
+        if (sortField === 'title')   cmp = a.title.localeCompare(b.title);
+        if (sortField === 'type')    cmp = a.type.localeCompare(b.type);
+        if (sortField === 'clarity') cmp = (a.clarity ?? '').localeCompare(b.clarity ?? '');
+        if (sortField === 'status')  cmp = a.status.localeCompare(b.status);
+        if (sortField === 'sprint') {
+          const sa = a.sprint_name ?? '';
+          const sb = b.sprint_name ?? '';
+          if (!sa && !sb) cmp = 0;
+          else if (!sa) cmp = 1;   // nulls last
+          else if (!sb) cmp = -1;
+          else cmp = sa.localeCompare(sb);
+        }
+        return sortDir === 'asc' ? cmp : -cmp;
+      });
+    }
+    return list;
+  }, [backlog, filterText, filterSprintId, sortField, sortDir]);
+
+  const total     = items.length;
+  const pageItems = items.slice((page - 1) * pageSize, page * pageSize);
 
   function handleDelete(id: string) {
     if (!confirm('Delete this backlog item?')) return;
@@ -312,7 +321,7 @@ export function BacklogPage() {
   if (!projectId) return null;
 
   return (
-    <div className="h-full overflow-y-auto px-6 py-4 flex flex-col gap-4">
+    <div className="px-6 py-4 flex flex-col gap-4">
       {/* Filter bar */}
       <div className="flex flex-wrap gap-2 items-center">
         <select
@@ -324,7 +333,7 @@ export function BacklogPage() {
         >
           <option value="">All statuses</option>
           {STATUS_OPTS.map((s) => (
-            <option key={s.value} value={s.value}>{s.label}</option>
+            <option key={s} value={s}>{STATUS_LABEL[s]}</option>
           ))}
         </select>
 
@@ -356,7 +365,33 @@ export function BacklogPage() {
           </select>
         )}
 
-        <div className="flex-1" />
+        {sprints.length > 0 && (
+          <select
+            data-testid="filter-sprint"
+            value={filterSprintId}
+            onChange={(e) => setFilterSprintId(e.target.value)}
+            className="rounded-md px-2 py-1.5 text-xs outline-none"
+            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+          >
+            <option value="">All sprints</option>
+            <option value="__none__">No sprint</option>
+            {sprints.map((sp) => (
+              <option key={sp.id} value={sp.id}>{sp.name}</option>
+            ))}
+          </select>
+        )}
+
+        <input
+          data-testid="filter-backlog-text"
+          type="search"
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          placeholder="Search title or description..."
+          className="rounded-md px-3 py-1.5 text-xs outline-none flex-1 min-w-40"
+          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+        />
+
+        <span className="text-xs" style={{ color: 'var(--text-3)' }}>{total} item{total !== 1 ? 's' : ''}</span>
 
         <button
           data-testid="add-item-btn"
@@ -374,25 +409,122 @@ export function BacklogPage() {
       )}
 
       {/* List */}
-      {isLoading && (
-        <p className="text-sm" style={{ color: 'var(--text-3)' }}>Loading...</p>
+      {isLoading && <p className="text-sm" style={{ color: 'var(--text-3)' }}>Loading...</p>}
+      {isError   && <p className="text-sm" style={{ color: 'var(--color-danger)' }}>Failed to load backlog.</p>}
+
+      {!isLoading && !isError && (
+        <>
+          <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+            <table className="w-full border-collapse" data-testid="backlog-list">
+              <thead style={{ background: 'var(--bg-elevated)' }}>
+                <tr>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '4rem' }}>ID</th>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '5rem' }}>
+                    <button onClick={() => toggleSort('type')} className="hover:opacity-80">Type{sortMark('type')}</button>
+                  </th>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)' }}>
+                    <button onClick={() => toggleSort('title')} className="hover:opacity-80">Title{sortMark('title')}</button>
+                  </th>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '8rem' }}>Epic</th>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '6rem' }}>
+                    <button onClick={() => toggleSort('clarity')} className="hover:opacity-80">Clarity{sortMark('clarity')}</button>
+                  </th>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '8rem' }}>
+                    <button onClick={() => toggleSort('status')} className="hover:opacity-80">Status{sortMark('status')}</button>
+                  </th>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '3.5rem' }} title="Story points">SP</th>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '8rem' }}>
+                    <button onClick={() => toggleSort('sprint')} className="hover:opacity-80">Sprint{sortMark('sprint')}</button>
+                  </th>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '2rem' }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageItems.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-10 text-center text-sm" style={{ color: 'var(--text-3)' }}>
+                      {total === 0 ? 'Backlog is empty. Add something!' : 'No items on this page.'}
+                    </td>
+                  </tr>
+                )}
+                {pageItems.map((item) => {
+                  const epicTitle = epics.find((e) => e.id === item.epic_id)?.title;
+                  return (
+                    <tr
+                      key={item.id}
+                      data-testid={`backlog-row-${item.id}`}
+                      className="group transition-colors hover:bg-[var(--bg-elevated)]"
+                      style={{ borderBottom: '1px solid var(--border)' }}
+                    >
+                      <td className="px-3 py-2 align-middle" style={{ width: '4rem' }}>
+                        <span className="text-xs font-mono" style={{ color: 'var(--text-3)' }}>B-{item.number}</span>
+                      </td>
+                      <td className="px-3 py-2 align-middle">
+                        <span className="text-xs font-mono uppercase opacity-60" style={{ color: 'var(--text-3)' }}>
+                          {item.type}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 align-middle" style={{ maxWidth: 0 }}>
+                        <Link
+                          to={`/projects/${projectId}/backlog/${item.id}`}
+                          className="block truncate hover:underline text-sm"
+                          style={{ color: 'var(--text-1)' }}
+                          title={item.title}
+                        >
+                          {item.title}
+                        </Link>
+                      </td>
+                      <td className="px-3 py-2 align-middle">
+                        {epicTitle && (
+                          <span className="text-xs truncate block" style={{ color: 'var(--text-3)', maxWidth: '7rem' }} title={epicTitle}>
+                            {epicTitle}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 align-middle">
+                        <ClarityBadge clarity={item.clarity} />
+                      </td>
+                      <td className="px-3 py-2 align-middle">
+                        <StatusPill item={item} projectId={projectId} />
+                      </td>
+                      <td className="px-3 py-2 align-middle">
+                        {item.estimate && (
+                          <span className="text-xs font-mono font-semibold" style={{ color: 'var(--accent)' }}>{item.estimate}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 align-middle">
+                        {item.sprint_name ? (
+                          <span
+                            className="text-xs px-2 py-0.5 rounded font-medium truncate block"
+                            style={{ background: 'var(--bg-elevated)', color: 'var(--text-2)', border: '1px solid var(--border)', maxWidth: '7.5rem' }}
+                            title={item.sprint_name}
+                          >
+                            {item.sprint_name}
+                          </span>
+                        ) : (
+                          <span className="text-xs" style={{ color: 'var(--text-3)' }}>--</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 align-middle">
+                        <button
+                          data-testid={`delete-item-${item.id}`}
+                          onClick={() => handleDelete(item.id)}
+                          title="Delete"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-xs px-1 py-0.5 rounded"
+                          style={{ color: 'var(--color-danger)' }}
+                        >
+                          x
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <Paginator page={page} pageSize={pageSize} total={total} onChange={setPage} />
+        </>
       )}
-      {isError && (
-        <p className="text-sm" style={{ color: 'var(--color-danger)' }}>Failed to load backlog.</p>
-      )}
-      {!isLoading && !isError && items.length === 0 && (
-        <div
-          className="rounded-xl p-10 text-center"
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-        >
-          <p className="text-sm" style={{ color: 'var(--text-3)' }}>Backlog is empty. Add something!</p>
-        </div>
-      )}
-      <div className="flex flex-col gap-2" data-testid="backlog-list">
-        {items.map((item) => (
-          <BacklogRow key={item.id} item={item} projectId={projectId} onDelete={handleDelete} />
-        ))}
-      </div>
     </div>
   );
 }

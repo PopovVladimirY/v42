@@ -9,6 +9,8 @@ import {
 } from '@/hooks/useSprints';
 import type { SprintStatus } from '@/api/endpoints/sprints';
 import { useAuthStore } from '@/hooks/useAuth';
+import { usePaginationStore } from '@/stores/usePagination';
+import { Paginator } from '@/components/Paginator';
 
 // Format "YYYY-MM-DD" to a readable date string
 function fmtDate(d?: string) {
@@ -20,7 +22,7 @@ function fmtDate(d?: string) {
   });
 }
 
-// Fancy status badge for sprint -- colors pulled from the abyss
+// Status badge -- reused in table cell
 function SprintStatusBadge({ status }: { status: SprintStatus }) {
   return (
     <span
@@ -28,70 +30,6 @@ function SprintStatusBadge({ status }: { status: SprintStatus }) {
     >
       {SPRINT_STATUS_LABEL[status]}
     </span>
-  );
-}
-
-// Quick card for a single sprint in the list view
-function SprintCard({
-  sprint,
-  projectId,
-  canDelete,
-  onDelete,
-}: {
-  sprint: { id: string; name: string; status: SprintStatus; start_date?: string; end_date?: string; goal?: string; capacity_hours?: number };
-  projectId: string;
-  canDelete: boolean;
-  onDelete: (id: string) => void;
-}) {
-  return (
-    <div
-      data-testid={`sprint-card-${sprint.id}`}
-      className="rounded-xl p-5 flex flex-col gap-3"
-      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex flex-col gap-1 min-w-0">
-          <Link
-            to={`/projects/${projectId}/sprints/${sprint.id}`}
-            className="text-sm font-medium hover:underline truncate"
-            style={{ color: 'var(--text-1)' }}
-          >
-            {sprint.name}
-          </Link>
-          {sprint.goal && (
-            <p className="text-xs truncate" style={{ color: 'var(--text-3)' }}>{sprint.goal}</p>
-          )}
-        </div>
-        <SprintStatusBadge status={sprint.status} />
-      </div>
-
-      <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--text-3)' }}>
-        <span>{fmtDate(sprint.start_date)} &rarr; {fmtDate(sprint.end_date)}</span>
-        {sprint.capacity_hours != null && (
-          <span>{sprint.capacity_hours}h capacity</span>
-        )}
-      </div>
-
-      <div className="flex items-center justify-between">
-        <Link
-          to={`/projects/${projectId}/sprints/${sprint.id}`}
-          className="text-xs font-medium hover:underline"
-          style={{ color: 'var(--accent)' }}
-        >
-          Open board &rarr;
-        </Link>
-        {canDelete && (
-          <button
-            data-testid={`delete-sprint-${sprint.id}`}
-            onClick={() => onDelete(sprint.id)}
-            className="text-xs hover:opacity-80"
-            style={{ color: 'var(--color-danger)' }}
-          >
-            Delete
-          </button>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -231,21 +169,29 @@ export function SprintsPage() {
   const user = useAuthStore((s) => s.user);
   const canCreate = user?.role === 'admin' || user?.role === 'maintainer';
   const [showModal, setShowModal] = useState(false);
+  const [page, setPage] = useState(1);
+  const pageSize = usePaginationStore((s) => s.getPageSize('sprints'));
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this sprint? Items will be returned to backlog.')) return;
     await deleteSprint.mutateAsync(id);
   };
 
-  const active = sprints.filter((s) => s.status === 'active');
-  const planning = sprints.filter((s) => s.status === 'planning');
-  const done = sprints.filter((s) => s.status === 'completed' || s.status === 'cancelled');
+  // Sort: active first, planning second, then the graveyard
+  const sorted = [...sprints].sort((a, b) => {
+    const order: Record<SprintStatus, number> = { active: 0, planning: 1, completed: 2, cancelled: 3 };
+    return (order[a.status] ?? 9) - (order[b.status] ?? 9);
+  });
+  const total     = sorted.length;
+  const pageItems = sorted.slice((page - 1) * pageSize, page * pageSize);
 
   return (
-    <div className="h-full overflow-y-auto px-6 py-4 flex flex-col gap-6">
+    <div className="px-6 py-4 flex flex-col gap-3">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold" style={{ color: 'var(--text-1)' }}>Sprints</h2>
+        <span className="text-xs font-medium" style={{ color: 'var(--text-3)' }}>
+          {total} sprint{total !== 1 ? 's' : ''}
+        </span>
         {canCreate && (
           <button
             data-testid="new-sprint-btn"
@@ -258,86 +204,94 @@ export function SprintsPage() {
         )}
       </div>
 
-      {isLoading && (
-        <p className="text-sm" style={{ color: 'var(--text-3)' }}>Loading sprints...</p>
-      )}
+      {isLoading && <p className="text-sm" style={{ color: 'var(--text-3)' }}>Loading sprints...</p>}
 
-      {!isLoading && sprints.length === 0 && (
-        <div
-          className="rounded-xl p-8 text-center"
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-        >
-          <p className="text-sm" style={{ color: 'var(--text-3)' }}>No sprints yet.</p>
-          {canCreate && (
-            <button
-              onClick={() => setShowModal(true)}
-              className="mt-3 text-sm font-medium hover:underline"
-              style={{ color: 'var(--accent)' }}
-            >
-              Create the first sprint
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Active sprints -- starring role */}
-      {active.length > 0 && (
-        <section>
-          <p className="text-xs font-medium uppercase tracking-wider mb-3" style={{ color: 'var(--text-3)' }}>
-            Active
-          </p>
-          <div className="flex flex-col gap-3" data-testid="sprints-active">
-            {active.map((s) => (
-              <SprintCard
-                key={s.id}
-                sprint={s}
-                projectId={projectId}
-                canDelete={canCreate}
-                onDelete={handleDelete}
-              />
-            ))}
+      {!isLoading && (
+        <>
+          <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+            <table className="w-full border-collapse" data-testid="sprints-list">
+              <thead style={{ background: 'var(--bg-elevated)' }}>
+                <tr>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '7rem' }}>Status</th>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)' }}>Name</th>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)' }}>Goal</th>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '8rem' }}>Start</th>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '8rem' }}>End</th>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '5rem' }} title="Capacity hours">Cap.</th>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '2rem' }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageItems.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-10 text-center text-sm" style={{ color: 'var(--text-3)' }}>
+                      {total === 0 ? (
+                        <>
+                          No sprints yet.{' '}
+                          {canCreate && (
+                            <button onClick={() => setShowModal(true)} className="font-medium hover:underline" style={{ color: 'var(--accent)' }}>Create the first sprint</button>
+                          )}
+                        </>
+                      ) : 'No items on this page.'}
+                    </td>
+                  </tr>
+                )}
+                {pageItems.map((s) => (
+                  <tr
+                    key={s.id}
+                    data-testid={`sprint-row-${s.id}`}
+                    className="group transition-colors hover:bg-[var(--bg-elevated)]"
+                    style={{ borderBottom: '1px solid var(--border)' }}
+                  >
+                    <td className="px-3 py-2 align-middle">
+                      <SprintStatusBadge status={s.status} />
+                    </td>
+                    <td className="px-3 py-2 align-middle" style={{ maxWidth: 0 }}>
+                      <Link
+                        to={`/projects/${projectId}/sprints/${s.id}`}
+                        className="block truncate text-sm font-medium hover:underline"
+                        style={{ color: 'var(--text-1)' }}
+                        title={s.name}
+                      >
+                        {s.name}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2 align-middle" style={{ maxWidth: 0 }}>
+                      {s.goal && (
+                        <span className="block truncate text-xs" style={{ color: 'var(--text-3)' }} title={s.goal}>{s.goal}</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 align-middle">
+                      <span className="text-xs" style={{ color: 'var(--text-3)' }}>{fmtDate(s.start_date)}</span>
+                    </td>
+                    <td className="px-3 py-2 align-middle">
+                      <span className="text-xs" style={{ color: 'var(--text-3)' }}>{fmtDate(s.end_date)}</span>
+                    </td>
+                    <td className="px-3 py-2 align-middle">
+                      {s.capacity_hours != null && (
+                        <span className="text-xs" style={{ color: 'var(--text-3)' }}>{s.capacity_hours}h</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 align-middle">
+                      {canCreate && (
+                        <button
+                          data-testid={`delete-sprint-${s.id}`}
+                          onClick={() => void handleDelete(s.id)}
+                          title="Delete"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-xs px-1 py-0.5 rounded"
+                          style={{ color: 'var(--color-danger)' }}
+                        >
+                          x
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </section>
-      )}
-
-      {/* Planning -- next up */}
-      {planning.length > 0 && (
-        <section>
-          <p className="text-xs font-medium uppercase tracking-wider mb-3" style={{ color: 'var(--text-3)' }}>
-            Planning
-          </p>
-          <div className="flex flex-col gap-3" data-testid="sprints-planning">
-            {planning.map((s) => (
-              <SprintCard
-                key={s.id}
-                sprint={s}
-                projectId={projectId}
-                canDelete={canCreate}
-                onDelete={handleDelete}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Done & cancelled -- history lives here */}
-      {done.length > 0 && (
-        <section>
-          <p className="text-xs font-medium uppercase tracking-wider mb-3" style={{ color: 'var(--text-3)' }}>
-            Completed / Cancelled
-          </p>
-          <div className="flex flex-col gap-3" data-testid="sprints-done">
-            {done.map((s) => (
-              <SprintCard
-                key={s.id}
-                sprint={s}
-                projectId={projectId}
-                canDelete={canCreate}
-                onDelete={handleDelete}
-              />
-            ))}
-          </div>
-        </section>
+          <Paginator page={page} pageSize={pageSize} total={total} onChange={setPage} />
+        </>
       )}
 
       {showModal && (

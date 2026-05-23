@@ -12,15 +12,15 @@ INSERT INTO backlog_items (
     $13, $14, $15,
     $16
 )
-RETURNING id, project_id, epic_id, release_id, stage_id,
-          title, description, type, status, priority,
+RETURNING id, project_id, number, epic_id, release_id, stage_id,
+          title, description, type, status, clarity, priority,
           estimate, assignee_id, skill_required,
           ac_setup, ac_steps, ac_expected,
           created_by, created_at, updated_at;
 
 -- name: GetBacklogItemByID :one
-SELECT id, project_id, epic_id, release_id, stage_id,
-       title, description, type, status, priority,
+SELECT id, project_id, number, epic_id, release_id, stage_id,
+       title, description, type, status, clarity, priority,
        estimate, assignee_id, skill_required,
        ac_setup, ac_steps, ac_expected,
        created_by, created_at, updated_at
@@ -29,8 +29,8 @@ WHERE id = $1;
 
 -- name: ListBacklogItems :many
 -- Ordered by priority ascending (lower float = higher up).
-SELECT id, project_id, epic_id, release_id, stage_id,
-       title, description, type, status, priority,
+SELECT id, project_id, number, epic_id, release_id, stage_id,
+       title, description, type, status, clarity, priority,
        estimate, assignee_id, skill_required,
        ac_setup, ac_steps, ac_expected,
        created_by, created_at, updated_at
@@ -38,6 +38,7 @@ FROM backlog_items
 WHERE project_id = $1
   AND (sqlc.narg('epic_id')::uuid IS NULL   OR epic_id    = sqlc.narg('epic_id'))
   AND (sqlc.narg('status')::item_status IS NULL OR status = sqlc.narg('status'))
+  AND (sqlc.narg('clarity')::text IS NULL   OR clarity   = sqlc.narg('clarity'))
 ORDER BY priority ASC, created_at ASC;
 
 -- name: UpdateBacklogItem :one
@@ -46,6 +47,7 @@ SET title          = coalesce(sqlc.narg('title'),          title),
     description    = coalesce(sqlc.narg('description'),    description),
     type           = coalesce(sqlc.narg('type'),           type),
     status         = coalesce(sqlc.narg('status'),         status),
+    clarity        = coalesce(sqlc.narg('clarity'),        clarity),
     estimate       = coalesce(sqlc.narg('estimate'),       estimate),
     assignee_id    = coalesce(sqlc.narg('assignee_id'),    assignee_id),
     skill_required = coalesce(sqlc.narg('skill_required'), skill_required),
@@ -57,8 +59,8 @@ SET title          = coalesce(sqlc.narg('title'),          title),
     ac_expected    = coalesce(sqlc.narg('ac_expected'),    ac_expected),
     updated_at     = now()
 WHERE id = $1
-RETURNING id, project_id, epic_id, release_id, stage_id,
-          title, description, type, status, priority,
+RETURNING id, project_id, number, epic_id, release_id, stage_id,
+          title, description, type, status, clarity, priority,
           estimate, assignee_id, skill_required,
           ac_setup, ac_steps, ac_expected,
           created_by, created_at, updated_at;

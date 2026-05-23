@@ -204,7 +204,7 @@ export function SprintDetailPage() {
   ) as Record<BacklogItemStatus, typeof items>;
 
   return (
-    <div className="h-full flex flex-col overflow-hidden" data-testid="sprint-board">
+    <div className="h-full flex flex-col overflow-hidden min-h-0" data-testid="sprint-board">
       {/* Compact header strip: back + name + goal + meta -- one row, no wasted space */}
       <div
         className="flex-shrink-0 flex items-center gap-3 px-4 border-b"

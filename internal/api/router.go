@@ -60,7 +60,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 	testH := &testHandlers{tests: store.NewTestStore(queries)}
 	timeH := &timeEntryHandlers{entries: store.NewTimeEntryStore(queries)}
 	sprintResults := store.NewSprintTestStore(queries)
-	sprintH := &sprintHandlers{sprints: store.NewSprintStore(queries), results: sprintResults}
+	sprintH := &sprintHandlers{sprints: store.NewSprintStore(queries, pool), results: sprintResults}
 	resultH := &sprintResultHandlers{results: sprintResults}
 
 	r.Route("/api/v1", func(r chi.Router) {

@@ -141,14 +141,17 @@ export interface ProjectTeamEntry {
 // -- Epics -------------------------------------------------------------------
 
 export type EpicStatus = 'open' | 'in_progress' | 'done' | 'cancelled';
+export type ClarityQuadrant = 'clear' | 'scoped' | 'tacit' | 'foggy' | 'unknown';
 
 export interface Epic {
   id: string;
   project_id: string;
+  number: number;
   title: string;
   description: string | null;
   owner_id: string | null;
   status: EpicStatus;
+  clarity: ClarityQuadrant;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -157,12 +160,48 @@ export interface Epic {
 // -- Backlog -----------------------------------------------------------------
 
 export type BacklogItemType = 'story' | 'bug' | 'task' | 'spike';
-export type BacklogItemStatus = 'open' | 'in_progress' | 'in_review' | 'done' | 'cancelled';
-export type ClarityQuadrant = 'clear' | 'scoped' | 'tacit' | 'foggy' | 'unknown';
+
+// Pre-sprint statuses (not visible on kanban board)
+// Sprint statuses (shown in kanban columns)
+export type BacklogItemStatus =
+  | 'planned'      // waiting to be picked up (was 'backlog')
+  | 'request'      // incoming request, needs triage
+  | 'on_hold'      // blocked or deferred
+  | 'rejected'     // not going to happen
+  | 'open'         // To Do -- first kanban column (was 'ready')
+  | 'in_progress'  // being worked on
+  | 'in_review'    // under review (was 'review')
+  | 'done'         // complete
+  | 'cancelled';   // cancelled mid-sprint
+
+export const STATUS_COLOR: Record<BacklogItemStatus, { bg: string; fg: string }> = {
+  planned:     { bg: '#6B7280', fg: '#fff' },
+  request:     { bg: '#3B82F6', fg: '#fff' },
+  on_hold:     { bg: '#F59E0B', fg: '#000' },
+  rejected:    { bg: '#EF4444', fg: '#fff' },
+  open:        { bg: '#0EA5E9', fg: '#fff' },
+  in_progress: { bg: '#8B5CF6', fg: '#fff' },
+  in_review:   { bg: '#EC4899', fg: '#fff' },
+  done:        { bg: '#10B981', fg: '#fff' },
+  cancelled:   { bg: '#9CA3AF', fg: '#fff' },
+};
+
+export const STATUS_LABEL: Record<BacklogItemStatus, string> = {
+  planned:     'Planned',
+  request:     'Request',
+  on_hold:     'On Hold',
+  rejected:    'Rejected',
+  open:        'To Do',
+  in_progress: 'In Progress',
+  in_review:   'In Review',
+  done:        'Done',
+  cancelled:   'Cancelled',
+};
 
 export interface BacklogItem {
   id: string;
   project_id: string;
+  number: number;
   epic_id: string | null;
   title: string;
   description: string | null;
@@ -170,11 +209,13 @@ export interface BacklogItem {
   status: BacklogItemStatus;
   clarity: ClarityQuadrant;
   estimate: string | null;
-  story_points: number | null;
   assignee_id: string | null;
   stage_id: string | null;
   release_id: string | null;
   order_index: number;
+  // Sprint membership -- null when not assigned.
+  sprint_id: string | null;
+  sprint_name: string | null;
   // ATDD fields
   ac_setup: string | null;
   ac_steps: string | null;

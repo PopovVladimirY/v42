@@ -1,22 +1,20 @@
 import { useState, useMemo } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { useBacklogItem, useUpdateBacklogItem, useDeleteBacklogItem, useEpics } from '@/hooks/useProjects';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useBacklogItem, useUpdateBacklogItem, useDeleteBacklogItem, useEpics, backlogKeys } from '@/hooks/useProjects';
 import { useTasks, useCreateTask, useUpdateTask, useDeleteTask, useItemTests, useCreateItemTest, useDeleteItemTest } from '@/hooks/useItemDetails';
-import { useSprints, useAddSprintItem } from '@/hooks/useSprints';
+import { useSprints } from '@/hooks/useSprints';
+import { sprintsApi } from '@/api/endpoints/sprints';
 import { useAuthStore } from '@/hooks/useAuth';
-import { CLARITY_COLOR, CLARITY_LABEL } from '@/types';
+import { CLARITY_COLOR, CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
 import type { BacklogItemStatus, ClarityQuadrant, Task, TestType } from '@/types';
 
 // ---------------------------------------------------------------------------
 //  Constants
 // ---------------------------------------------------------------------------
 
-const STATUS_OPTS: { value: BacklogItemStatus; label: string; color: string }[] = [
-  { value: 'open',        label: 'Open',        color: 'var(--text-3)'        },
-  { value: 'in_progress', label: 'In Progress', color: 'var(--accent)'        },
-  { value: 'in_review',   label: 'In Review',   color: 'var(--color-info)'    },
-  { value: 'done',        label: 'Done',        color: 'var(--color-success)' },
-  { value: 'cancelled',   label: 'Cancelled',   color: 'var(--color-danger)'  },
+const STATUS_OPTS: BacklogItemStatus[] = [
+  'planned', 'request', 'on_hold', 'open', 'in_progress', 'in_review', 'done', 'cancelled', 'rejected',
 ];
 
 const TASK_STATUS_OPTS: { value: Task['status']; label: string }[] = [
@@ -266,21 +264,104 @@ function CreateTaskForm({
   );
 }
 
+const SP_OPTS = ['1', '3', '8', '20', '50'] as const;
+
 // ---------------------------------------------------------------------------
-//  Add to Sprint dropdown
+//  Sprint panel -- shows current sprint and allows add/remove/change
 // ---------------------------------------------------------------------------
 
-function AddToSprintButton({
+function SprintPanel({
   projectId,
   itemId,
+  sprintId,
+  sprintName,
 }: {
   projectId: string;
   itemId: string;
+  sprintId: string | null;
+  sprintName: string | null;
 }) {
+  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const { data: sprints = [] } = useSprints(projectId);
   const actionable = sprints.filter((s) => s.status === 'planning' || s.status === 'active');
 
+  function invalidateBacklog() {
+    void qc.invalidateQueries({ queryKey: ['backlog', projectId] });
+    void qc.invalidateQueries({ queryKey: backlogKeys.detail(projectId, itemId) });
+  }
+
+  const addMutation = useMutation({
+    mutationFn: ({ sid }: { sid: string }) => sprintsApi.addItem(projectId, sid, itemId),
+    onSuccess: invalidateBacklog,
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: () => sprintsApi.removeItem(projectId, sprintId!, itemId),
+    onSuccess: invalidateBacklog,
+  });
+
+  if (sprintId) {
+    // Currently in a sprint -- show badge + remove + move-to
+    return (
+      <div className="flex items-center gap-2 flex-wrap">
+        <span
+          className="text-xs px-2 py-1 rounded font-medium"
+          style={{ background: 'var(--bg-elevated)', color: 'var(--color-success)', border: '1px solid var(--border)' }}
+        >
+          {sprintName ?? sprintId}
+        </span>
+        <button
+          onClick={() => void removeMutation.mutate()}
+          disabled={removeMutation.isPending}
+          className="text-xs px-2 py-1 rounded"
+          style={{ color: 'var(--color-danger)', border: '1px solid var(--border)' }}
+        >
+          {removeMutation.isPending ? '...' : 'Remove'}
+        </button>
+        {/* Move to another sprint */}
+        {actionable.filter((s) => s.id !== sprintId).length > 0 && (
+          <div className="relative">
+            <button
+              onClick={() => setOpen((v) => !v)}
+              className="text-xs px-2 py-1 rounded"
+              style={{ border: '1px solid var(--border)', color: 'var(--text-2)' }}
+            >
+              Move to...
+            </button>
+            {open && (
+              <>
+                <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+                <div
+                  className="absolute left-0 top-full mt-1 rounded-lg overflow-hidden z-30 py-1 min-w-40"
+                  style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)' }}
+                >
+                  {actionable.filter((s) => s.id !== sprintId).map((s) => (
+                    <button
+                      key={s.id}
+                      disabled={addMutation.isPending || removeMutation.isPending}
+                      onClick={async () => {
+                        setOpen(false);
+                        await sprintsApi.removeItem(projectId, sprintId, itemId);
+                        await sprintsApi.addItem(projectId, s.id, itemId);
+                        invalidateBacklog();
+                      }}
+                      className="w-full text-left text-xs px-3 py-2 hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                      style={{ color: 'var(--text-1)' }}
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Not in any sprint -- show picker
   return (
     <div className="relative">
       <button
@@ -301,51 +382,27 @@ function AddToSprintButton({
               <p className="text-xs px-3 py-2" style={{ color: 'var(--text-3)' }}>No planning/active sprints</p>
             ) : (
               actionable.map((s) => (
-                <SprintAddOption key={s.id} sprint={s} projectId={projectId} itemId={itemId} onClose={() => setOpen(false)} />
+                <button
+                  key={s.id}
+                  disabled={addMutation.isPending}
+                  onClick={() => { setOpen(false); void addMutation.mutate({ sid: s.id }); }}
+                  className="w-full text-left text-xs px-3 py-2 flex items-center gap-2 hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                  style={{ color: 'var(--text-1)' }}
+                >
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded"
+                    style={{ background: s.status === 'active' ? 'rgba(16,184,154,.15)' : 'rgba(59,130,246,.15)', color: s.status === 'active' ? 'var(--color-success)' : 'var(--color-info)' }}
+                  >
+                    {s.status}
+                  </span>
+                  {s.name}
+                </button>
               ))
             )}
           </div>
         </>
       )}
     </div>
-  );
-}
-
-function SprintAddOption({
-  sprint,
-  projectId,
-  itemId,
-  onClose,
-}: {
-  sprint: { id: string; name: string; status: string };
-  projectId: string;
-  itemId: string;
-  onClose: () => void;
-}) {
-  const add = useAddSprintItem(projectId, sprint.id);
-  const [done, setDone] = useState(false);
-
-  async function handleAdd() {
-    await add.mutateAsync(itemId);
-    setDone(true);
-    setTimeout(onClose, 800);
-  }
-
-  return (
-    <button
-      onClick={() => void handleAdd()}
-      disabled={add.isPending || done}
-      className="w-full text-left text-xs px-3 py-2 flex items-center gap-2 hover:bg-[var(--bg-hover)] disabled:opacity-50"
-      style={{ color: done ? 'var(--color-success)' : 'var(--text-1)' }}
-    >
-      <span
-        className="text-[10px] px-1.5 py-0.5 rounded"
-        style={{ background: sprint.status === 'active' ? 'rgba(16,184,154,.15)' : 'rgba(59,130,246,.15)', color: sprint.status === 'active' ? 'var(--color-success)' : 'var(--color-info)' }}
-      >
-        {sprint.status}
-      </span>
-      {done ? 'Added!' : sprint.name}
-    </button>
   );
 }
 
@@ -393,7 +450,7 @@ export function BacklogItemDetailPage() {
   }
 
   const epic = epics.find((e) => e.id === item.epic_id);
-  const currentStatus = STATUS_OPTS.find((s) => s.value === item.status);
+  const statusCol = STATUS_COLOR[item.status] ?? { bg: '#6B7280', fg: '#fff' };
 
   function startEditDesc() {
     setDescDraft(item.description ?? '');
@@ -415,7 +472,7 @@ export function BacklogItemDetailPage() {
   const testsPassing = tests.length; // no run status at this level, just count
 
   return (
-    <div className="h-full overflow-y-auto px-6 py-4 flex flex-col gap-5">
+    <div className="px-6 py-4 flex flex-col gap-5">
 
       {/* ── Header ── */}
       <div className="flex items-start gap-3 flex-wrap">
@@ -439,9 +496,9 @@ export function BacklogItemDetailPage() {
             )}
             <span
               className="text-xs px-2 py-0.5 rounded-full font-medium"
-              style={{ color: currentStatus?.color ?? 'var(--text-3)', background: 'var(--bg-elevated)' }}
+              style={{ background: statusCol.bg, color: statusCol.fg }}
             >
-              {currentStatus?.label ?? item.status}
+              {STATUS_LABEL[item.status] ?? item.status}
             </span>
             <span
               className="text-xs px-2 py-0.5 rounded font-medium text-white"
@@ -450,15 +507,28 @@ export function BacklogItemDetailPage() {
               {CLARITY_LABEL[item.clarity]}
             </span>
             {item.estimate && (
-              <span className="text-xs" style={{ color: 'var(--text-3)' }}>
-                {item.estimate}
-                {item.story_points != null ? ` / ${item.story_points}sp` : ''}
+              <span className="text-xs font-mono font-semibold" style={{ color: 'var(--accent)' }}>
+                {item.estimate} SP
               </span>
             )}
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <AddToSprintButton projectId={projectId} itemId={itemId} />
+          {/* SP selector */}
+          <select
+            data-testid="sp-selector"
+            value={item.estimate ?? ''}
+            onChange={(e) => void updateItem.mutate({ itemId: item.id, estimate: e.target.value || '' })}
+            title="Story points"
+            className="text-xs px-2 py-1.5 rounded-lg outline-none"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+          >
+            <option value="">-- SP</option>
+            {SP_OPTS.map((v) => (
+              <option key={v} value={v}>{v} SP</option>
+            ))}
+          </select>
+          <SprintPanel projectId={projectId} itemId={itemId} sprintId={item.sprint_id ?? null} sprintName={item.sprint_name ?? null} />
           {canManage && (
             <button
               onClick={() => void handleDelete()}

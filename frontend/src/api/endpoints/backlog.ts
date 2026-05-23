@@ -22,7 +22,6 @@ export const backlogApi = {
     description?: string;
     epic_id?: string;
     estimate?: string;
-    story_points?: number;
     assignee_id?: string;
   }) =>
     client.post<ApiResponse<BacklogItem>>(`/projects/${projectId}/backlog`, data),
@@ -33,8 +32,7 @@ export const backlogApi = {
     type?: BacklogItemType;
     status?: BacklogItemStatus;
     clarity?: ClarityQuadrant;
-    estimate?: string;
-    story_points?: number;
+    estimate?: string | null;
     assignee_id?: string;
     epic_id?: string;
     ac_setup?: string;

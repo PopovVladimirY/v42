@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	dbgen "github.com/vpo/v42/internal/db/gen"
 	"github.com/vpo/v42/internal/domain"
 )
@@ -44,12 +45,13 @@ type SprintItem struct {
 
 // SprintStore wraps sqlc sprint queries.
 type SprintStore struct {
-	q *dbgen.Queries
+	q    *dbgen.Queries
+	pool *pgxpool.Pool
 }
 
 // NewSprintStore returns a SprintStore.
-func NewSprintStore(q *dbgen.Queries) *SprintStore {
-	return &SprintStore{q: q}
+func NewSprintStore(q *dbgen.Queries, pool *pgxpool.Pool) *SprintStore {
+	return &SprintStore{q: q, pool: pool}
 }
 
 func sprintFromRow(r dbgen.Sprint) Sprint {
@@ -206,7 +208,8 @@ func (s *SprintStore) Delete(ctx context.Context, id string) error {
 	return s.q.DeleteSprint(ctx, uid)
 }
 
-// AddItem adds a backlog item to a sprint.
+// AddItem adds a backlog item to a sprint and promotes its status to 'open'
+// if it was in a pre-sprint state (planned/request/on_hold/backlog/ready).
 func (s *SprintStore) AddItem(ctx context.Context, sprintID, backlogItemID string) error {
 	sid, err := parseUUID(sprintID)
 	if err != nil {
@@ -224,14 +227,20 @@ func (s *SprintStore) AddItem(ctx context.Context, sprintID, backlogItemID strin
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
-			case "23503": // foreign_key_violation — sprint or backlog item does not exist
+			case "23503": // foreign_key_violation -- sprint or backlog item does not exist
 				return domain.ErrNotFound
-			case "23505": // unique_violation — item already committed to this sprint
+			case "23505": // unique_violation -- item already committed to this sprint
 				return domain.ErrConflict
 			}
 		}
 		return err
 	}
+	// Promote pre-sprint statuses to 'open' (To Do column on kanban board).
+	_, _ = s.pool.Exec(ctx,
+		`UPDATE backlog_items SET status = 'open'
+		 WHERE id = $1 AND status IN ('planned', 'request', 'on_hold', 'backlog', 'ready')`,
+		bid,
+	)
 	return nil
 }
 

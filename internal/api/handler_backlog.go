@@ -14,12 +14,15 @@ import (
 
 // validBacklogItemStatus is the set of accepted item_status enum values.
 var validBacklogItemStatus = map[string]bool{
-	"backlog":     true,
-	"ready":       true,
+	"planned":     true,
+	"request":     true,
+	"on_hold":     true,
+	"open":        true,
 	"in_progress": true,
-	"review":      true,
+	"in_review":   true,
 	"done":        true,
 	"cancelled":   true,
+	"rejected":    true,
 }
 
 // validBacklogItemType is the set of accepted item_type enum values.
@@ -39,13 +42,17 @@ func (h *backlogHandlers) List(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "project_id")
 	var epicID *string
 	var status *string
+	var clarity *string
 	if v := r.URL.Query().Get("epic_id"); v != "" {
 		epicID = &v
 	}
 	if v := r.URL.Query().Get("status"); v != "" {
 		status = &v
 	}
-	items, err := h.backlog.List(r.Context(), projectID, epicID, status)
+	if v := r.URL.Query().Get("clarity"); v != "" {
+		clarity = &v
+	}
+	items, err := h.backlog.List(r.Context(), projectID, epicID, status, clarity)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			respondErr(w, http.StatusNotFound, "NOT_FOUND", "project not found")
@@ -116,7 +123,7 @@ func (h *backlogHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Status == "" {
-		req.Status = "backlog"
+		req.Status = "planned"
 	}
 	if !validBacklogItemStatus[req.Status] {
 		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid status value")
@@ -166,6 +173,7 @@ func (h *backlogHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		Description   *string `json:"description"`
 		Type          *string `json:"type"`
 		Status        *string `json:"status"`
+		Clarity       *string `json:"clarity"`
 		Estimate      *string `json:"estimate"`
 		AssigneeID    *string `json:"assignee_id"`
 		SkillRequired *string `json:"skill_required"`
@@ -216,6 +224,7 @@ func (h *backlogHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		Description:   req.Description,
 		Type:          req.Type,
 		Status:        req.Status,
+		Clarity:       req.Clarity,
 		Estimate:      req.Estimate,
 		AssigneeID:    req.AssigneeID,
 		SkillRequired: req.SkillRequired,

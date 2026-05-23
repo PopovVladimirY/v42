@@ -88,8 +88,8 @@ export function ProjectShell() {
         ))}
       </div>
 
-      {/* Routed content -- full height, each child owns its scroll */}
-      <div className="flex-1 overflow-hidden">
+      {/* Routed content -- scroll lives here; min-h-0 keeps flex child bounded */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
         <Outlet />
       </div>
     </div>
@@ -120,7 +120,7 @@ export function ProjectOverviewPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto px-6 py-4 flex flex-col gap-6">
+    <div className="px-6 py-4 flex flex-col gap-6">
       {project?.description && (
         <section
           className="rounded-xl p-4"

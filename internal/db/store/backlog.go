@@ -17,6 +17,7 @@ import (
 type BacklogItem struct {
 	ID            string    `json:"id"`
 	ProjectID     string    `json:"project_id"`
+	Number        int64     `json:"number"`
 	EpicID        *string   `json:"epic_id"`
 	ReleaseID     *string   `json:"release_id"`
 	StageID       *string   `json:"stage_id"`
@@ -24,6 +25,7 @@ type BacklogItem struct {
 	Description   *string   `json:"description"`
 	Type          string    `json:"type"`
 	Status        string    `json:"status"`
+	Clarity       string    `json:"clarity"`
 	Priority      float64   `json:"priority"`
 	Estimate      *string   `json:"estimate"`
 	AssigneeID    *string   `json:"assignee_id"`
@@ -34,6 +36,9 @@ type BacklogItem struct {
 	CreatedBy     string    `json:"created_by"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
+	// Sprint membership -- nil when not in any sprint.
+	SprintID   *string `json:"sprint_id"`
+	SprintName *string `json:"sprint_name"`
 }
 
 // ReorderItem is a single priority update in a reorder request.
@@ -53,48 +58,86 @@ func NewBacklogStore(q *dbgen.Queries, pool *pgxpool.Pool) *BacklogStore {
 	return &BacklogStore{q: q, pool: pool}
 }
 
-func backlogItemFromRow(r dbgen.BacklogItem) BacklogItem {
+// buildBacklogItem assembles a store.BacklogItem from fields shared by all
+// sqlc-generated backlog row types.
+func buildBacklogItem(id, projectID pgtype.UUID, number int64, epicID, releaseID, stageID pgtype.UUID,
+	title string, description *string, typ dbgen.ItemType, status dbgen.ItemStatus, clarity string,
+	priority float64, estimate *string, assigneeID, skillRequired pgtype.UUID,
+	acSetup, acSteps, acExpected *string, createdBy pgtype.UUID,
+	createdAt, updatedAt pgtype.Timestamptz) BacklogItem {
 	b := BacklogItem{
-		ID:          uuidToString(r.ID),
-		ProjectID:   uuidToString(r.ProjectID),
-		Title:       r.Title,
-		Description: r.Description,
-		Type:        string(r.Type),
-		Status:      string(r.Status),
-		Priority:    r.Priority,
-		Estimate:    r.Estimate,
-		AcSetup:     r.AcSetup,
-		AcSteps:     r.AcSteps,
-		AcExpected:  r.AcExpected,
-		CreatedBy:   uuidToString(r.CreatedBy),
-		CreatedAt:   r.CreatedAt.Time,
-		UpdatedAt:   r.UpdatedAt.Time,
+		ID:          uuidToString(id),
+		ProjectID:   uuidToString(projectID),
+		Number:      number,
+		Title:       title,
+		Description: description,
+		Type:        string(typ),
+		Status:      string(status),
+		Clarity:     clarity,
+		Priority:    priority,
+		Estimate:    estimate,
+		AcSetup:     acSetup,
+		AcSteps:     acSteps,
+		AcExpected:  acExpected,
+		CreatedBy:   uuidToString(createdBy),
+		CreatedAt:   createdAt.Time,
+		UpdatedAt:   updatedAt.Time,
 	}
-	if r.EpicID.Valid {
-		v := uuidToString(r.EpicID)
-		b.EpicID = &v
-	}
-	if r.ReleaseID.Valid {
-		v := uuidToString(r.ReleaseID)
-		b.ReleaseID = &v
-	}
-	if r.StageID.Valid {
-		v := uuidToString(r.StageID)
-		b.StageID = &v
-	}
-	if r.AssigneeID.Valid {
-		v := uuidToString(r.AssigneeID)
-		b.AssigneeID = &v
-	}
-	if r.SkillRequired.Valid {
-		v := uuidToString(r.SkillRequired)
-		b.SkillRequired = &v
-	}
+	if epicID.Valid      { v := uuidToString(epicID);      b.EpicID = &v }
+	if releaseID.Valid   { v := uuidToString(releaseID);   b.ReleaseID = &v }
+	if stageID.Valid     { v := uuidToString(stageID);     b.StageID = &v }
+	if assigneeID.Valid  { v := uuidToString(assigneeID);  b.AssigneeID = &v }
+	if skillRequired.Valid { v := uuidToString(skillRequired); b.SkillRequired = &v }
 	return b
 }
 
+// sprintMembership holds sprint info for a single backlog item.
+type sprintMembership struct {
+	SprintID   string
+	SprintName string
+}
+
+// loadSprintMemberships fetches sprint assignments for a set of backlog item IDs
+// in one query and returns a map of itemID -> membership.
+func (s *BacklogStore) loadSprintMemberships(ctx context.Context, ids []pgtype.UUID) map[string]sprintMembership {
+	if len(ids) == 0 {
+		return nil
+	}
+	strIDs := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id.Valid {
+			strIDs = append(strIDs, uuidToString(id))
+		}
+	}
+	if len(strIDs) == 0 {
+		return nil
+	}
+	out := make(map[string]sprintMembership, len(strIDs))
+	rows, err := s.pool.Query(ctx,
+		`SELECT si.backlog_item_id::text, sp.id::text, sp.name
+		 FROM sprint_items si
+		 JOIN sprints sp ON sp.id = si.sprint_id
+		 WHERE si.backlog_item_id::text = ANY($1::text[])`,
+		strIDs,
+	)
+	if err != nil {
+		return out // non-fatal: sprint info is optional enrichment
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var itemID, sprintID, name string
+		if rows.Scan(&itemID, &sprintID, &name) == nil {
+			out[itemID] = sprintMembership{
+				SprintID:   sprintID,
+				SprintName: name,
+			}
+		}
+	}
+	return out
+}
+
 // List returns backlog items for a project, optionally filtered.
-func (s *BacklogStore) List(ctx context.Context, projectID string, epicID *string, status *string) ([]BacklogItem, error) {
+func (s *BacklogStore) List(ctx context.Context, projectID string, epicID *string, status *string, clarity *string) ([]BacklogItem, error) {
 	pid, err := parseUUID(projectID)
 	if err != nil {
 		return nil, domain.ErrNotFound
@@ -115,13 +158,24 @@ func (s *BacklogStore) List(ctx context.Context, projectID string, epicID *strin
 		ProjectID: pid,
 		EpicID:    eid,
 		Status:    st,
+		Clarity:   clarity,
 	})
 	if err != nil {
 		return nil, err
 	}
+	ids := make([]pgtype.UUID, len(rows))
+	for i, r := range rows {
+		ids[i] = r.ID
+	}
+	sprints := s.loadSprintMemberships(ctx, ids)
 	out := make([]BacklogItem, len(rows))
 	for i, r := range rows {
-		out[i] = backlogItemFromRow(r)
+		b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
+		if m, ok := sprints[b.ID]; ok {
+			b.SprintID = &m.SprintID
+			b.SprintName = &m.SprintName
+		}
+		out[i] = b
 	}
 	return out, nil
 }
@@ -139,7 +193,13 @@ func (s *BacklogStore) GetByID(ctx context.Context, id string) (*BacklogItem, er
 		}
 		return nil, err
 	}
-	b := backlogItemFromRow(r)
+	b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
+	if m := s.loadSprintMemberships(ctx, []pgtype.UUID{uid}); m != nil {
+		if info, ok := m[b.ID]; ok {
+			b.SprintID = &info.SprintID
+			b.SprintName = &info.SprintName
+		}
+	}
 	return &b, nil
 }
 
@@ -225,7 +285,7 @@ func (s *BacklogStore) Create(ctx context.Context, req CreateBacklogItemRequest)
 		}
 		return nil, err
 	}
-	b := backlogItemFromRow(r)
+	b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
 	return &b, nil
 }
 
@@ -236,6 +296,7 @@ type UpdateBacklogItemRequest struct {
 	Description   *string
 	Type          *string
 	Status        *string
+	Clarity       *string
 	Estimate      *string
 	AssigneeID    *string
 	SkillRequired *string
@@ -252,6 +313,11 @@ func (s *BacklogStore) Update(ctx context.Context, req UpdateBacklogItemRequest)
 	uid, err := parseUUID(req.ID)
 	if err != nil {
 		return nil, domain.ErrNotFound
+	}
+	// Empty string estimate means "clear to NULL" -- don't pass to COALESCE.
+	clearEstimate := req.Estimate != nil && *req.Estimate == ""
+	if clearEstimate {
+		req.Estimate = nil
 	}
 	var tp *dbgen.ItemType
 	if req.Type != nil {
@@ -295,6 +361,7 @@ func (s *BacklogStore) Update(ctx context.Context, req UpdateBacklogItemRequest)
 		Description:   req.Description,
 		Type:          tp,
 		Status:        st,
+		Clarity:       req.Clarity,
 		Estimate:      req.Estimate,
 		AssigneeID:    aid,
 		SkillRequired: skr,
@@ -311,7 +378,16 @@ func (s *BacklogStore) Update(ctx context.Context, req UpdateBacklogItemRequest)
 		}
 		return nil, err
 	}
-	b := backlogItemFromRow(r)
+	b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
+	// Explicitly clear estimate in the DB when empty string was sent.
+	if clearEstimate {
+		_, _ = s.pool.Exec(ctx, `UPDATE backlog_items SET estimate = NULL, updated_at = now() WHERE id = $1`, uid)
+		b.Estimate = nil
+	}
+	// When status is reset to a pre-sprint value, auto-remove from any active sprint.
+	if req.Status != nil && (*req.Status == "planned" || *req.Status == "request" || *req.Status == "on_hold" || *req.Status == "rejected") {
+		_, _ = s.pool.Exec(ctx, `DELETE FROM sprint_items WHERE backlog_item_id = $1`, uid)
+	}
 	return &b, nil
 }
 

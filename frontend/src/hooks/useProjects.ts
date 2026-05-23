@@ -114,7 +114,7 @@ export function useCreateEpic(projectId: string) {
 export function useUpdateEpic(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ epicId, ...data }: { epicId: string; title?: string; status?: EpicStatus; owner_id?: string }) =>
+    mutationFn: ({ epicId, ...data }: { epicId: string; title?: string; description?: string; status?: EpicStatus; clarity?: ClarityQuadrant; owner_id?: string; target_date?: string }) =>
       epicsApi.update(projectId, epicId, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: epicKeys.byProject(projectId) }),
   });
@@ -175,6 +175,7 @@ export function useUpdateBacklogItem(projectId: string) {
       title?: string;
       status?: BacklogItemStatus;
       clarity?: ClarityQuadrant;
+      estimate?: string | null;
       epic_id?: string;
       assignee_id?: string;
       ac_setup?: string;

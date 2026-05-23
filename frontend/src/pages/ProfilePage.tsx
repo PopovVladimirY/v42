@@ -7,6 +7,8 @@ import {
 import { useAuthStore } from '@/hooks/useAuth';
 import { useThemeStore, THEMES } from '@/stores/useTheme';
 import type { Theme } from '@/stores/useTheme';
+import { usePaginationStore, VALID_SIZES } from '@/stores/usePagination';
+import type { PageCategory } from '@/stores/usePagination';
 import { authApi } from '@/api/endpoints/auth';
 import { usersApi, skillsApi } from '@/api/endpoints/users';
 import { teamsApi } from '@/api/endpoints/teams';
@@ -288,6 +290,47 @@ function SkillEditor({
         </button>
       </div>
     </div>
+  );
+}
+
+// ------------------------------------------------------------------
+// Display Preferences -- page sizes per category
+// ------------------------------------------------------------------
+
+const PAGE_CATEGORIES: { key: PageCategory; label: string }[] = [
+  { key: 'backlog', label: 'Backlog' },
+  { key: 'epics',   label: 'Epics'   },
+  { key: 'sprints', label: 'Sprints' },
+];
+
+function DisplayPrefsSection() {
+  const pageSizes  = usePaginationStore((s) => s.pageSizes);
+  const setPageSize = usePaginationStore((s) => s.setPageSize);
+
+  return (
+    <section className="mb-8">
+      <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
+        Display Preferences
+      </h2>
+      <div className="rounded-xl p-4 flex flex-col gap-3" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+        <p className="text-xs" style={{ color: 'var(--text-3)' }}>Rows per page in list views</p>
+        {PAGE_CATEGORIES.map(({ key, label }) => (
+          <div key={key} className="flex items-center justify-between gap-4">
+            <span className="text-sm" style={{ color: 'var(--text-2)' }}>{label}</span>
+            <select
+              value={pageSizes[key]}
+              onChange={(e) => setPageSize(key, Number(e.target.value) as typeof VALID_SIZES[number])}
+              className="text-sm px-2 py-1.5 rounded-md"
+              style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+            >
+              {VALID_SIZES.map((s) => (
+                <option key={s} value={s}>{s} rows</option>
+              ))}
+            </select>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -628,6 +671,9 @@ export function ProfilePage() {
             </div>
           </section>
         )}
+
+        {/* Display Preferences -- page sizes per category */}
+        <DisplayPrefsSection />
 
         {/* Account security */}
         <section>
