@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   DndContext,
   DragOverlay,
@@ -19,9 +20,13 @@ import {
 } from '@/hooks/useProjects';
 import { useEpics } from '@/hooks/useProjects';
 import { useSprints } from '@/hooks/useSprints';
-import { useTasks, useItemTests, useMoveTask, useMoveItemTest } from '@/hooks/useItemDetails';
+import { sprintsApi, type Sprint } from '@/api/endpoints/sprints';
+import {
+  useTasks, useItemTests, useMoveTask, useMoveItemTest,
+  useCreateTask, useCreateItemTest, useDeleteTask, useDeleteItemTest, useUpdateTask, useUpdateItemTest,
+} from '@/hooks/useItemDetails';
 import { CLARITY_COLOR, CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
-import type { BacklogItem, BacklogItemStatus, BacklogItemType, ClarityQuadrant, Task, TestSpec } from '@/types';
+import type { BacklogItem, BacklogItemStatus, BacklogItemType, ClarityQuadrant, Epic, Task, TestSpec } from '@/types';
 import { usePaginationStore } from '@/stores/usePagination';
 import { Paginator } from '@/components/Paginator';
 
@@ -45,6 +50,17 @@ const CLARITY_OPTS: { value: ClarityQuadrant; label: string }[] = [
   { value: 'foggy',   label: CLARITY_LABEL.foggy   },
   { value: 'unknown', label: CLARITY_LABEL.unknown  },
 ];
+
+const ESTIMATE_OPTS = ['', '1', '3', '8', '20', '50'];
+
+// -- EditDraft for inline editing backlog item rows --------------------------
+
+interface EditDraft {
+  title: string;
+  epic_id: string;
+  estimate: string;
+  sprint_id: string;
+}
 
 // -- Inline status selector --------------------------------------------------
 
@@ -116,16 +132,115 @@ function ClarityBadge({ clarity }: { clarity: ClarityQuadrant }) {
 
 
 
+// -- Inline edit row for a backlog item -------------------------------------
+
+function BacklogItemEditRow({
+  item,
+  epics,
+  sprints,
+  draft,
+  onChange,
+  onSave,
+  onCancel,
+  isSaving,
+}: {
+  item: BacklogItem;
+  epics: Epic[];
+  sprints: Sprint[];
+  draft: EditDraft;
+  onChange: (patch: Partial<EditDraft>) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  isSaving: boolean;
+}) {
+  const sel: React.CSSProperties = {
+    background: 'var(--bg-elevated)',
+    border: '1px solid var(--accent)',
+    color: 'var(--text-1)',
+    borderRadius: '0.25rem',
+    fontSize: '0.75rem',
+    padding: '0.125rem 0.25rem',
+    outline: 'none',
+    maxWidth: '100%',
+  };
+  return (
+    <tr style={{ background: 'var(--bg-elevated)', outline: '2px solid var(--accent)', outlineOffset: '-2px' }}>
+      <td className="px-2 py-1.5" style={{ width: '2rem' }} />
+      <td className="px-3 py-1.5" style={{ width: '4rem' }}>
+        <span className="text-xs font-mono" style={{ color: 'var(--text-3)' }}>B-{item.number}</span>
+      </td>
+      <td className="px-3 py-1.5" style={{ width: '5rem' }}>
+        <span className="text-xs font-mono uppercase opacity-60" style={{ color: 'var(--text-3)' }}>{item.type}</span>
+      </td>
+      <td className="px-3 py-1.5">
+        <input
+          autoFocus
+          value={draft.title}
+          onChange={(e) => onChange({ title: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); onSave(); }
+            if (e.key === 'Escape') onCancel();
+          }}
+          className="w-full text-sm rounded px-2 py-0.5 outline-none"
+          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--accent)', color: 'var(--text-1)' }}
+        />
+      </td>
+      <td className="px-3 py-1.5" style={{ width: '8rem' }}>
+        <select value={draft.epic_id} onChange={(e) => onChange({ epic_id: e.target.value })} style={sel}>
+          <option value="">No epic</option>
+          {epics.map((ep) => <option key={ep.id} value={ep.id}>{ep.title}</option>)}
+        </select>
+      </td>
+      <td className="px-3 py-1.5" style={{ width: '6rem' }}>
+        <ClarityBadge clarity={item.clarity} />
+      </td>
+      <td className="px-3 py-1.5" style={{ width: '8rem' }}>
+        <StatusPill item={item} projectId={item.project_id} />
+      </td>
+      <td className="px-3 py-1.5" style={{ width: '3.5rem' }}>
+        <select value={draft.estimate} onChange={(e) => onChange({ estimate: e.target.value })} style={sel}>
+          {ESTIMATE_OPTS.map((v) => <option key={v} value={v}>{v || '--'}</option>)}
+        </select>
+      </td>
+      <td className="px-3 py-1.5" style={{ width: '8rem' }}>
+        <select value={draft.sprint_id} onChange={(e) => onChange({ sprint_id: e.target.value })} style={sel}>
+          <option value="">No sprint</option>
+          {sprints.map((sp) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+        </select>
+      </td>
+      <td className="px-3 py-1.5" style={{ width: '2rem' }}>
+        <div className="flex gap-0.5">
+          <button
+            onClick={onSave}
+            disabled={isSaving || !draft.title.trim()}
+            title="Save (Enter)"
+            className="text-sm px-1 rounded disabled:opacity-40"
+            style={{ color: '#22C55E' }}
+          >&#10003;</button>
+          <button
+            onClick={onCancel}
+            title="Cancel (Escape)"
+            className="text-sm px-1 rounded"
+            style={{ color: 'var(--color-danger)' }}
+          >&#10007;</button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 // -- Droppable backlog row wrapper -------------------------------------------
 
 function DroppableBacklogRow({
   item,
   isExpanded,
   children,
+  onDoubleClick,
 }: {
   item: BacklogItem;
   isExpanded: boolean;
   children: React.ReactNode;
+  onDoubleClick?: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: item.id });
   return (
@@ -138,6 +253,7 @@ function DroppableBacklogRow({
         outline: isOver ? '2px solid var(--accent)' : undefined,
         outlineOffset: isOver ? '-2px' : undefined,
       }}
+      onDoubleClick={onDoubleClick}
     >
       {children}
     </tr>
@@ -159,59 +275,122 @@ function DraggableTaskRow({
   item,
   allItems,
   moveTask,
+  onDelete,
+  onUpdate,
 }: {
   task: Task;
   projectId: string;
   item: BacklogItem;
   allItems: BacklogItem[];
   moveTask: ReturnType<typeof useMoveTask>;
+  onDelete: () => void;
+  onUpdate: (title: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: task.id,
     data: { type: 'task', fromItemId: item.id, title: task.title },
   });
+
+  function commitEdit() {
+    const t = draft.trim();
+    if (t && t !== task.title) onUpdate(t);
+    setEditing(false);
+  }
+
+  function startEdit() {
+    setDraft(task.title);
+    setEditing(true);
+  }
+
   return (
     <div
       ref={setNodeRef}
-      className="group/row flex items-center gap-3 py-1 rounded px-1 hover:bg-[var(--bg-surface)] transition-colors"
+      className="group/row flex items-center gap-2 py-1 rounded px-1 hover:bg-[var(--bg-surface)] transition-colors"
       style={{ opacity: isDragging ? 0.3 : 1 }}
+      onDoubleClick={() => { if (!editing) startEdit(); }}
     >
       <div
         {...attributes}
         {...listeners}
         className="cursor-grab active:cursor-grabbing flex-shrink-0 opacity-0 group-hover/row:opacity-50 transition-opacity select-none"
         style={{ color: 'var(--text-3)', lineHeight: 1, padding: '0 2px', fontSize: '1rem' }}
-        title="Drag to move to another backlog item"
+        title="Drag to move"
+        onDoubleClick={(e) => e.stopPropagation()}
       >
         &#8942;
       </div>
+      <span
+        className="text-xs font-mono px-1 py-0.5 rounded flex-shrink-0"
+        style={{ background: '#1D4ED8', color: '#BFDBFE', fontSize: '0.65rem' }}
+      >
+        Z-{task.id.slice(0, 4).toUpperCase()}
+      </span>
       <span
         className="text-xs px-1.5 py-0.5 rounded-full font-medium flex-shrink-0"
         style={{ background: TASK_STATUS_COLOR[task.status] ?? '#6B7280', color: '#fff' }}
       >
         {task.status.replace('_', ' ')}
       </span>
-      <Link
-        to={`/projects/${projectId}/backlog/${item.id}`}
-        className="text-xs flex-1 truncate hover:underline"
-        style={{ color: 'var(--text-1)' }}
-        title={task.title}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {task.title}
-      </Link>
-      {task.estimate && (
+      {editing ? (
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commitEdit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
+            if (e.key === 'Escape') setEditing(false);
+          }}
+          className="flex-1 text-xs rounded px-1.5 py-0.5 outline-none"
+          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--accent)', color: 'var(--text-1)' }}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : (
+        <span
+          className="flex-1 text-xs truncate"
+          style={{ color: 'var(--text-1)' }}
+          title={task.title}
+        >
+          {task.title}
+        </span>
+      )}
+      {task.estimate && !editing && (
         <span className="text-xs font-mono flex-shrink-0" style={{ color: 'var(--accent)' }}>
           {task.estimate}
         </span>
       )}
-      <MoveDropdown
-        label="task"
-        items={allItems}
-        currentItemId={item.id}
-        isPending={moveTask.isPending}
-        onMove={(toItemId) => moveTask.mutate({ taskId: task.id, fromItemId: item.id, toItemId })}
-      />
+      {!editing && (
+        <>
+          <Link
+            to={`/projects/${projectId}/backlog/${item.id}`}
+            className="text-xs flex-shrink-0 opacity-0 group-hover/row:opacity-60 transition-opacity hover:opacity-100"
+            style={{ color: 'var(--accent)' }}
+            title="Open details"
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+          >
+            &#8599;
+          </Link>
+          <MoveDropdown
+            label="task"
+            items={allItems}
+            currentItemId={item.id}
+            isPending={moveTask.isPending}
+            onMove={(toItemId) => moveTask.mutate({ taskId: task.id, fromItemId: item.id, toItemId })}
+          />
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className="opacity-0 group-hover/row:opacity-100 transition-opacity text-xs px-1 rounded flex-shrink-0"
+            style={{ color: 'var(--color-danger)' }}
+            title="Delete task"
+            onDoubleClick={(e) => e.stopPropagation()}
+          >
+            x
+          </button>
+        </>
+      )}
     </div>
   );
 }
@@ -222,54 +401,117 @@ function DraggableTestRow({
   item,
   allItems,
   moveTest,
+  onDelete,
+  onUpdate,
 }: {
   test: TestSpec;
   projectId: string;
   item: BacklogItem;
   allItems: BacklogItem[];
   moveTest: ReturnType<typeof useMoveItemTest>;
+  onDelete: () => void;
+  onUpdate: (title: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: test.id,
     data: { type: 'test', fromItemId: item.id, title: test.title },
   });
+
+  function commitEdit() {
+    const t = draft.trim();
+    if (t && t !== test.title) onUpdate(t);
+    setEditing(false);
+  }
+
+  function startEdit() {
+    setDraft(test.title);
+    setEditing(true);
+  }
+
   return (
     <div
       ref={setNodeRef}
-      className="group/row flex items-center gap-3 py-1 rounded px-1 hover:bg-[var(--bg-surface)] transition-colors"
+      className="group/row flex items-center gap-2 py-1 rounded px-1 hover:bg-[var(--bg-surface)] transition-colors"
       style={{ opacity: isDragging ? 0.3 : 1 }}
+      onDoubleClick={() => { if (!editing) startEdit(); }}
     >
       <div
         {...attributes}
         {...listeners}
         className="cursor-grab active:cursor-grabbing flex-shrink-0 opacity-0 group-hover/row:opacity-50 transition-opacity select-none"
         style={{ color: 'var(--text-3)', lineHeight: 1, padding: '0 2px', fontSize: '1rem' }}
-        title="Drag to move to another backlog item"
+        title="Drag to move"
+        onDoubleClick={(e) => e.stopPropagation()}
       >
         &#8942;
       </div>
       <span
+        className="text-xs font-mono px-1 py-0.5 rounded flex-shrink-0"
+        style={{ background: '#064E3B', color: '#6EE7B7', fontSize: '0.65rem' }}
+      >
+        T-{test.id.slice(0, 4).toUpperCase()}
+      </span>
+      <span
         className="text-xs px-1.5 py-0.5 rounded font-mono flex-shrink-0"
-        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-3)' }}
+        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-3)' }}
       >
         {test.type}
       </span>
-      <Link
-        to={`/projects/${projectId}/backlog/${item.id}`}
-        className="text-xs flex-1 truncate hover:underline"
-        style={{ color: 'var(--text-1)' }}
-        title={test.title}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {test.title}
-      </Link>
-      <MoveDropdown
-        label="test"
-        items={allItems}
-        currentItemId={item.id}
-        isPending={moveTest.isPending}
-        onMove={(toItemId) => moveTest.mutate({ testId: test.id, fromItemId: item.id, toItemId })}
-      />
+      {editing ? (
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commitEdit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
+            if (e.key === 'Escape') setEditing(false);
+          }}
+          className="flex-1 text-xs rounded px-1.5 py-0.5 outline-none"
+          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--accent)', color: 'var(--text-1)' }}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : (
+        <span
+          className="flex-1 text-xs truncate"
+          style={{ color: 'var(--text-1)' }}
+          title={test.title}
+        >
+          {test.title}
+        </span>
+      )}
+      {!editing && (
+        <>
+          <Link
+            to={`/projects/${projectId}/backlog/${item.id}`}
+            className="text-xs flex-shrink-0 opacity-0 group-hover/row:opacity-60 transition-opacity hover:opacity-100"
+            style={{ color: 'var(--accent)' }}
+            title="Open details"
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+          >
+            &#8599;
+          </Link>
+          <MoveDropdown
+            label="test"
+            items={allItems}
+            currentItemId={item.id}
+            isPending={moveTest.isPending}
+            onMove={(toItemId) => moveTest.mutate({ testId: test.id, fromItemId: item.id, toItemId })}
+          />
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className="opacity-0 group-hover/row:opacity-100 transition-opacity text-xs px-1 rounded flex-shrink-0"
+            style={{ color: 'var(--color-danger)' }}
+            title="Delete test"
+            onDoubleClick={(e) => e.stopPropagation()}
+          >
+            x
+          </button>
+        </>
+      )}
     </div>
   );
 }
@@ -346,7 +588,11 @@ function MoveDropdown({
   );
 }
 
-// -- Expanded panel: tasks + tests for a single backlog item -----------------
+// -- Expanded panel: unified tasks + tests for a single backlog item ---------
+
+type UnifiedRow =
+  | { kind: 'task'; data: Task }
+  | { kind: 'test'; data: TestSpec };
 
 function ExpandedItemPanel({
   projectId,
@@ -363,51 +609,133 @@ function ExpandedItemPanel({
 }) {
   const { data: tasks = [], isLoading: loadingTasks } = useTasks(projectId, item.id);
   const { data: tests = [], isLoading: loadingTests } = useItemTests(projectId, item.id);
+  const createTask   = useCreateTask(projectId, item.id);
+  const createTest   = useCreateItemTest(projectId, item.id);
+  const deleteTask   = useDeleteTask(projectId, item.id);
+  const deleteTest   = useDeleteItemTest(projectId);
+  const updateTask   = useUpdateTask(projectId, item.id);
+  const updateTest   = useUpdateItemTest(projectId, item.id);
+
+  const [addingType, setAddingType] = useState<'task' | 'test' | null>(null);
+  const [addingTitle, setAddingTitle] = useState('');
+  const addInputRef = useRef<HTMLInputElement>(null);
+
+  const unified = useMemo<UnifiedRow[]>(() => {
+    const rows: UnifiedRow[] = [
+      ...tasks.map((t): UnifiedRow => ({ kind: 'task', data: t })),
+      ...tests.map((t): UnifiedRow => ({ kind: 'test', data: t })),
+    ];
+    return rows.sort((a, b) =>
+      new Date(a.data.created_at).getTime() - new Date(b.data.created_at).getTime()
+    );
+  }, [tasks, tests]);
+
+  function startAdding(type: 'task' | 'test') {
+    setAddingTitle('');
+    setAddingType(type);
+    setTimeout(() => addInputRef.current?.focus(), 50);
+  }
+
+  function commitAdd() {
+    const t = addingTitle.trim();
+    if (!t) { setAddingType(null); return; }
+    if (addingType === 'task') createTask.mutate({ title: t });
+    else if (addingType === 'test') createTest.mutate({ title: t });
+    setAddingTitle('');
+    setAddingType(null);
+  }
+
+  const isLoading = loadingTasks || loadingTests;
 
   return (
     <tr style={{ background: 'var(--bg-elevated)' }}>
       <td colSpan={10} className="px-0 pb-0 pt-0">
-        <div className="px-8 py-3 flex flex-col gap-3" style={{ borderTop: '1px solid var(--border)' }}>
-          {/* Tasks */}
-          <div>
-            <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--text-3)' }}>
-              Tasks{tasks.length > 0 ? ` (${tasks.length})` : ''}
-            </p>
-            {loadingTasks && <p className="text-xs" style={{ color: 'var(--text-3)' }}>Loading...</p>}
-            {!loadingTasks && tasks.length === 0 && (
-              <p className="text-xs" style={{ color: 'var(--text-3)' }}>No tasks yet</p>
-            )}
-            {tasks.map((task) => (
+        <div className="px-8 py-3 flex flex-col gap-1" style={{ borderTop: '1px solid var(--border)' }}>
+          {isLoading && <p className="text-xs" style={{ color: 'var(--text-3)' }}>Loading...</p>}
+
+          {!isLoading && unified.length === 0 && !addingType && (
+            <p className="text-xs py-1" style={{ color: 'var(--text-3)' }}>No tasks or tests yet. Add below.</p>
+          )}
+
+          {/* Unified rows */}
+          {unified.map((row) =>
+            row.kind === 'task' ? (
               <DraggableTaskRow
-                key={task.id}
-                task={task}
+                key={row.data.id}
+                task={row.data}
                 projectId={projectId}
                 item={item}
                 allItems={allItems}
                 moveTask={moveTask}
+                onDelete={() => deleteTask.mutate(row.data.id)}
+                onUpdate={(title) => updateTask.mutate({ taskId: row.data.id, title })}
               />
-            ))}
-          </div>
-
-          {/* Tests */}
-          <div>
-            <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--text-3)' }}>
-              Tests{tests.length > 0 ? ` (${tests.length})` : ''}
-            </p>
-            {loadingTests && <p className="text-xs" style={{ color: 'var(--text-3)' }}>Loading...</p>}
-            {!loadingTests && tests.length === 0 && (
-              <p className="text-xs" style={{ color: 'var(--text-3)' }}>No tests yet</p>
-            )}
-            {tests.map((test) => (
+            ) : (
               <DraggableTestRow
-                key={test.id}
-                test={test}
+                key={row.data.id}
+                test={row.data}
                 projectId={projectId}
                 item={item}
                 allItems={allItems}
                 moveTest={moveTest}
+                onDelete={() => deleteTest.mutate({ testId: row.data.id, itemId: item.id })}
+                onUpdate={(title) => updateTest.mutate({ testId: row.data.id, title })}
               />
-            ))}
+            )
+          )}
+
+          {/* Inline add row */}
+          {addingType && (
+            <div className="flex items-center gap-2 py-0.5">
+              <span
+                className="text-xs font-mono px-1 py-0.5 rounded flex-shrink-0"
+                style={addingType === 'task'
+                  ? { background: '#1D4ED8', color: '#BFDBFE', fontSize: '0.65rem' }
+                  : { background: '#064E3B', color: '#6EE7B7', fontSize: '0.65rem' }}
+              >
+                {addingType === 'task' ? 'Z' : 'T'}
+              </span>
+              <input
+                ref={addInputRef}
+                value={addingTitle}
+                onChange={(e) => setAddingTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); commitAdd(); }
+                  if (e.key === 'Escape') { setAddingType(null); setAddingTitle(''); }
+                }}
+                onBlur={commitAdd}
+                placeholder={`New ${addingType} title...`}
+                className="flex-1 text-xs rounded px-1.5 py-0.5 outline-none"
+                style={{ background: 'var(--bg-surface)', border: '1px solid var(--accent)', color: 'var(--text-1)' }}
+              />
+              <button
+                onClick={() => { setAddingType(null); setAddingTitle(''); }}
+                className="text-xs flex-shrink-0"
+                style={{ color: 'var(--text-3)' }}
+              >
+                &#10007;
+              </button>
+            </div>
+          )}
+
+          {/* Add buttons */}
+          <div className="flex gap-2 mt-1.5">
+            <button
+              onClick={() => startAdding('task')}
+              disabled={!!addingType}
+              className="text-xs px-2 py-0.5 rounded disabled:opacity-40"
+              style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}
+            >
+              + Task
+            </button>
+            <button
+              onClick={() => startAdding('test')}
+              disabled={!!addingType}
+              className="text-xs px-2 py-0.5 rounded disabled:opacity-40"
+              style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}
+            >
+              + Test
+            </button>
           </div>
         </div>
       </td>
@@ -549,14 +877,64 @@ interface ActiveDrag {
 
 export function BacklogPage() {
   const { projectId } = useParams<{ projectId: string }>();
+  const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [page, setPage] = useState(1);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
   const pageSize = usePaginationStore((s) => s.getPageSize('backlog'));
   const moveTaskDnd = useMoveTask(projectId ?? '');
   const moveTestDnd = useMoveItemTest(projectId ?? '');
+  const updateItem = useUpdateBacklogItem(projectId ?? '');
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  function startEditItem(item: BacklogItem) {
+    setEditingItemId(item.id);
+    setEditDraft({
+      title: item.title,
+      epic_id: item.epic_id ?? '',
+      estimate: item.estimate ?? '',
+      sprint_id: item.sprint_id ?? '',
+    });
+  }
+
+  function cancelEditItem() {
+    setEditingItemId(null);
+    setEditDraft(null);
+  }
+
+  async function saveEditItem() {
+    if (!editingItemId || !editDraft || !projectId) return;
+    const current = items.find((it) => it.id === editingItemId);
+    if (!current) { cancelEditItem(); return; }
+
+    // Collect field changes (skip sprint -- handled separately)
+    const changes: { title?: string; epic_id?: string; estimate?: string | null } = {};
+    if (editDraft.title.trim() && editDraft.title.trim() !== current.title)
+      changes.title = editDraft.title.trim();
+    if (editDraft.epic_id !== (current.epic_id ?? ''))
+      changes.epic_id = editDraft.epic_id || undefined;
+    if (editDraft.estimate !== (current.estimate ?? ''))
+      changes.estimate = editDraft.estimate || null;
+
+    if (Object.keys(changes).length > 0)
+      await updateItem.mutateAsync({ itemId: editingItemId, ...changes });
+
+    // Sprint change
+    const newSprintId = editDraft.sprint_id;
+    const oldSprintId = current.sprint_id ?? '';
+    if (newSprintId !== oldSprintId) {
+      if (oldSprintId)
+        await sprintsApi.removeItem(projectId, oldSprintId, editingItemId);
+      if (newSprintId)
+        await sprintsApi.addItem(projectId, newSprintId, editingItemId);
+      await queryClient.invalidateQueries({ queryKey: ['backlog', projectId] });
+    }
+
+    cancelEditItem();
+  }
 
   function toggleExpand(id: string) {
     setExpandedItems((prev) => {
@@ -799,89 +1177,104 @@ export function BacklogPage() {
                 {pageItems.map((item) => {
                   const epicTitle = epics.find((e) => e.id === item.epic_id)?.title;
                   const isExpanded = expandedItems.has(item.id);
+                  const isEditing = editingItemId === item.id;
                   return (
                     <React.Fragment key={item.id}>
-                      <DroppableBacklogRow item={item} isExpanded={isExpanded}>
-                        <td className="px-2 py-2 align-middle" style={{ width: '2rem' }}>
-                          <button
-                            onClick={() => toggleExpand(item.id)}
-                            title={isExpanded ? 'Collapse' : 'Expand tasks & tests'}
-                            className="text-xs w-5 h-5 flex items-center justify-center rounded transition-colors hover:bg-[var(--bg-elevated)]"
-                            style={{ color: 'var(--text-3)', fontFamily: 'monospace', lineHeight: 1 }}
+                      {isEditing && editDraft ? (
+                        <BacklogItemEditRow
+                          item={item}
+                          epics={epics}
+                          sprints={sprints}
+                          draft={editDraft}
+                          onChange={(patch) => setEditDraft((d) => d ? { ...d, ...patch } : d)}
+                          onSave={() => { void saveEditItem(); }}
+                          onCancel={cancelEditItem}
+                          isSaving={updateItem.isPending}
+                        />
+                      ) : (
+                        <DroppableBacklogRow item={item} isExpanded={isExpanded} onDoubleClick={() => startEditItem(item)}>
+                          <td className="px-2 py-2 align-middle" style={{ width: '2rem' }}>
+                            <button
+                              onClick={() => toggleExpand(item.id)}
+                              title={isExpanded ? 'Collapse' : 'Expand tasks & tests'}
+                              className="text-xs w-5 h-5 flex items-center justify-center rounded transition-colors hover:bg-[var(--bg-elevated)]"
+                              style={{ color: 'var(--text-3)', fontFamily: 'monospace', lineHeight: 1 }}
+                            >
+                              {isExpanded ? '-' : '+'}
+                            </button>
+                          </td>
+                          <td className="px-3 py-2 align-middle" style={{ width: '4rem' }}>
+                            <span className="text-xs font-mono" style={{ color: 'var(--text-3)' }}>B-{item.number}</span>
+                          </td>
+                        <td className="px-3 py-2 align-middle">
+                          <span className="text-xs font-mono uppercase opacity-60" style={{ color: 'var(--text-3)' }}>
+                            {item.type}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 align-middle" style={{ maxWidth: 0 }}>
+                          <Link
+                            to={`/projects/${projectId}/backlog/${item.id}`}
+                            className="block truncate hover:underline text-sm"
+                            style={{ color: 'var(--text-1)' }}
+                            title={item.title}
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            {isExpanded ? '-' : '+'}
+                            {item.title}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-2 align-middle">
+                          {epicTitle && (
+                            <span className="text-xs truncate block" style={{ color: 'var(--text-3)', maxWidth: '7rem' }} title={epicTitle}>
+                              {epicTitle}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 align-middle">
+                          <ClarityBadge clarity={item.clarity} />
+                        </td>
+                        <td className="px-3 py-2 align-middle">
+                          <StatusPill item={item} projectId={projectId} />
+                        </td>
+                        <td className="px-3 py-2 align-middle">
+                          {item.estimate && (
+                            <span className="text-xs font-mono font-semibold" style={{ color: 'var(--accent)' }}>{item.estimate}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 align-middle">
+                          {item.sprint_name ? (
+                            <span
+                              className="text-xs px-2 py-0.5 rounded font-medium truncate block"
+                              style={{ background: 'var(--bg-elevated)', color: 'var(--text-2)', border: '1px solid var(--border)', maxWidth: '7.5rem' }}
+                              title={item.sprint_name}
+                            >
+                              {item.sprint_name}
+                            </span>
+                          ) : (
+                            <span className="text-xs" style={{ color: 'var(--text-3)' }}>--</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 align-middle">
+                          <button
+                            data-testid={`delete-item-${item.id}`}
+                            onClick={() => handleDelete(item.id)}
+                            title="Delete"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-xs px-1 py-0.5 rounded"
+                            style={{ color: 'var(--color-danger)' }}
+                          >
+                            x
                           </button>
                         </td>
-                        <td className="px-3 py-2 align-middle" style={{ width: '4rem' }}>
-                          <span className="text-xs font-mono" style={{ color: 'var(--text-3)' }}>B-{item.number}</span>
-                        </td>
-                      <td className="px-3 py-2 align-middle">
-                        <span className="text-xs font-mono uppercase opacity-60" style={{ color: 'var(--text-3)' }}>
-                          {item.type}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 align-middle" style={{ maxWidth: 0 }}>
-                        <Link
-                          to={`/projects/${projectId}/backlog/${item.id}`}
-                          className="block truncate hover:underline text-sm"
-                          style={{ color: 'var(--text-1)' }}
-                          title={item.title}
-                        >
-                          {item.title}
-                        </Link>
-                      </td>
-                      <td className="px-3 py-2 align-middle">
-                        {epicTitle && (
-                          <span className="text-xs truncate block" style={{ color: 'var(--text-3)', maxWidth: '7rem' }} title={epicTitle}>
-                            {epicTitle}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 align-middle">
-                        <ClarityBadge clarity={item.clarity} />
-                      </td>
-                      <td className="px-3 py-2 align-middle">
-                        <StatusPill item={item} projectId={projectId} />
-                      </td>
-                      <td className="px-3 py-2 align-middle">
-                        {item.estimate && (
-                          <span className="text-xs font-mono font-semibold" style={{ color: 'var(--accent)' }}>{item.estimate}</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 align-middle">
-                        {item.sprint_name ? (
-                          <span
-                            className="text-xs px-2 py-0.5 rounded font-medium truncate block"
-                            style={{ background: 'var(--bg-elevated)', color: 'var(--text-2)', border: '1px solid var(--border)', maxWidth: '7.5rem' }}
-                            title={item.sprint_name}
-                          >
-                            {item.sprint_name}
-                          </span>
-                        ) : (
-                          <span className="text-xs" style={{ color: 'var(--text-3)' }}>--</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 align-middle">
-                        <button
-                          data-testid={`delete-item-${item.id}`}
-                          onClick={() => handleDelete(item.id)}
-                          title="Delete"
-                          className="opacity-0 group-hover:opacity-100 transition-opacity text-xs px-1 py-0.5 rounded"
-                          style={{ color: 'var(--color-danger)' }}
-                        >
-                          x
-                        </button>
-                      </td>
-                    </DroppableBacklogRow>
-                    {isExpanded && (
-                      <ExpandedItemPanel
-                        projectId={projectId}
-                        item={item}
-                        allItems={items}
-                        moveTask={moveTaskDnd}
-                        moveTest={moveTestDnd}
-                      />
-                    )}
+                      </DroppableBacklogRow>
+                      )}
+                      {isExpanded && (
+                        <ExpandedItemPanel
+                          projectId={projectId}
+                          item={item}
+                          allItems={items}
+                          moveTask={moveTaskDnd}
+                          moveTest={moveTestDnd}
+                        />
+                      )}
                     </React.Fragment>
                   );
                 })}

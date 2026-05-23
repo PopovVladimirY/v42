@@ -18,6 +18,10 @@ export const itemTestsApi = {
   delete: (projectId: string, testId: string) =>
     client.delete<ApiResponse<null>>(`/projects/${projectId}/tests/${testId}`),
 
+  // Update uses the project-level test endpoint
+  update: (projectId: string, testId: string, data: { title?: string; type?: TestType }) =>
+    client.patch<ApiResponse<TestSpec>>(`/projects/${projectId}/tests/${testId}`, data),
+
   move: (projectId: string, itemId: string, testId: string, targetItemId: string) =>
     client.post<ApiResponse<TestSpec>>(
       `/projects/${projectId}/backlog/${itemId}/tests/${testId}/move`,

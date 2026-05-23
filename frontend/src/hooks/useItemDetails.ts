@@ -112,6 +112,16 @@ export function useDeleteItemTest(projectId: string) {
   });
 }
 
+export function useUpdateItemTest(projectId: string, itemId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ testId, ...data }: { testId: string; title?: string }) =>
+      itemTestsApi.update(projectId, testId, data),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: itemTestKeys.byItem(projectId, itemId) }),
+  });
+}
+
 export function useMoveTask(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
