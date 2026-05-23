@@ -241,6 +241,27 @@ func (s *TestStore) DeleteTest(ctx context.Context, projectID, id string) error 
 	return s.q.DeleteTest(ctx, dbgen.DeleteTestParams{ID: testUUID, ProjectID: projUUID})
 }
 
+// MoveTo reassigns a test to a different backlog item.
+func (s *TestStore) MoveTo(ctx context.Context, testID, targetItemID string) (*TestSpec, error) {
+	tid, err := parseUUID(testID)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	nid, err := parseUUID(targetItemID)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	r, err := s.q.MoveTest(ctx, dbgen.MoveTestParams{ID: tid, BacklogItemID: nid})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	ts := testFromRow(r)
+	return &ts, nil
+}
+
 // -- Sprint test results -----------------------------------------------------
 
 // SprintTestResultRow is the store-level view of a sprint test result.

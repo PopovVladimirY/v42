@@ -8,6 +8,7 @@ import {
 } from '@/hooks/useProjects';
 import { useEpics } from '@/hooks/useProjects';
 import { useSprints } from '@/hooks/useSprints';
+import { useTasks, useItemTests, useMoveTask, useMoveItemTest } from '@/hooks/useItemDetails';
 import { CLARITY_COLOR, CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
 import type { BacklogItem, BacklogItemStatus, BacklogItemType, ClarityQuadrant } from '@/types';
 import { usePaginationStore } from '@/stores/usePagination';
@@ -103,6 +104,195 @@ function ClarityBadge({ clarity }: { clarity: ClarityQuadrant }) {
 }
 
 
+
+// -- Create item panel -------------------------------------------------------
+
+function MoveDropdown({
+  label,
+  items,
+  currentItemId,
+  onMove,
+  isPending,
+}: {
+  label: string;
+  items: BacklogItem[];
+  currentItemId: string;
+  onMove: (targetId: string) => void;
+  isPending: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const targets = items.filter((it) => it.id !== currentItemId && it.title.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div className="relative">
+      <button
+        disabled={isPending}
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        title={`Move ${label}`}
+        className="text-xs px-1.5 py-0.5 rounded opacity-0 group-hover/row:opacity-100 transition-opacity"
+        style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}
+      >
+        {isPending ? '...' : 'Move'}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div
+            className="absolute right-0 top-full mt-1 z-40 rounded-lg overflow-hidden py-1 w-64"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,.25)' }}
+          >
+            <div className="px-2 pb-1">
+              <input
+                autoFocus
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search items..."
+                className="w-full rounded px-2 py-1 text-xs outline-none"
+                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+            <div className="max-h-48 overflow-y-auto">
+              {targets.length === 0 && (
+                <p className="px-3 py-2 text-xs" style={{ color: 'var(--text-3)' }}>No other items</p>
+              )}
+              {targets.map((it) => (
+                <button
+                  key={it.id}
+                  onClick={(e) => { e.stopPropagation(); setOpen(false); onMove(it.id); }}
+                  className="w-full text-left text-xs px-3 py-1.5 hover:bg-[var(--bg-elevated)] truncate"
+                  style={{ color: 'var(--text-1)' }}
+                  title={it.title}
+                >
+                  <span style={{ color: 'var(--text-3)' }}>B-{it.number} </span>{it.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// -- Expanded panel: tasks + tests for a single backlog item -----------------
+
+function ExpandedItemPanel({
+  projectId,
+  item,
+  allItems,
+}: {
+  projectId: string;
+  item: BacklogItem;
+  allItems: BacklogItem[];
+}) {
+  const { data: tasks = [], isLoading: loadingTasks } = useTasks(projectId, item.id);
+  const { data: tests = [], isLoading: loadingTests } = useItemTests(projectId, item.id);
+  const moveTask = useMoveTask(projectId);
+  const moveTest = useMoveItemTest(projectId);
+
+  const TASK_STATUS_COLOR: Record<string, string> = {
+    todo: '#6B7280',
+    in_progress: '#3B82F6',
+    done: '#22C55E',
+    cancelled: '#EF4444',
+  };
+
+  return (
+    <tr style={{ background: 'var(--bg-elevated)' }}>
+      <td colSpan={10} className="px-0 pb-0 pt-0">
+        <div className="px-8 py-3 flex flex-col gap-3" style={{ borderTop: '1px solid var(--border)' }}>
+          {/* Tasks */}
+          <div>
+            <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--text-3)' }}>
+              Tasks{tasks.length > 0 ? ` (${tasks.length})` : ''}
+            </p>
+            {loadingTasks && <p className="text-xs" style={{ color: 'var(--text-3)' }}>Loading...</p>}
+            {!loadingTasks && tasks.length === 0 && (
+              <p className="text-xs" style={{ color: 'var(--text-3)' }}>No tasks yet</p>
+            )}
+            {tasks.map((task) => (
+              <div
+                key={task.id}
+                className="group/row flex items-center gap-3 py-1 rounded px-1 hover:bg-[var(--bg-surface)] transition-colors"
+              >
+                <span
+                  className="text-xs px-1.5 py-0.5 rounded-full font-medium flex-shrink-0"
+                  style={{ background: TASK_STATUS_COLOR[task.status] ?? '#6B7280', color: '#fff' }}
+                >
+                  {task.status.replace('_', ' ')}
+                </span>
+                <Link
+                  to={`/projects/${projectId}/backlog/${item.id}`}
+                  className="text-xs flex-1 truncate hover:underline"
+                  style={{ color: 'var(--text-1)' }}
+                  title={task.title}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {task.title}
+                </Link>
+                {task.estimate && (
+                  <span className="text-xs font-mono flex-shrink-0" style={{ color: 'var(--accent)' }}>
+                    {task.estimate}
+                  </span>
+                )}
+                <MoveDropdown
+                  label="task"
+                  items={allItems}
+                  currentItemId={item.id}
+                  isPending={moveTask.isPending}
+                  onMove={(toItemId) => moveTask.mutate({ taskId: task.id, fromItemId: item.id, toItemId })}
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Tests */}
+          <div>
+            <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--text-3)' }}>
+              Tests{tests.length > 0 ? ` (${tests.length})` : ''}
+            </p>
+            {loadingTests && <p className="text-xs" style={{ color: 'var(--text-3)' }}>Loading...</p>}
+            {!loadingTests && tests.length === 0 && (
+              <p className="text-xs" style={{ color: 'var(--text-3)' }}>No tests yet</p>
+            )}
+            {tests.map((test) => (
+              <div
+                key={test.id}
+                className="group/row flex items-center gap-3 py-1 rounded px-1 hover:bg-[var(--bg-surface)] transition-colors"
+              >
+                <span
+                  className="text-xs px-1.5 py-0.5 rounded font-mono flex-shrink-0"
+                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-3)' }}
+                >
+                  {test.type}
+                </span>
+                <Link
+                  to={`/projects/${projectId}/backlog/${item.id}`}
+                  className="text-xs flex-1 truncate hover:underline"
+                  style={{ color: 'var(--text-1)' }}
+                  title={test.title}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {test.title}
+                </Link>
+                <MoveDropdown
+                  label="test"
+                  items={allItems}
+                  currentItemId={item.id}
+                  isPending={moveTest.isPending}
+                  onMove={(toItemId) => moveTest.mutate({ testId: test.id, fromItemId: item.id, toItemId })}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+}
 
 // -- Create item panel -------------------------------------------------------
 
@@ -234,7 +424,16 @@ export function BacklogPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [showCreate, setShowCreate] = useState(false);
   const [page, setPage] = useState(1);
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const pageSize = usePaginationStore((s) => s.getPageSize('backlog'));
+
+  function toggleExpand(id: string) {
+    setExpandedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   // Filter state -- persisted per project
   const saved = projectId ? _loadFilters(projectId) : null;
@@ -418,6 +617,7 @@ export function BacklogPage() {
             <table className="w-full border-collapse" data-testid="backlog-list">
               <thead style={{ background: 'var(--bg-elevated)' }}>
                 <tr>
+                  <th className="text-xs font-medium text-left px-2 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '2rem' }}></th>
                   <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '4rem' }}>ID</th>
                   <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '5rem' }}>
                     <button onClick={() => toggleSort('type')} className="hover:opacity-80">Type{sortMark('type')}</button>
@@ -442,23 +642,35 @@ export function BacklogPage() {
               <tbody>
                 {pageItems.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-4 py-10 text-center text-sm" style={{ color: 'var(--text-3)' }}>
+                    <td colSpan={10} className="px-4 py-10 text-center text-sm" style={{ color: 'var(--text-3)' }}>
                       {total === 0 ? 'Backlog is empty. Add something!' : 'No items on this page.'}
                     </td>
                   </tr>
                 )}
                 {pageItems.map((item) => {
                   const epicTitle = epics.find((e) => e.id === item.epic_id)?.title;
+                  const isExpanded = expandedItems.has(item.id);
                   return (
-                    <tr
-                      key={item.id}
-                      data-testid={`backlog-row-${item.id}`}
-                      className="group transition-colors hover:bg-[var(--bg-elevated)]"
-                      style={{ borderBottom: '1px solid var(--border)' }}
-                    >
-                      <td className="px-3 py-2 align-middle" style={{ width: '4rem' }}>
-                        <span className="text-xs font-mono" style={{ color: 'var(--text-3)' }}>B-{item.number}</span>
-                      </td>
+                    <>
+                      <tr
+                        key={item.id}
+                        data-testid={`backlog-row-${item.id}`}
+                        className="group transition-colors hover:bg-[var(--bg-elevated)]"
+                        style={{ borderBottom: isExpanded ? 'none' : '1px solid var(--border)' }}
+                      >
+                        <td className="px-2 py-2 align-middle" style={{ width: '2rem' }}>
+                          <button
+                            onClick={() => toggleExpand(item.id)}
+                            title={isExpanded ? 'Collapse' : 'Expand tasks & tests'}
+                            className="text-xs w-5 h-5 flex items-center justify-center rounded transition-colors hover:bg-[var(--bg-elevated)]"
+                            style={{ color: 'var(--text-3)', fontFamily: 'monospace', lineHeight: 1 }}
+                          >
+                            {isExpanded ? '-' : '+'}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2 align-middle" style={{ width: '4rem' }}>
+                          <span className="text-xs font-mono" style={{ color: 'var(--text-3)' }}>B-{item.number}</span>
+                        </td>
                       <td className="px-3 py-2 align-middle">
                         <span className="text-xs font-mono uppercase opacity-60" style={{ color: 'var(--text-3)' }}>
                           {item.type}
@@ -517,6 +729,15 @@ export function BacklogPage() {
                         </button>
                       </td>
                     </tr>
+                    {isExpanded && (
+                      <ExpandedItemPanel
+                        key={`exp-${item.id}`}
+                        projectId={projectId}
+                        item={item}
+                        allItems={items}
+                      />
+                    )}
+                    </>
                   );
                 })}
               </tbody>

@@ -27,5 +27,12 @@ SET title          = coalesce(sqlc.narg('title'),          title),
 WHERE id = $1
 RETURNING id, backlog_item_id, title, description, status, estimate, order_index, assignee_id, skill_required, reviewer_id, created_by, created_at, updated_at;
 
+-- name: MoveTask :one
+UPDATE tasks
+SET backlog_item_id = $2,
+    updated_at      = now()
+WHERE id = $1
+RETURNING id, backlog_item_id, title, description, status, estimate, order_index, assignee_id, skill_required, reviewer_id, created_by, created_at, updated_at;
+
 -- name: DeleteTask :exec
 DELETE FROM tasks WHERE id = $1;

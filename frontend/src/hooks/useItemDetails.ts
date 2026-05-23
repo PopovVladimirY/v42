@@ -111,3 +111,27 @@ export function useDeleteItemTest(projectId: string) {
       qc.invalidateQueries({ queryKey: itemTestKeys.byItem(projectId, itemId) }),
   });
 }
+
+export function useMoveTask(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ taskId, fromItemId, toItemId }: { taskId: string; fromItemId: string; toItemId: string }) =>
+      tasksApi.move(projectId, fromItemId, taskId, toItemId),
+    onSuccess: (_d, { fromItemId, toItemId }) => {
+      void qc.invalidateQueries({ queryKey: taskKeys.byItem(projectId, fromItemId) });
+      void qc.invalidateQueries({ queryKey: taskKeys.byItem(projectId, toItemId) });
+    },
+  });
+}
+
+export function useMoveItemTest(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ testId, fromItemId, toItemId }: { testId: string; fromItemId: string; toItemId: string }) =>
+      itemTestsApi.move(projectId, fromItemId, testId, toItemId),
+    onSuccess: (_d, { fromItemId, toItemId }) => {
+      void qc.invalidateQueries({ queryKey: itemTestKeys.byItem(projectId, fromItemId) });
+      void qc.invalidateQueries({ queryKey: itemTestKeys.byItem(projectId, toItemId) });
+    },
+  });
+}

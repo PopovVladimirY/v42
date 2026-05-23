@@ -180,6 +180,47 @@ func (h *taskHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Move handles POST .../{backlog_item_id}/tasks/{id}/move
+func (h *taskHandlers) Move(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req struct {
+		TargetItemID string `json:"target_item_id"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1024)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondErr(w, http.StatusBadRequest, "INVALID_JSON", "request body is not valid JSON")
+		return
+	}
+	if req.TargetItemID == "" {
+		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "target_item_id is required")
+		return
+	}
+	// Verify task belongs to the URL's backlog item.
+	existing, err := h.tasks.GetByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "task not found")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to move task")
+		return
+	}
+	if existing.BacklogItemID != chi.URLParam(r, "backlog_item_id") {
+		respondErr(w, http.StatusNotFound, "NOT_FOUND", "task not found")
+		return
+	}
+	t, err := h.tasks.MoveTo(r.Context(), id, req.TargetItemID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "task or target item not found")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to move task")
+		return
+	}
+	respond(w, http.StatusOK, t)
+}
+
 // --- Sprint handlers ---
 
 type sprintHandlers struct {

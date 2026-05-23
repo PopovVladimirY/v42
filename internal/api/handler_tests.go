@@ -175,3 +175,46 @@ func (h *testHandlers) DeleteTest(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+// MoveItemTest handles POST /projects/{project_id}/backlog/{backlog_item_id}/tests/{test_id}/move
+func (h *testHandlers) MoveItemTest(w http.ResponseWriter, r *http.Request) {
+        testID := chi.URLParam(r, "test_id")
+        currentItemID := chi.URLParam(r, "backlog_item_id")
+
+        var req struct {
+                TargetItemID string `json:"target_item_id"`
+        }
+        r.Body = http.MaxBytesReader(w, r.Body, 1024)
+        if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+                respondErr(w, http.StatusBadRequest, "INVALID_JSON", "request body is not valid JSON")
+                return
+        }
+        if req.TargetItemID == "" {
+                respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "target_item_id is required")
+                return
+        }
+        // Verify the test belongs to the URL's backlog item.
+        projectID := chi.URLParam(r, "project_id")
+        ts, err := h.tests.GetTest(r.Context(), projectID, testID)
+        if err != nil {
+                if errors.Is(err, domain.ErrNotFound) {
+                        respondErr(w, http.StatusNotFound, "NOT_FOUND", "test not found")
+                        return
+                }
+                respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to move test")
+                return
+        }
+        if ts.BacklogItemID == nil || *ts.BacklogItemID != currentItemID {
+                respondErr(w, http.StatusNotFound, "NOT_FOUND", "test not found in this backlog item")
+                return
+        }
+        moved, err := h.tests.MoveTo(r.Context(), testID, req.TargetItemID)
+        if err != nil {
+                if errors.Is(err, domain.ErrNotFound) {
+                        respondErr(w, http.StatusNotFound, "NOT_FOUND", "test or target item not found")
+                        return
+                }
+                respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to move test")
+                return
+        }
+        respond(w, http.StatusOK, moved)
+}

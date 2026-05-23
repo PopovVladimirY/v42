@@ -31,4 +31,10 @@ export const tasksApi = {
     client.delete<ApiResponse<null>>(
       `/projects/${projectId}/backlog/${itemId}/tasks/${taskId}`,
     ),
+
+  move: (projectId: string, itemId: string, taskId: string, targetItemId: string) =>
+    client.post<ApiResponse<Task>>(
+      `/projects/${projectId}/backlog/${itemId}/tasks/${taskId}/move`,
+      { target_item_id: targetItemId },
+    ),
 };

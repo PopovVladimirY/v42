@@ -1710,6 +1710,132 @@ volumes:
 
 ---
 
+## Backlog Power Features (VersionOne-style)
+
+Три возможности из V1, которые сделали работу с бэклогом реальной, а не декоративной.
+Реализованы как расширение Фазы 4, не ломая ни одного существующего контракта.
+
+---
+
+### 1. Inline expand: задачи и тесты прямо в строке бэклога
+
+**Зачем:** видеть состав item-а без перехода на страницу деталей. Всё как на ладони,
+прямо в таблице -- как в V1 "Add Task" / "Expand Tests" в сетке бэклога.
+
+**UX:**
+- В крайней левой колонке каждой строки -- кнопка `[+]` / `[-]`
+- По клику раскрывается панель под строкой item-а (не сбоку, а именно под)
+- Внутри: две секции -- Tasks и Tests. Кол-во в заголовке (Tasks: 3 / Tests: 2)
+- Каждая задача в одну строку: статус-пилюля | название | оценка | кнопка Move
+- Каждый тест: тип-бэдж | название | кнопка Move
+- Данные загружаются лениво (on demand) при первом раскрытии; кэш TanStack Query
+- State: `expandedItems: Set<string>` в компоненте BacklogPage (не в zustand -- локальный UI state)
+
+**Данные:**
+- `GET /projects/:pid/backlog/:itemId/tasks` -- уже есть
+- `GET /projects/:pid/backlog/:itemId/tests` -- уже есть
+- Хуки `useTasks` и `useItemTests` из `useItemDetails.ts` -- уже есть
+
+**Изменения:**
+- `BacklogPage.tsx`: добавить колонку expand, компонент `ExpandedItemPanel`
+- `useItemDetails.ts`: без изменений (хуки уже готовы)
+- Backend: без изменений
+
+---
+
+### 2. Move task / Move test между backlog items
+
+**Зачем:** реалокация работы -- самая частая операция на грумингах. "Эта задача
+теперь относится к той фиче" -- одно движение, а не удали / пересоздай.
+
+**UX:**
+- Кнопка "Move" в строке каждой задачи / теста внутри expanded panel
+- Открывает inline-dropdown со списком всех backlog items проекта (кроме текущего)
+- Item picker: searchable, показывает `#номер Название`
+- После выбора: оптимистичный UI (задача исчезает из текущего item-а), подтверждение
+  через инвалидацию кэша обоих item-ов
+
+**Данные:**
+- Новый endpoint: `POST /projects/:pid/backlog/:itemId/tasks/:taskId/move`
+  Body: `{ "target_item_id": "uuid" }`
+  Ответ: перемещённая задача с новым `backlog_item_id`
+- Аналогично: `POST /projects/:pid/backlog/:itemId/tests/:testId/move`
+  Body: `{ "target_item_id": "uuid" }`
+
+**Реализация (Go):**
+- SQL: `UPDATE tasks SET backlog_item_id = $2, updated_at = now() WHERE id = $1 RETURNING ...`
+- SQL для тестов аналогично
+- Store: `TaskStore.MoveTo(ctx, taskID, newItemID)`, `TestStore.MoveTo(...)`
+- Handler: валидирует что task принадлежит текущему item (защита), выполняет move
+- Router: `POST /backlog/{backlog_item_id}/tasks/{id}/move` (without RequireRole -- любой участник)
+- Аналогично для tests
+
+**Инвалидация кэша (frontend):**
+```typescript
+// onSuccess:
+qc.invalidateQueries({ queryKey: taskKeys.byItem(projectId, oldItemId) });
+qc.invalidateQueries({ queryKey: taskKeys.byItem(projectId, targetItemId) });
+```
+
+---
+
+### 3. Backlog breakdown: разбить один item на несколько
+
+**Зачем:** классическая ситуация грумминга -- "эта история слишком большая, давайте
+разобьём на три". В V1 это был отдельный экран с drag-and-drop распределением задач.
+
+**UX:**
+- Кнопка "Break down" в expanded panel или в контекстном меню строки бэклога
+- Открывается модал на весь экран:
+  - Слева: исходный item (заголовок, задачи, тесты) -- readonly
+  - Справа: 2+ новых item-а (можно добавлять/удалять)
+    - Каждый: поле Title + Estimate (SP)
+    - Drag zone: перетащи задачи/тесты в этот item
+  - Задачи/тесты, не назначенные ни в один новый item, остаются в оригинальном
+    (или оригинальный item сохраняется как "remainder" с нераспределённой работой)
+  - Кнопка "Execute breakdown" внизу
+
+**Правила:**
+- Минимум 2 новых item-а
+- Каждый должен иметь title
+- Сумма estimate-ов новых items -- рекомендательная (не обязательна совпадать с оригиналом)
+- Оригинальный item **всегда сохраняется** -- история не переписывается. Он получает
+  статус `decomposed`, скрывается из всех рабочих view (backlog, sprint board, фильтры),
+  но хранится как корень поддерева в "Дереве жизни проекта"
+
+**Дерево жизни (Life Tree) -- будущий экран:**
+В backlog_items добавляется `parent_item_id UUID REFERENCES backlog_items(id)`.
+Новые items после breakdown получают ссылку на оригинальный item.
+Если новый item тоже разбивается -- он тоже становится `decomposed` и порождает своих детей.
+Получается дерево, в котором видно, как понимание проекта эволюционировало:
+что выросло, что завяло, что мутировало. Живая история грумминга.
+
+Экран "History / Life Tree": интерактивная D3 или Recharts tree-диаграмма,
+только read-only, без правок. Каждый узел показывает:
+- заголовок item-а
+- дату декомпозиции
+- оценку (оригинальную vs. суммарную детей)
+- статус ветки
+
+Пример визуализации: горизонтальное дерево слева-направо, узлы кликабельны,
+открывают side panel с деталями item-а.
+
+**Данные (frontend-driven batch):**
+1. `POST /projects/:pid/backlog` x N -- создать новые items (с теми же epic/release/stage)
+2. `POST /projects/:pid/backlog/:oldItemId/tasks/:taskId/move` x M -- переместить задачи
+3. `POST /projects/:pid/backlog/:oldItemId/tests/:testId/move` x K -- переместить тесты
+4. Опционально: `DELETE /projects/:pid/backlog/:oldItemId` или `PATCH` status=cancelled
+
+Batch выполняется последовательно с rollback по ошибке (delete новых items если шаг 2/3 упал).
+
+**Специального backend endpoint не нужно** -- orchestration на frontend через
+существующие примитивы. Атомарность не критична для грумминга (не транзакционная операция).
+
+**Статус:** дизайн готов. Реализация -- следующий приоритет после move (зависит от него).
+UI: модал с dnd-kit DragOverlay (уже в стеке), три drop zone-ы для новых item-ов.
+
+---
+
 ## Что дальше
 
 Фаза 0 -- фундамент. Создаём структуру, поднимаем postgres, пишем healthcheck.

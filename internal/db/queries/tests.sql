@@ -56,5 +56,12 @@ RETURNING *;
 -- name: DeleteTest :exec
 DELETE FROM tests WHERE id = @id AND project_id = @project_id;
 
+-- name: MoveTest :one
+UPDATE tests
+SET backlog_item_id = $2,
+    updated_at      = now()
+WHERE id = $1
+RETURNING *;
+
 -- name: ListTestsByIDs :many
 SELECT * FROM tests WHERE id = ANY(@ids::uuid[]);

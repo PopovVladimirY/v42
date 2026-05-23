@@ -294,3 +294,24 @@ func (s *TaskStore) Delete(ctx context.Context, id string) error {
 	}
 	return s.q.DeleteTask(ctx, uid)
 }
+
+// MoveTo reassigns a task to a different backlog item.
+func (s *TaskStore) MoveTo(ctx context.Context, taskID, targetItemID string) (*Task, error) {
+	tid, err := parseUUID(taskID)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	nid, err := parseUUID(targetItemID)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	r, err := s.q.MoveTask(ctx, dbgen.MoveTaskParams{ID: tid, BacklogItemID: nid})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	t := taskFromUpdateRow(r)
+	return &t, nil
+}

@@ -175,6 +175,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 				r.Post("/backlog/{backlog_item_id}/tasks", taskH.Create)
 				r.Patch("/backlog/{backlog_item_id}/tasks/{id}", taskH.Update)
 				r.Delete("/backlog/{backlog_item_id}/tasks/{id}", taskH.Delete)
+				r.Post("/backlog/{backlog_item_id}/tasks/{id}/move", taskH.Move)
 
 				// Comments on backlog items
 				r.Get("/backlog/{backlog_item_id}/comments", commentH.ListByBacklogItem)
@@ -213,6 +214,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 				// Test specs: backlog-item-level
 				r.Get("/backlog/{backlog_item_id}/tests", testH.ListItemTests)
 				r.Post("/backlog/{backlog_item_id}/tests", testH.CreateItemTest)
+				r.Post("/backlog/{backlog_item_id}/tests/{test_id}/move", testH.MoveItemTest)
 
 				// Time entries: per-task
 				r.Get("/backlog/{backlog_item_id}/tasks/{task_id}/time", timeH.ListByTask)
