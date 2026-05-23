@@ -756,7 +756,7 @@ export function TeamDetailPage() {
                       dataKey="max"
                       stroke="var(--accent)"
                       strokeWidth={1.5}
-                      strokeOpacity={0.35}
+                      strokeOpacity={0.25}
                       fill="var(--accent)"
                       fillOpacity={0.08}
                       dot={false}
