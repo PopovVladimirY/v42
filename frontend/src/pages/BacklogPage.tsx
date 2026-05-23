@@ -1,6 +1,17 @@
 import React, { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDraggable,
+  useDroppable,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
+import {
   useBacklog,
   useCreateBacklogItem,
   useUpdateBacklogItem,
@@ -10,7 +21,7 @@ import { useEpics } from '@/hooks/useProjects';
 import { useSprints } from '@/hooks/useSprints';
 import { useTasks, useItemTests, useMoveTask, useMoveItemTest } from '@/hooks/useItemDetails';
 import { CLARITY_COLOR, CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
-import type { BacklogItem, BacklogItemStatus, BacklogItemType, ClarityQuadrant } from '@/types';
+import type { BacklogItem, BacklogItemStatus, BacklogItemType, ClarityQuadrant, Task, TestSpec } from '@/types';
 import { usePaginationStore } from '@/stores/usePagination';
 import { Paginator } from '@/components/Paginator';
 
@@ -105,7 +116,165 @@ function ClarityBadge({ clarity }: { clarity: ClarityQuadrant }) {
 
 
 
-// -- Create item panel -------------------------------------------------------
+// -- Droppable backlog row wrapper -------------------------------------------
+
+function DroppableBacklogRow({
+  item,
+  isExpanded,
+  children,
+}: {
+  item: BacklogItem;
+  isExpanded: boolean;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: item.id });
+  return (
+    <tr
+      ref={setNodeRef}
+      data-testid={`backlog-row-${item.id}`}
+      className="group transition-colors hover:bg-[var(--bg-elevated)]"
+      style={{
+        borderBottom: isExpanded ? 'none' : '1px solid var(--border)',
+        outline: isOver ? '2px solid var(--accent)' : undefined,
+        outlineOffset: isOver ? '-2px' : undefined,
+      }}
+    >
+      {children}
+    </tr>
+  );
+}
+
+// -- Draggable task / test rows ----------------------------------------------
+
+const TASK_STATUS_COLOR: Record<string, string> = {
+  todo: '#6B7280',
+  in_progress: '#3B82F6',
+  done: '#22C55E',
+  cancelled: '#EF4444',
+};
+
+function DraggableTaskRow({
+  task,
+  projectId,
+  item,
+  allItems,
+  moveTask,
+}: {
+  task: Task;
+  projectId: string;
+  item: BacklogItem;
+  allItems: BacklogItem[];
+  moveTask: ReturnType<typeof useMoveTask>;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: task.id,
+    data: { type: 'task', fromItemId: item.id, title: task.title },
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      className="group/row flex items-center gap-3 py-1 rounded px-1 hover:bg-[var(--bg-surface)] transition-colors"
+      style={{ opacity: isDragging ? 0.3 : 1 }}
+    >
+      <div
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing flex-shrink-0 opacity-0 group-hover/row:opacity-50 transition-opacity select-none"
+        style={{ color: 'var(--text-3)', lineHeight: 1, padding: '0 2px', fontSize: '1rem' }}
+        title="Drag to move to another backlog item"
+      >
+        &#8942;
+      </div>
+      <span
+        className="text-xs px-1.5 py-0.5 rounded-full font-medium flex-shrink-0"
+        style={{ background: TASK_STATUS_COLOR[task.status] ?? '#6B7280', color: '#fff' }}
+      >
+        {task.status.replace('_', ' ')}
+      </span>
+      <Link
+        to={`/projects/${projectId}/backlog/${item.id}`}
+        className="text-xs flex-1 truncate hover:underline"
+        style={{ color: 'var(--text-1)' }}
+        title={task.title}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {task.title}
+      </Link>
+      {task.estimate && (
+        <span className="text-xs font-mono flex-shrink-0" style={{ color: 'var(--accent)' }}>
+          {task.estimate}
+        </span>
+      )}
+      <MoveDropdown
+        label="task"
+        items={allItems}
+        currentItemId={item.id}
+        isPending={moveTask.isPending}
+        onMove={(toItemId) => moveTask.mutate({ taskId: task.id, fromItemId: item.id, toItemId })}
+      />
+    </div>
+  );
+}
+
+function DraggableTestRow({
+  test,
+  projectId,
+  item,
+  allItems,
+  moveTest,
+}: {
+  test: TestSpec;
+  projectId: string;
+  item: BacklogItem;
+  allItems: BacklogItem[];
+  moveTest: ReturnType<typeof useMoveItemTest>;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: test.id,
+    data: { type: 'test', fromItemId: item.id, title: test.title },
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      className="group/row flex items-center gap-3 py-1 rounded px-1 hover:bg-[var(--bg-surface)] transition-colors"
+      style={{ opacity: isDragging ? 0.3 : 1 }}
+    >
+      <div
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing flex-shrink-0 opacity-0 group-hover/row:opacity-50 transition-opacity select-none"
+        style={{ color: 'var(--text-3)', lineHeight: 1, padding: '0 2px', fontSize: '1rem' }}
+        title="Drag to move to another backlog item"
+      >
+        &#8942;
+      </div>
+      <span
+        className="text-xs px-1.5 py-0.5 rounded font-mono flex-shrink-0"
+        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-3)' }}
+      >
+        {test.type}
+      </span>
+      <Link
+        to={`/projects/${projectId}/backlog/${item.id}`}
+        className="text-xs flex-1 truncate hover:underline"
+        style={{ color: 'var(--text-1)' }}
+        title={test.title}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {test.title}
+      </Link>
+      <MoveDropdown
+        label="test"
+        items={allItems}
+        currentItemId={item.id}
+        isPending={moveTest.isPending}
+        onMove={(toItemId) => moveTest.mutate({ testId: test.id, fromItemId: item.id, toItemId })}
+      />
+    </div>
+  );
+}
+
+// -- Move dropdown -----------------------------------------------------------
 
 function MoveDropdown({
   label,
@@ -183,22 +352,17 @@ function ExpandedItemPanel({
   projectId,
   item,
   allItems,
+  moveTask,
+  moveTest,
 }: {
   projectId: string;
   item: BacklogItem;
   allItems: BacklogItem[];
+  moveTask: ReturnType<typeof useMoveTask>;
+  moveTest: ReturnType<typeof useMoveItemTest>;
 }) {
   const { data: tasks = [], isLoading: loadingTasks } = useTasks(projectId, item.id);
   const { data: tests = [], isLoading: loadingTests } = useItemTests(projectId, item.id);
-  const moveTask = useMoveTask(projectId);
-  const moveTest = useMoveItemTest(projectId);
-
-  const TASK_STATUS_COLOR: Record<string, string> = {
-    todo: '#6B7280',
-    in_progress: '#3B82F6',
-    done: '#22C55E',
-    cancelled: '#EF4444',
-  };
 
   return (
     <tr style={{ background: 'var(--bg-elevated)' }}>
@@ -214,38 +378,14 @@ function ExpandedItemPanel({
               <p className="text-xs" style={{ color: 'var(--text-3)' }}>No tasks yet</p>
             )}
             {tasks.map((task) => (
-              <div
+              <DraggableTaskRow
                 key={task.id}
-                className="group/row flex items-center gap-3 py-1 rounded px-1 hover:bg-[var(--bg-surface)] transition-colors"
-              >
-                <span
-                  className="text-xs px-1.5 py-0.5 rounded-full font-medium flex-shrink-0"
-                  style={{ background: TASK_STATUS_COLOR[task.status] ?? '#6B7280', color: '#fff' }}
-                >
-                  {task.status.replace('_', ' ')}
-                </span>
-                <Link
-                  to={`/projects/${projectId}/backlog/${item.id}`}
-                  className="text-xs flex-1 truncate hover:underline"
-                  style={{ color: 'var(--text-1)' }}
-                  title={task.title}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {task.title}
-                </Link>
-                {task.estimate && (
-                  <span className="text-xs font-mono flex-shrink-0" style={{ color: 'var(--accent)' }}>
-                    {task.estimate}
-                  </span>
-                )}
-                <MoveDropdown
-                  label="task"
-                  items={allItems}
-                  currentItemId={item.id}
-                  isPending={moveTask.isPending}
-                  onMove={(toItemId) => moveTask.mutate({ taskId: task.id, fromItemId: item.id, toItemId })}
-                />
-              </div>
+                task={task}
+                projectId={projectId}
+                item={item}
+                allItems={allItems}
+                moveTask={moveTask}
+              />
             ))}
           </div>
 
@@ -259,33 +399,14 @@ function ExpandedItemPanel({
               <p className="text-xs" style={{ color: 'var(--text-3)' }}>No tests yet</p>
             )}
             {tests.map((test) => (
-              <div
+              <DraggableTestRow
                 key={test.id}
-                className="group/row flex items-center gap-3 py-1 rounded px-1 hover:bg-[var(--bg-surface)] transition-colors"
-              >
-                <span
-                  className="text-xs px-1.5 py-0.5 rounded font-mono flex-shrink-0"
-                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-3)' }}
-                >
-                  {test.type}
-                </span>
-                <Link
-                  to={`/projects/${projectId}/backlog/${item.id}`}
-                  className="text-xs flex-1 truncate hover:underline"
-                  style={{ color: 'var(--text-1)' }}
-                  title={test.title}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {test.title}
-                </Link>
-                <MoveDropdown
-                  label="test"
-                  items={allItems}
-                  currentItemId={item.id}
-                  isPending={moveTest.isPending}
-                  onMove={(toItemId) => moveTest.mutate({ testId: test.id, fromItemId: item.id, toItemId })}
-                />
-              </div>
+                test={test}
+                projectId={projectId}
+                item={item}
+                allItems={allItems}
+                moveTest={moveTest}
+              />
             ))}
           </div>
         </div>
@@ -293,7 +414,6 @@ function ExpandedItemPanel({
     </tr>
   );
 }
-
 // -- Create item panel -------------------------------------------------------
 
 function CreateItemPanel({
@@ -420,12 +540,23 @@ function nextSort(cur: SortDir): SortDir {
   return null;
 }
 
+interface ActiveDrag {
+  id: string;
+  type: 'task' | 'test';
+  fromItemId: string;
+  title: string;
+}
+
 export function BacklogPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [showCreate, setShowCreate] = useState(false);
   const [page, setPage] = useState(1);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
   const pageSize = usePaginationStore((s) => s.getPageSize('backlog'));
+  const moveTaskDnd = useMoveTask(projectId ?? '');
+  const moveTestDnd = useMoveItemTest(projectId ?? '');
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   function toggleExpand(id: string) {
     setExpandedItems((prev) => {
@@ -511,6 +642,24 @@ export function BacklogPage() {
 
   const total     = items.length;
   const pageItems = items.slice((page - 1) * pageSize, page * pageSize);
+
+  function handleDragStart(event: DragStartEvent) {
+    const data = event.active.data.current as Omit<ActiveDrag, 'id'>;
+    setActiveDrag({ id: String(event.active.id), ...data });
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const drag = activeDrag;
+    setActiveDrag(null);
+    if (!event.over || !drag) return;
+    const toItemId = String(event.over.id);
+    if (toItemId === drag.fromItemId) return;
+    if (drag.type === 'task') {
+      moveTaskDnd.mutate({ taskId: drag.id, fromItemId: drag.fromItemId, toItemId });
+    } else {
+      moveTestDnd.mutate({ testId: drag.id, fromItemId: drag.fromItemId, toItemId });
+    }
+  }
 
   function handleDelete(id: string) {
     if (!confirm('Delete this backlog item?')) return;
@@ -612,7 +761,7 @@ export function BacklogPage() {
       {isError   && <p className="text-sm" style={{ color: 'var(--color-danger)' }}>Failed to load backlog.</p>}
 
       {!isLoading && !isError && (
-        <>
+        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="rounded-xl" style={{ border: '1px solid var(--border)', overflow: 'clip' }}>
             <table className="w-full border-collapse" data-testid="backlog-list">
               <thead style={{ background: 'var(--bg-elevated)' }}>
@@ -652,11 +801,7 @@ export function BacklogPage() {
                   const isExpanded = expandedItems.has(item.id);
                   return (
                     <React.Fragment key={item.id}>
-                      <tr
-                        data-testid={`backlog-row-${item.id}`}
-                        className="group transition-colors hover:bg-[var(--bg-elevated)]"
-                        style={{ borderBottom: isExpanded ? 'none' : '1px solid var(--border)' }}
-                      >
+                      <DroppableBacklogRow item={item} isExpanded={isExpanded}>
                         <td className="px-2 py-2 align-middle" style={{ width: '2rem' }}>
                           <button
                             onClick={() => toggleExpand(item.id)}
@@ -727,12 +872,14 @@ export function BacklogPage() {
                           x
                         </button>
                       </td>
-                    </tr>
+                    </DroppableBacklogRow>
                     {isExpanded && (
                       <ExpandedItemPanel
                         projectId={projectId}
                         item={item}
                         allItems={items}
+                        moveTask={moveTaskDnd}
+                        moveTest={moveTestDnd}
                       />
                     )}
                     </React.Fragment>
@@ -741,8 +888,19 @@ export function BacklogPage() {
               </tbody>
             </table>
           </div>
+          <DragOverlay dropAnimation={null}>
+            {activeDrag && (
+              <div
+                className="px-3 py-2 rounded-lg text-xs shadow-xl"
+                style={{ background: 'var(--bg-surface)', border: '1px solid var(--accent)', color: 'var(--text-1)', maxWidth: '20rem', pointerEvents: 'none' }}
+              >
+                <span className="font-medium" style={{ color: 'var(--text-3)' }}>{activeDrag.type}: </span>
+                {activeDrag.title}
+              </div>
+            )}
+          </DragOverlay>
           <Paginator page={page} pageSize={pageSize} total={total} onChange={setPage} />
-        </>
+        </DndContext>
       )}
     </div>
   );
