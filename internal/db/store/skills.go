@@ -18,6 +18,7 @@ type Skill struct {
 	Name      string    `json:"name"`
 	Category  *string   `json:"category"`
 	IsBuiltin bool      `json:"is_builtin"`
+	IsHidden  bool      `json:"is_hidden"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -44,7 +45,7 @@ func NewSkillStore(q *dbgen.Queries) *SkillStore {
 	return &SkillStore{q: q}
 }
 
-// List returns all skills, builtins first, then custom alphabetically.
+// List returns visible skills (not hidden), builtins first, then custom alphabetically.
 func (s *SkillStore) List(ctx context.Context) ([]Skill, error) {
 	rows, err := s.q.ListSkills(ctx)
 	if err != nil {
@@ -57,6 +58,27 @@ func (s *SkillStore) List(ctx context.Context) ([]Skill, error) {
 			Name:      r.Name,
 			Category:  r.Category,
 			IsBuiltin: r.IsBuiltin,
+			IsHidden:  r.IsHidden,
+			CreatedAt: r.CreatedAt.Time,
+		}
+	}
+	return out, nil
+}
+
+// ListAll returns all skills including hidden -- for admin management.
+func (s *SkillStore) ListAll(ctx context.Context) ([]Skill, error) {
+	rows, err := s.q.ListAllSkills(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Skill, len(rows))
+	for i, r := range rows {
+		out[i] = Skill{
+			ID:        uuidToString(r.ID),
+			Name:      r.Name,
+			Category:  r.Category,
+			IsBuiltin: r.IsBuiltin,
+			IsHidden:  r.IsHidden,
 			CreatedAt: r.CreatedAt.Time,
 		}
 	}
@@ -81,6 +103,7 @@ func (s *SkillStore) GetByID(ctx context.Context, id string) (*Skill, error) {
 		Name:      r.Name,
 		Category:  r.Category,
 		IsBuiltin: r.IsBuiltin,
+		IsHidden:  r.IsHidden,
 		CreatedAt: r.CreatedAt.Time,
 	}, nil
 }
@@ -103,8 +126,72 @@ func (s *SkillStore) Create(ctx context.Context, name string, category *string) 
 		Name:      r.Name,
 		Category:  r.Category,
 		IsBuiltin: r.IsBuiltin,
+		IsHidden:  r.IsHidden,
 		CreatedAt: r.CreatedAt.Time,
 	}, nil
+}
+
+// Update renames a skill and/or changes its category.
+func (s *SkillStore) Update(ctx context.Context, id, name string, category *string) (*Skill, error) {
+	uid, err := parseUUID(id)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	r, err := s.q.UpdateSkill(ctx, dbgen.UpdateSkillParams{
+		ID:       uid,
+		Name:     name,
+		Category: category,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, domain.ErrConflict
+		}
+		return nil, err
+	}
+	return &Skill{
+		ID:        uuidToString(r.ID),
+		Name:      r.Name,
+		Category:  r.Category,
+		IsBuiltin: r.IsBuiltin,
+		IsHidden:  r.IsHidden,
+		CreatedAt: r.CreatedAt.Time,
+	}, nil
+}
+
+// SetHidden hides or un-hides a skill without deleting member data.
+func (s *SkillStore) SetHidden(ctx context.Context, id string, hidden bool) (*Skill, error) {
+	uid, err := parseUUID(id)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	r, err := s.q.SetSkillHidden(ctx, dbgen.SetSkillHiddenParams{ID: uid, IsHidden: hidden})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	return &Skill{
+		ID:        uuidToString(r.ID),
+		Name:      r.Name,
+		Category:  r.Category,
+		IsBuiltin: r.IsBuiltin,
+		IsHidden:  r.IsHidden,
+		CreatedAt: r.CreatedAt.Time,
+	}, nil
+}
+
+// Delete hard-deletes a skill (cascades to member_skills and history).
+func (s *SkillStore) Delete(ctx context.Context, id string) error {
+	uid, err := parseUUID(id)
+	if err != nil {
+		return domain.ErrNotFound
+	}
+	return s.q.DeleteSkill(ctx, uid)
 }
 
 // ListMemberSkills returns a user's skill profile with full skill details.

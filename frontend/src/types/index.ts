@@ -37,6 +37,7 @@ export interface Skill {
   name: string;
   category: string | null;
   is_builtin: boolean;
+  is_hidden: boolean;
   created_at: string;
 }
 

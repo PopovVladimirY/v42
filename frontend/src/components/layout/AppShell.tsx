@@ -1,4 +1,4 @@
-import { NavLink, Outlet, Link } from 'react-router-dom';
+import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { useIdleTimeout } from '@/hooks/useIdleTimeout';
@@ -39,6 +39,8 @@ export function AppShell() {
 
   // Reactive: updates sidebar immediately when user visits a project
   const lastProject = useLastProject();
+  const { pathname } = useLocation();
+  const inAdmin = pathname.startsWith('/admin');
 
   async function handleLogout() {
     await logout();
@@ -126,28 +128,78 @@ export function AppShell() {
             </NavLink>
           ))}
 
-          {/* Admin-only: Users management */}
+          {/* Admin section: settings hub + sub-links */}
           {user?.role === 'admin' && (
-            <NavLink
-              to="/admin/users"
-              className={({ isActive }) =>
-                [
-                  'flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium mb-0.5 transition-colors',
-                  isActive ? '' : 'hover:bg-[var(--bg-hover)]',
-                ].join(' ')
-              }
-              style={({ isActive }) => ({
-                background: isActive ? 'var(--bg-active)' : undefined,
-                color: isActive ? 'var(--text-1)' : 'var(--text-2)',
-              })}
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <circle cx="8" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M3 13c0-2.761 2.239-5 5-5s5 2.239 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                <path d="M12.5 7v3M11 8.5h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-              <span>Users</span>
-            </NavLink>
+            <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
+              <p
+                className="px-3 mb-1 text-xs font-semibold uppercase tracking-widest"
+                style={{ color: 'var(--text-3)' }}
+              >
+                Admin
+              </p>
+              {/* Hub: highlights for any /admin/* path */}
+              <Link
+                to="/admin/settings"
+                className="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium mb-0.5 transition-colors hover:bg-[var(--bg-hover)]"
+                style={{
+                  background: inAdmin ? 'var(--bg-active)' : undefined,
+                  color: inAdmin ? 'var(--text-1)' : 'var(--text-2)',
+                  textDecoration: 'none',
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M8 10a2 2 0 100-4 2 2 0 000 4Z"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                  />
+                  <path
+                    d="M13.2 6.6l-.9-.5a5 5 0 000-.2l.9-.5a.5.5 0 00.2-.7l-.8-1.4a.5.5 0 00-.7-.2l-.9.5a5 5 0 00-.2-.1V2.5a.5.5 0 00-.5-.5h-1.6a.5.5 0 00-.5.5v1l-.2.1-.9-.5a.5.5 0 00-.7.2L5.4 4.7a.5.5 0 00.2.7l.9.5v.2l-.9.5a.5.5 0 00-.2.7l.8 1.4a.5.5 0 00.7.2l.9-.5.2.1v1a.5.5 0 00.5.5h1.6a.5.5 0 00.5-.5v-1l.2-.1.9.5a.5.5 0 00.7-.2l.8-1.4a.5.5 0 00-.2-.7Z"
+                    stroke="currentColor"
+                    strokeWidth="1.1"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>Settings</span>
+              </Link>
+              {/* Sub-links: indented, active on exact match */}
+              {[
+                {
+                  to: '/admin/users',
+                  label: 'Users',
+                },
+                {
+                  to: '/admin/skills',
+                  label: 'Skills',
+                },
+              ].map((sub) => (
+                <NavLink
+                  key={sub.to}
+                  to={sub.to}
+                  className={({ isActive }) =>
+                    [
+                      'flex items-center gap-2 pl-8 pr-3 py-1.5 rounded-md text-xs font-medium mb-0.5 transition-colors',
+                      isActive ? '' : 'hover:bg-[var(--bg-hover)]',
+                    ].join(' ')
+                  }
+                  style={({ isActive }) => ({
+                    background: isActive ? 'var(--bg-elevated)' : undefined,
+                    color: isActive ? 'var(--text-1)' : 'var(--text-3)',
+                  })}
+                >
+                  <span
+                    style={{
+                      width: 4,
+                      height: 4,
+                      borderRadius: '50%',
+                      background: 'currentColor',
+                      flexShrink: 0,
+                    }}
+                  />
+                  {sub.label}
+                </NavLink>
+              ))}
+            </div>
           )}
 
           {/* Last project quick links */}

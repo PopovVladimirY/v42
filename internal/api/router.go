@@ -100,6 +100,9 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 				// Skills: read for all, write for admin only
 				r.Get("/skills", skillH.List)
 				r.With(middleware.RequireRole("admin")).Post("/skills", skillH.Create)
+				r.With(middleware.RequireRole("admin")).Patch("/skills/{id}", skillH.Update)
+				r.With(middleware.RequireRole("admin")).Patch("/skills/{id}/hidden", skillH.SetHidden)
+				r.With(middleware.RequireRole("admin")).Delete("/skills/{id}", skillH.Delete)
 
 				// Teams: read for all authenticated users
 				r.Get("/teams", teamH.List)

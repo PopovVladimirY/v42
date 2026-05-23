@@ -336,8 +336,8 @@ export function AdminUsersPage() {
   return (
     <div className="p-6 max-w-3xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
+      <div className="flex items-center gap-4 mb-6">
+        <div className="flex-1 min-w-0">
           <h1 className="text-xl font-bold" style={{ color: 'var(--text-1)' }}>
             Users
           </h1>
@@ -362,6 +362,8 @@ export function AdminUsersPage() {
               fontSize: 13,
               fontWeight: 600,
               cursor: 'pointer',
+              flexShrink: 0,
+              marginLeft: 'auto',
             }}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">

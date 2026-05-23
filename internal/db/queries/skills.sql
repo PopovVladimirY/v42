@@ -1,11 +1,19 @@
 -- name: ListSkills :many
--- Returns all skills ordered by name. Builtin first, then custom alphabetically.
-SELECT id, name, category, is_builtin, created_at
+-- Returns visible skills ordered by name. Builtin first, then custom alphabetically.
+-- Hidden skills are excluded (use ListAllSkills for admin view).
+SELECT id, name, category, is_builtin, is_hidden, created_at
+FROM skills
+WHERE NOT is_hidden
+ORDER BY is_builtin DESC, name;
+
+-- name: ListAllSkills :many
+-- Admin view: returns all skills including hidden.
+SELECT id, name, category, is_builtin, is_hidden, created_at
 FROM skills
 ORDER BY is_builtin DESC, name;
 
 -- name: GetSkillByID :one
-SELECT id, name, category, is_builtin, created_at
+SELECT id, name, category, is_builtin, is_hidden, created_at
 FROM skills
 WHERE id = $1;
 
@@ -13,7 +21,28 @@ WHERE id = $1;
 -- Admin-only: create a custom (non-builtin) skill.
 INSERT INTO skills (name, category, is_builtin)
 VALUES ($1, $2, false)
-RETURNING id, name, category, is_builtin, created_at;
+RETURNING id, name, category, is_builtin, is_hidden, created_at;
+
+-- name: UpdateSkill :one
+-- Admin-only: rename a skill or change its category.
+UPDATE skills
+SET name     = $2,
+    category = $3
+WHERE id = $1
+RETURNING id, name, category, is_builtin, is_hidden, created_at;
+
+-- name: SetSkillHidden :one
+-- Admin-only: hide or un-hide a skill without deleting member data.
+UPDATE skills
+SET is_hidden = $2
+WHERE id = $1
+RETURNING id, name, category, is_builtin, is_hidden, created_at;
+
+-- name: DeleteSkill :exec
+-- Admin-only: hard delete a custom (non-builtin) skill.
+-- Cascades to member_skills and member_skill_history.
+DELETE FROM skills
+WHERE id = $1;
 
 -- name: ListMemberSkills :many
 -- Returns skill profile for a user with full skill details via JOIN.

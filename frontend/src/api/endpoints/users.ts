@@ -43,4 +43,19 @@ export const usersApi = {
 export const skillsApi = {
   list: () =>
     apiClient.get<{ data: Skill[] }>('/skills').then((r) => unwrap(r.data)),
+
+  listAll: () =>
+    apiClient.get<{ data: Skill[] }>('/skills?all=true').then((r) => unwrap(r.data)),
+
+  create: (body: { name: string; category?: string | null }) =>
+    apiClient.post<{ data: Skill }>('/skills', body).then((r) => unwrap(r.data)),
+
+  update: (id: string, body: { name?: string; category?: string | null }) =>
+    apiClient.patch<{ data: Skill }>(`/skills/${id}`, body).then((r) => unwrap(r.data)),
+
+  setHidden: (id: string, hidden: boolean) =>
+    apiClient.patch<{ data: Skill }>(`/skills/${id}/hidden`, { hidden }).then((r) => unwrap(r.data)),
+
+  delete: (id: string) =>
+    apiClient.delete(`/skills/${id}`),
 };
