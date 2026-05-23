@@ -19,12 +19,14 @@ export interface Sprint {
 
 export interface SprintItem {
   id: string;
+  number: number;
   title: string;
   status: string;
   type: string;
   priority: number;
   estimate?: string;
   assignee_id?: string;
+  assignee_name?: string | null;
   skill_required?: string;
   ac_steps?: string;
   ac_expected?: string;

@@ -31,12 +31,14 @@ type Sprint struct {
 // SprintItem is a backlog item summarised for sprint view.
 type SprintItem struct {
 	ID            string    `json:"id"`
+	Number        int       `json:"number"`
 	Title         string    `json:"title"`
 	Status        string    `json:"status"`
 	Type          string    `json:"type"`
 	Priority      float64   `json:"priority"`
 	Estimate      *string   `json:"estimate"`
 	AssigneeID    *string   `json:"assignee_id"`
+	AssigneeName  *string   `json:"assignee_name"`
 	SkillRequired *string   `json:"skill_required"`
 	AcSteps       *string   `json:"ac_steps"`
 	AcExpected    *string   `json:"ac_expected"`
@@ -268,38 +270,49 @@ func (s *SprintStore) RemoveItem(ctx context.Context, sprintID, backlogItemID st
 	return nil
 }
 
-// ListItems returns backlog items committed to a sprint.
+// ListItems returns backlog items committed to a sprint, with number and assignee name.
 func (s *SprintStore) ListItems(ctx context.Context, sprintID string) ([]SprintItem, error) {
 	sid, err := parseUUID(sprintID)
 	if err != nil {
 		return nil, domain.ErrNotFound
 	}
-	rows, err := s.q.ListSprintItems(ctx, sid)
+	const q = `
+		SELECT
+			bi.id::text, bi.number, bi.title, bi.status::text, bi.type::text,
+			bi.priority, bi.estimate, bi.assignee_id::text,
+			u.display_name,
+			bi.skill_required::text, bi.ac_steps, bi.ac_expected,
+			si.added_at
+		FROM sprint_items si
+		JOIN backlog_items bi ON bi.id = si.backlog_item_id
+		LEFT JOIN users u ON u.id = bi.assignee_id
+		WHERE si.sprint_id = $1
+		ORDER BY bi.priority ASC
+	`
+	rows, err := s.pool.Query(ctx, q, sid)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]SprintItem, len(rows))
-	for i, r := range rows {
-		item := SprintItem{
-			ID:         uuidToString(r.ID),
-			Title:      r.Title,
-			Status:     string(r.Status),
-			Type:       string(r.Type),
-			Priority:   r.Priority,
-			Estimate:   r.Estimate,
-			AcSteps:    r.AcSteps,
-			AcExpected: r.AcExpected,
-			AddedAt:    r.AddedAt.Time,
+	defer rows.Close()
+	var out []SprintItem
+	for rows.Next() {
+		var item SprintItem
+		var assigneeID, assigneeName, skillRequired *string
+		var addedAt pgtype.Timestamptz
+		if err := rows.Scan(
+			&item.ID, &item.Number, &item.Title, &item.Status, &item.Type,
+			&item.Priority, &item.Estimate, &assigneeID,
+			&assigneeName,
+			&skillRequired, &item.AcSteps, &item.AcExpected,
+			&addedAt,
+		); err != nil {
+			return nil, err
 		}
-		if r.AssigneeID.Valid {
-			v := uuidToString(r.AssigneeID)
-			item.AssigneeID = &v
-		}
-		if r.SkillRequired.Valid {
-			v := uuidToString(r.SkillRequired)
-			item.SkillRequired = &v
-		}
-		out[i] = item
+		item.AssigneeID = assigneeID
+		item.AssigneeName = assigneeName
+		item.SkillRequired = skillRequired
+		item.AddedAt = addedAt.Time
+		out = append(out, item)
 	}
 	return out, nil
 }

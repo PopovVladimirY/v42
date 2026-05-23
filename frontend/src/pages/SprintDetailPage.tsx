@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   DndContext,
   PointerSensor,
@@ -10,13 +11,21 @@ import {
   useDroppable,
 } from '@dnd-kit/core';
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
-import { useSprint, useSprintItems, useUpdateSprint, useAddSprintItem, useRemoveSprintItem, SPRINT_STATUS_LABEL, SPRINT_STATUS_COLOR } from '@/hooks/useSprints';
+import {
+  useSprint,
+  useSprintItems,
+  useUpdateSprint,
+  useAddSprintItem,
+  sprintKeys,
+  SPRINT_STATUS_LABEL,
+  SPRINT_STATUS_COLOR,
+} from '@/hooks/useSprints';
 import { useUpdateBacklogItem, useBacklog } from '@/hooks/useProjects';
 import { useAuthStore } from '@/hooks/useAuth';
-import type { SprintStatus } from '@/api/endpoints/sprints';
+import type { SprintStatus, SprintItem } from '@/api/endpoints/sprints';
 import type { BacklogItemStatus } from '@/types';
 
-// Board columns: from staging area to the graveyard of done items
+// Board columns -- first column absorbs all "not started" statuses
 const BOARD_COLUMNS: { id: BacklogItemStatus; label: string }[] = [
   { id: 'open',        label: 'To Do'       },
   { id: 'in_progress', label: 'In Progress' },
@@ -24,19 +33,45 @@ const BOARD_COLUMNS: { id: BacklogItemStatus; label: string }[] = [
   { id: 'done',        label: 'Done'        },
 ];
 
-// Draggable item card -- the atomic unit of suffering
+const ACTIVE_COLS = new Set<string>(['in_progress', 'in_review', 'done']);
+
+// Initials from display name
+function initials(name: string | null | undefined): string {
+  if (!name) return '?';
+  return name.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
+}
+
+const TYPE_COLOR: Record<string, string> = {
+  story:   'bg-blue-500/20 text-blue-400',
+  defect:  'bg-red-500/20 text-red-400',
+  task:    'bg-yellow-500/20 text-yellow-400',
+  feature: 'bg-purple-500/20 text-purple-400',
+  spike:   'bg-teal-500/20 text-teal-400',
+};
+
+// Draggable card -- click navigates to detail, drag moves between columns
 function ItemCard({
   item,
+  projectId,
   isDragging = false,
 }: {
-  item: { id: string; title: string; type: string; estimate?: string; assignee_id?: string };
+  item: SprintItem;
+  projectId: string;
   isDragging?: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: item.id });
+  const navigate = useNavigate();
+  const { attributes, listeners, setNodeRef, transform, isDragging: dndDragging } = useDraggable({ id: item.id });
 
   const style = transform
     ? { transform: `translate(${transform.x}px, ${transform.y}px)` }
     : undefined;
+
+  function handleClick() {
+    if (dndDragging) return;
+    navigate(`/projects/${projectId}/backlog/${item.id}`);
+  }
+
+  const typeClass = TYPE_COLOR[item.type] ?? 'bg-gray-500/20 text-gray-400';
 
   return (
     <div
@@ -48,34 +83,56 @@ function ItemCard({
         opacity: isDragging ? 0.4 : 1,
         cursor: 'grab',
       }}
-      className="rounded-lg p-3 flex flex-col gap-1.5 select-none"
+      className="rounded-lg p-3 flex flex-col gap-1.5 select-none hover:border-[var(--accent)] transition-colors"
       data-testid={`sprint-item-${item.id}`}
+      onClick={handleClick}
       {...listeners}
       {...attributes}
     >
-      <p className="text-xs font-medium leading-snug" style={{ color: 'var(--text-1)' }}>
-        {item.title}
-      </p>
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-hover)', color: 'var(--text-3)' }}>
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-mono font-bold flex-shrink-0" style={{ color: 'var(--accent)' }}>
+          B-{item.number}
+        </span>
+        <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium uppercase ${typeClass}`}>
           {item.type}
         </span>
         {item.estimate && (
-          <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>{item.estimate}</span>
+          <span className="ml-auto text-[10px] font-mono font-semibold" style={{ color: 'var(--text-3)' }}>
+            {item.estimate}
+          </span>
         )}
       </div>
+      <p className="text-xs font-medium leading-snug" style={{ color: 'var(--text-1)' }}>
+        {item.title}
+      </p>
+      {item.assignee_name && (
+        <div className="flex items-center gap-1 mt-0.5">
+          <span
+            className="text-[9px] font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
+            title={item.assignee_name}
+          >
+            {initials(item.assignee_name)}
+          </span>
+          <span className="text-[10px] truncate" style={{ color: 'var(--text-3)' }}>
+            {item.assignee_name}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
 
-// Droppable column container -- fills available height, items scroll inside
+// Droppable column container
 function BoardColumn({
   col,
   items,
+  projectId,
   activeId,
 }: {
   col: { id: BacklogItemStatus; label: string };
-  items: { id: string; title: string; type: string; estimate?: string }[];
+  items: SprintItem[];
+  projectId: string;
   activeId: string | null;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: col.id });
@@ -102,7 +159,7 @@ function BoardColumn({
       {/* Items area: scrollable, fills remaining column height */}
       <div className="flex-1 overflow-y-auto flex flex-col gap-2 p-2 min-h-0">
         {items.map((item) => (
-          <ItemCard key={item.id} item={item} isDragging={item.id === activeId} />
+          <ItemCard key={item.id} item={item} projectId={projectId} isDragging={item.id === activeId} />
         ))}
       </div>
     </div>
@@ -150,6 +207,7 @@ export function SprintDetailPage() {
     sprintId: string;
   }>();
 
+  const qc = useQueryClient();
   const { data: sprint, isLoading: sprintLoading } = useSprint(projectId, sprintId);
   const { data: items = [], isLoading: itemsLoading } = useSprintItems(projectId, sprintId);
   const updateItem = useUpdateBacklogItem(projectId);
@@ -172,12 +230,24 @@ export function SprintDetailPage() {
     const { active, over } = e;
     if (!over) return;
 
-    const newStatus = over.id as BacklogItemStatus;
-    const item = items.find((i) => i.id === String(active.id));
-    if (!item || item.status === newStatus) return;
+    const targetCol = String(over.id) as BacklogItemStatus;
+    const draggedItem = items.find((i) => i.id === String(active.id));
+    if (!draggedItem) return;
 
-    // Optimistically update item status via backlog PATCH
-    updateItem.mutate({ itemId: String(active.id), status: newStatus });
+    // Planned/open/request/on_hold all live in the "To Do" column --
+    // only mutate if actually moving to a different slot.
+    const currentIsToDoZone = !ACTIVE_COLS.has(draggedItem.status);
+    if (currentIsToDoZone && targetCol === 'open') return;
+    if (draggedItem.status === targetCol) return;
+
+    updateItem.mutate(
+      { itemId: draggedItem.id, status: targetCol },
+      {
+        onSuccess: () => {
+          void qc.invalidateQueries({ queryKey: sprintKeys.items(projectId, sprintId) });
+        },
+      }
+    );
   };
 
   const activeItem = activeId ? items.find((i) => i.id === activeId) : null;
@@ -198,10 +268,13 @@ export function SprintDetailPage() {
     );
   }
 
-  // Distribute items into columns
-  const byStatus = Object.fromEntries(
-    BOARD_COLUMNS.map((col) => [col.id, items.filter((i) => i.status === col.id)])
-  ) as Record<BacklogItemStatus, typeof items>;
+  // First column absorbs planned/request/on_hold/rejected/open (anything not in active columns)
+  const byStatus: Record<string, typeof items> = {
+    open:        items.filter((i) => !ACTIVE_COLS.has(i.status)),
+    in_progress: items.filter((i) => i.status === 'in_progress'),
+    in_review:   items.filter((i) => i.status === 'in_review'),
+    done:        items.filter((i) => i.status === 'done'),
+  };
 
   return (
     <div className="h-full flex flex-col overflow-hidden min-h-0" data-testid="sprint-board">
@@ -257,18 +330,20 @@ export function SprintDetailPage() {
                 key={col.id}
                 col={col}
                 items={byStatus[col.id] ?? []}
+                projectId={projectId}
                 activeId={activeId}
               />
             ))}
           </div>
           {/* Ghost card that follows the cursor during drag */}
-          <DragOverlay>
+          <DragOverlay dropAnimation={null}>
             {activeItem && (
               <div
                 className="rounded-lg p-3 shadow-xl"
-                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--accent)', width: '200px' }}
+                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--accent)', width: '220px' }}
               >
-                <p className="text-xs font-medium" style={{ color: 'var(--text-1)' }}>{activeItem.title}</p>
+                <span className="text-[10px] font-mono font-bold" style={{ color: 'var(--accent)' }}>B-{activeItem.number}</span>
+                <p className="text-xs font-medium mt-1" style={{ color: 'var(--text-1)' }}>{activeItem.title}</p>
               </div>
             )}
           </DragOverlay>
@@ -317,7 +392,7 @@ export function SprintDetailPage() {
 }
 
 // ---------------------------------------------------------------------------
-//  Backlog picker panel -- shows items NOT yet in this sprint
+//  Backlog picker panel -- table layout with sticky header + scroll
 // ---------------------------------------------------------------------------
 
 function BacklogPickerPanel({
@@ -345,37 +420,65 @@ function BacklogPickerPanel({
   return (
     <div
       className="flex-shrink-0 border-t flex flex-col"
-      style={{ maxHeight: '40vh', borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
+      style={{ maxHeight: '38vh', borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
     >
-      {/* Panel header */}
-      <div className="flex items-center gap-3 px-4 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
+      {/* Panel header -- does not scroll */}
+      <div
+        className="flex-shrink-0 flex items-center gap-3 px-4 py-2"
+        style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)' }}
+      >
         <span className="text-xs font-semibold" style={{ color: 'var(--text-1)' }}>Add from Backlog</span>
         <input
           className="flex-1 text-xs px-3 py-1 rounded outline-none"
           style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
-          placeholder="Search items..."
+          placeholder="Filter by title..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           autoFocus
         />
-        <button onClick={onClose} className="text-xs px-2" style={{ color: 'var(--text-3)' }}>x</button>
+        <button
+          onClick={onClose}
+          className="text-xs px-2 py-1 rounded"
+          style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}
+        >
+          Close
+        </button>
       </div>
-      {/* Scrollable list */}
-      <div className="flex-1 overflow-y-auto px-4 py-2 flex flex-col gap-1.5">
-        {isLoading && <p className="text-xs" style={{ color: 'var(--text-3)' }}>Loading...</p>}
+
+      {/* Scrollable table area */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {isLoading && (
+          <p className="text-xs px-4 py-3" style={{ color: 'var(--text-3)' }}>Loading...</p>
+        )}
         {!isLoading && available.length === 0 && (
-          <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+          <p className="text-xs px-4 py-3" style={{ color: 'var(--text-3)' }}>
             {search ? 'No matching items.' : 'All open items are already in this sprint.'}
           </p>
         )}
-        {available.map((item) => (
-          <BacklogPickerRow
-            key={item.id}
-            item={item}
-            projectId={projectId}
-            sprintId={sprintId}
-          />
-        ))}
+        {!isLoading && available.length > 0 && (
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 1 }}>
+                <th className="text-left px-3 py-1.5 font-medium w-16" style={{ color: 'var(--text-3)' }}>ID</th>
+                <th className="text-left px-3 py-1.5 font-medium w-20" style={{ color: 'var(--text-3)' }}>Type</th>
+                <th className="text-left px-3 py-1.5 font-medium" style={{ color: 'var(--text-3)' }}>Title</th>
+                <th className="text-left px-3 py-1.5 font-medium w-20" style={{ color: 'var(--text-3)' }}>Status</th>
+                <th className="text-center px-3 py-1.5 font-medium w-12" style={{ color: 'var(--text-3)' }}>SP</th>
+                <th className="w-16"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {available.map((item) => (
+                <BacklogPickerRow
+                  key={item.id}
+                  item={item}
+                  projectId={projectId}
+                  sprintId={sprintId}
+                />
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
@@ -386,10 +489,11 @@ function BacklogPickerRow({
   projectId,
   sprintId,
 }: {
-  item: { id: string; title: string; type: string; status: string; estimate?: string | null };
+  item: { id: string; number?: number; title: string; type: string; status: string; estimate?: string | null };
   projectId: string;
   sprintId: string;
 }) {
+  const navigate = useNavigate();
   const add = useAddSprintItem(projectId, sprintId);
   const [added, setAdded] = useState(false);
 
@@ -399,29 +503,49 @@ function BacklogPickerRow({
   }
 
   return (
-    <div
-      className="flex items-center gap-2 px-3 py-2 rounded-lg"
-      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}
+    <tr
+      className="border-b hover:bg-[var(--bg-hover)] transition-colors"
+      style={{ borderColor: 'var(--border)' }}
     >
-      <span className="text-[10px] font-mono uppercase w-14 flex-shrink-0" style={{ color: 'var(--text-3)' }}>
-        {item.type}
-      </span>
-      <span className="flex-1 text-xs truncate" style={{ color: 'var(--text-1)' }}>{item.title}</span>
-      {item.estimate && (
-        <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>{item.estimate}</span>
-      )}
-      <button
-        onClick={() => void handleAdd()}
-        disabled={add.isPending || added}
-        className="text-xs px-2 py-0.5 rounded font-medium flex-shrink-0"
-        style={{
-          background: added ? 'var(--color-success)' : 'var(--accent)',
-          color: added ? '#fff' : 'var(--accent-fg)',
-          opacity: added ? 0.8 : 1,
-        }}
-      >
-        {added ? 'Added' : '+'}
-      </button>
-    </div>
+      <td className="px-3 py-2">
+        <span className="font-mono font-bold" style={{ color: 'var(--accent)' }}>
+          {item.number != null ? `B-${item.number}` : '--'}
+        </span>
+      </td>
+      <td className="px-3 py-2">
+        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${TYPE_COLOR[item.type] ?? 'bg-gray-500/20 text-gray-400'}`}>
+          {item.type}
+        </span>
+      </td>
+      <td className="px-3 py-2 max-w-0">
+        <button
+          className="truncate text-left w-full hover:underline"
+          style={{ color: 'var(--text-1)' }}
+          onClick={() => navigate(`/projects/${projectId}/backlog/${item.id}`)}
+        >
+          {item.title}
+        </button>
+      </td>
+      <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--text-3)' }}>
+        {item.status}
+      </td>
+      <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--text-3)' }}>
+        {item.estimate ?? '--'}
+      </td>
+      <td className="px-3 py-2 text-right">
+        <button
+          onClick={() => void handleAdd()}
+          disabled={add.isPending || added}
+          className="text-xs px-2 py-0.5 rounded font-medium whitespace-nowrap"
+          style={{
+            background: added ? 'var(--color-success)' : 'var(--accent)',
+            color: added ? '#fff' : 'var(--accent-fg)',
+            opacity: added ? 0.8 : 1,
+          }}
+        >
+          {added ? 'Added' : '+ Add'}
+        </button>
+      </td>
+    </tr>
   );
 }
