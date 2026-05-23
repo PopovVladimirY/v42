@@ -14,6 +14,8 @@ import { EpicsPage } from '@/pages/EpicsPage';
 import { SprintsPage } from '@/pages/SprintsPage';
 import { SprintDetailPage } from '@/pages/SprintDetailPage';
 
+import { BacklogItemDetailPage } from '@/pages/BacklogItemDetailPage';
+
 export const router = createBrowserRouter([
   {
     path: '/login',
@@ -44,6 +46,7 @@ export const router = createBrowserRouter([
             children: [
               { index: true, element: <ProjectOverviewPage /> },
               { path: 'backlog', element: <BacklogPage /> },
+              { path: 'backlog/:itemId', element: <BacklogItemDetailPage /> },
               { path: 'epics', element: <EpicsPage /> },
               { path: 'sprints', element: <SprintsPage /> },
               { path: 'sprints/:sprintId', element: <SprintDetailPage /> },

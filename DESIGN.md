@@ -1313,7 +1313,13 @@ Line-height: `1.5` for body, `1.25` for headings. No orphan lines.
 - [x] Удалить айтем (с confirm)
 - [ ] Grooming filter preset "Требуют уточнения" -- отложено
 - [ ] Drag-and-drop сортировка (dnd-kit) -- `POST /backlog/reorder` готов, UI не сделан
-- [ ] Backlog item detail (side panel / страница) -- отложено
+- [x] Backlog item detail (`/projects/:id/backlog/:itemId`) -- полная страница:
+  - Описание (редактируемое inline)
+  - ATDD поля (ac_setup / ac_steps / ac_expected, read-only)
+  - Задачи (Tasks): CRUD, статус, skill_required (inline edit), estimate
+  - Тесты (Tests): CRUD, type, steps, expected_results
+  - Skill Load Distribution: агрегированный bar по skill_required задач
+  - Кнопка "+ Sprint" -- выбор planning/active спринта и добавление айтема
 
 **Epic board** (`/projects/{id}/epics`):
 - [x] Карточки эпиков: title, status badge
@@ -1337,16 +1343,17 @@ Line-height: `1.5` for body, `1.25` for headings. No orphan lines.
 
 ---
 
-#### Фаза 8.4.5 -- Sprint board (параллельно с Фазой 4.5)
+#### Фаза 8.4.5 -- Sprint board (параллельно с Фазой 4.5) ✓ PARTIAL DONE
 
-- [ ] Список спринтов проекта, создать спринт, статус (planning / active / completed)
-- [ ] Sprint detail: дата начала/конца, capacity команды, кол-во айтемов
+- [x] Список спринтов проекта, создать спринт, статус (planning / active / completed)
+- [x] Sprint detail: дата начала/конца, capacity команды, кол-во айтемов
 - [ ] Risk score badge на заголовке: цвет по порогу (< 0.5 зелёный, 0.5-1.5 жёлтый, > 1.5 красный)
   - `GET /sprints/{id}/risk-score`
-- [ ] Sprint board: колонки to_do / in_progress / in_review / done (dnd-kit DndContext)
-- [ ] Drag карточки между колонками → `PATCH /backlog/{id}` со статусом
-- [ ] Добавить/убрать айтем из спринта (из backlog view: drag в sprint lane или кнопка)
-- [ ] Fog alert toast: SSE событие `fog.alert` → toast с risk score и кнопкой "Посмотреть"
+- [x] Sprint board: колонки open / in_progress / in_review / done (dnd-kit DndContext)
+- [x] Drag карточки между колонками -- `PATCH /backlog/{id}` со статусом
+- [x] Добавить айтем из спринта -- панель "Add from backlog" в футере борда (фильтр + поиск + кнопка +)
+- [x] Удалить айтем из спринта -- через `DELETE /sprints/{id}/items/{backlog_item_id}` (хук готов)
+- [ ] Fog alert toast: SSE событие `fog.alert` -- откладывается до Phase 8.7
 
 ---
 

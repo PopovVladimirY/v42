@@ -191,3 +191,44 @@ export const CLARITY_LABEL: Record<ClarityQuadrant, string> = {
   foggy: 'Foggy',
   unknown: 'Unknown',
 };
+
+// -- Tasks -------------------------------------------------------------------
+
+export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'cancelled';
+
+export interface Task {
+  id: string;
+  backlog_item_id: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  estimate: string | null;
+  order_index: number;
+  assignee_id: string | null;
+  skill_required: string | null;
+  reviewer_id: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// -- TestSpec ----------------------------------------------------------------
+
+export type TestType = 'manual' | 'acceptance' | 'integration' | 'unit';
+
+export interface TestSpec {
+  id: string;
+  project_id: string;
+  backlog_item_id: string | null;
+  epic_id: string | null;
+  title: string;
+  description: string | null;
+  setup: string | null;
+  config: string | null;
+  steps: string | null;
+  expected_results: string | null;
+  type: TestType;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}

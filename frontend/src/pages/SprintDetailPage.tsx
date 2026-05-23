@@ -10,8 +10,8 @@ import {
   useDroppable,
 } from '@dnd-kit/core';
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
-import { useSprint, useSprintItems, useUpdateSprint, SPRINT_STATUS_LABEL, SPRINT_STATUS_COLOR } from '@/hooks/useSprints';
-import { useUpdateBacklogItem } from '@/hooks/useProjects';
+import { useSprint, useSprintItems, useUpdateSprint, useAddSprintItem, useRemoveSprintItem, SPRINT_STATUS_LABEL, SPRINT_STATUS_COLOR } from '@/hooks/useSprints';
+import { useUpdateBacklogItem, useBacklog } from '@/hooks/useProjects';
 import { useAuthStore } from '@/hooks/useAuth';
 import type { SprintStatus } from '@/api/endpoints/sprints';
 import type { BacklogItemStatus } from '@/types';
@@ -157,6 +157,7 @@ export function SprintDetailPage() {
   const canManage = user?.role === 'admin' || user?.role === 'maintainer';
 
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [showBacklogPanel, setShowBacklogPanel] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -274,6 +275,16 @@ export function SprintDetailPage() {
         </DndContext>
       )}
 
+      {/* Add from backlog -- slide-in panel */}
+      {showBacklogPanel && (
+        <BacklogPickerPanel
+          projectId={projectId}
+          sprintId={sprintId}
+          itemIdsInSprint={new Set(items.map((i) => i.id))}
+          onClose={() => setShowBacklogPanel(false)}
+        />
+      )}
+
       {/* Footer stats bar */}
       <div
         className="flex-shrink-0 flex items-center gap-4 px-4 border-t"
@@ -288,21 +299,129 @@ export function SprintDetailPage() {
         <span className="text-xs" style={{ color: 'var(--color-success)' }}>
           Done: {byStatus.done?.length ?? 0}
         </span>
-        {items.length === 0 && (
-          <Link
-            to={`/projects/${projectId}/backlog`}
-            className="text-xs hover:underline"
-            style={{ color: 'var(--accent)' }}
-          >
-            Add from backlog &rarr;
-          </Link>
-        )}
         {sprint.capacity_hours != null && (
-          <span className="text-xs ml-auto" style={{ color: 'var(--text-3)' }}>
+          <span className="text-xs" style={{ color: 'var(--text-3)' }}>
             Capacity: {sprint.capacity_hours}h
           </span>
         )}
+        <button
+          onClick={() => setShowBacklogPanel((v) => !v)}
+          className="text-xs px-3 py-1 rounded font-medium ml-auto"
+          style={{ background: showBacklogPanel ? 'var(--accent)' : 'var(--bg-elevated)', color: showBacklogPanel ? 'var(--accent-fg)' : 'var(--accent)', border: '1px solid var(--accent)' }}
+        >
+          {showBacklogPanel ? 'Close backlog' : '+ Add from backlog'}
+        </button>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+//  Backlog picker panel -- shows items NOT yet in this sprint
+// ---------------------------------------------------------------------------
+
+function BacklogPickerPanel({
+  projectId,
+  sprintId,
+  itemIdsInSprint,
+  onClose,
+}: {
+  projectId: string;
+  sprintId: string;
+  itemIdsInSprint: Set<string>;
+  onClose: () => void;
+}) {
+  const { data: allItems = [], isLoading } = useBacklog(projectId);
+  const [search, setSearch] = useState('');
+
+  const available = allItems.filter(
+    (item) =>
+      !itemIdsInSprint.has(item.id) &&
+      item.status !== 'done' &&
+      item.status !== 'cancelled' &&
+      (search === '' || item.title.toLowerCase().includes(search.toLowerCase())),
+  );
+
+  return (
+    <div
+      className="flex-shrink-0 border-t flex flex-col"
+      style={{ maxHeight: '40vh', borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
+    >
+      {/* Panel header */}
+      <div className="flex items-center gap-3 px-4 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
+        <span className="text-xs font-semibold" style={{ color: 'var(--text-1)' }}>Add from Backlog</span>
+        <input
+          className="flex-1 text-xs px-3 py-1 rounded outline-none"
+          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+          placeholder="Search items..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          autoFocus
+        />
+        <button onClick={onClose} className="text-xs px-2" style={{ color: 'var(--text-3)' }}>x</button>
+      </div>
+      {/* Scrollable list */}
+      <div className="flex-1 overflow-y-auto px-4 py-2 flex flex-col gap-1.5">
+        {isLoading && <p className="text-xs" style={{ color: 'var(--text-3)' }}>Loading...</p>}
+        {!isLoading && available.length === 0 && (
+          <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+            {search ? 'No matching items.' : 'All open items are already in this sprint.'}
+          </p>
+        )}
+        {available.map((item) => (
+          <BacklogPickerRow
+            key={item.id}
+            item={item}
+            projectId={projectId}
+            sprintId={sprintId}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BacklogPickerRow({
+  item,
+  projectId,
+  sprintId,
+}: {
+  item: { id: string; title: string; type: string; status: string; estimate?: string | null };
+  projectId: string;
+  sprintId: string;
+}) {
+  const add = useAddSprintItem(projectId, sprintId);
+  const [added, setAdded] = useState(false);
+
+  async function handleAdd() {
+    await add.mutateAsync(item.id);
+    setAdded(true);
+  }
+
+  return (
+    <div
+      className="flex items-center gap-2 px-3 py-2 rounded-lg"
+      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}
+    >
+      <span className="text-[10px] font-mono uppercase w-14 flex-shrink-0" style={{ color: 'var(--text-3)' }}>
+        {item.type}
+      </span>
+      <span className="flex-1 text-xs truncate" style={{ color: 'var(--text-1)' }}>{item.title}</span>
+      {item.estimate && (
+        <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>{item.estimate}</span>
+      )}
+      <button
+        onClick={() => void handleAdd()}
+        disabled={add.isPending || added}
+        className="text-xs px-2 py-0.5 rounded font-medium flex-shrink-0"
+        style={{
+          background: added ? 'var(--color-success)' : 'var(--accent)',
+          color: added ? '#fff' : 'var(--accent-fg)',
+          opacity: added ? 0.8 : 1,
+        }}
+      >
+        {added ? 'Added' : '+'}
+      </button>
     </div>
   );
 }
