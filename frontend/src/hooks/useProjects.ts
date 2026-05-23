@@ -24,6 +24,16 @@ export function useProjects(teamId: string) {
   });
 }
 
+export function useAllProjects() {
+  return useQuery({
+    queryKey: projectKeys.all,
+    queryFn: async () => {
+      const { data } = await projectsApi.list();
+      return data.data ?? [];
+    },
+  });
+}
+
 export function useProject(id: string) {
   return useQuery({
     queryKey: projectKeys.detail(id),

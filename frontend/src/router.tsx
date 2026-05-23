@@ -18,6 +18,7 @@ import { SprintsPage } from '@/pages/SprintsPage';
 import { SprintDetailPage } from '@/pages/SprintDetailPage';
 
 import { BacklogItemDetailPage } from '@/pages/BacklogItemDetailPage';
+import { AllProjectsPage } from '@/pages/AllProjectsPage';
 
 export const router = createBrowserRouter([
   {
@@ -41,6 +42,7 @@ export const router = createBrowserRouter([
           { path: '/teams/:id', element: <TeamDetailPage /> },
           { path: '/teams/:id/projects', element: <ProjectsPage /> },
           { path: '/profile', element: <ProfilePage /> },
+          { path: '/projects', element: <AllProjectsPage /> },
           { path: '/admin', element: <Navigate to="/admin/settings" replace /> },
           { path: '/admin/settings', element: <AdminSettingsPage /> },
           { path: '/admin/users', element: <AdminUsersPage /> },

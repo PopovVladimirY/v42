@@ -2,7 +2,7 @@ import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { useIdleTimeout } from '@/hooks/useIdleTimeout';
-import { useLastProject } from '@/hooks/useLastProject';
+import { useRecentProjects } from '@/hooks/useLastProject';
 
 // Nav item structure. Icons are inline SVG to avoid extra deps.
 const NAV_ITEMS = [
@@ -28,6 +28,18 @@ const NAV_ITEMS = [
       </svg>
     ),
   },
+  {
+    to: '/projects',
+    label: 'Projects',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <rect x="1" y="3" width="14" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M1 6h14" stroke="currentColor" strokeWidth="1.2" />
+        <path d="M5 9.5h6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+        <path d="M5 11.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      </svg>
+    ),
+  },
 ];
 
 export function AppShell() {
@@ -38,7 +50,7 @@ export function AppShell() {
   useIdleTimeout();
 
   // Reactive: updates sidebar immediately when user visits a project
-  const lastProject = useLastProject();
+  const recentProjects = useRecentProjects(user?.id);
   const { pathname } = useLocation();
   const inAdmin = pathname.startsWith('/admin');
 
@@ -202,42 +214,51 @@ export function AppShell() {
             </div>
           )}
 
-          {/* Last project quick links */}
-          {lastProject && (
+          {/* Recent projects quick links */}
+          {recentProjects.length > 0 && (
             <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
-              <p className="px-3 mb-1 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
-                Last project
-              </p>
-              <p
-                className="px-3 mb-1.5 text-xs truncate"
-                style={{ color: 'var(--text-2)' }}
-                title={lastProject.name}
-              >
-                {lastProject.name}
-              </p>
-              <Link
-                to={`/projects/${lastProject.id}/backlog`}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-colors hover:bg-[var(--bg-hover)]"
-                style={{ color: 'var(--text-2)' }}
-              >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <rect x="1" y="1" width="10" height="2" rx="1" stroke="currentColor" strokeWidth="1.2" />
-                  <rect x="1" y="5" width="7" height="2" rx="1" stroke="currentColor" strokeWidth="1.2" />
-                  <rect x="1" y="9" width="5" height="2" rx="1" stroke="currentColor" strokeWidth="1.2" />
-                </svg>
-                Backlog
-              </Link>
-              <Link
-                to={`/projects/${lastProject.id}/sprints`}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-colors hover:bg-[var(--bg-hover)]"
-                style={{ color: 'var(--text-2)' }}
-              >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path d="M2 10 C2 6 4 2 10 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                  <path d="M8 1l2 1-1 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Sprints
-              </Link>
+              <div className="flex items-center justify-between px-3 mb-1">
+                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
+                  Recent
+                </p>
+              </div>
+              {recentProjects.map((p) => (
+                <div key={p.id} className="flex items-center gap-1 px-2 py-0.5 rounded-md group hover:bg-[var(--bg-hover)] transition-colors">
+                  {/* Project name -- links to overview */}
+                  <Link
+                    to={`/projects/${p.id}`}
+                    className="flex-1 min-w-0 text-xs truncate py-1"
+                    style={{ color: 'var(--text-2)' }}
+                    title={p.name}
+                  >
+                    {p.name}
+                  </Link>
+                  {/* Quick icon links */}
+                  <Link
+                    to={`/projects/${p.id}/backlog`}
+                    title="Backlog"
+                    className="flex-shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[var(--bg-elevated)]"
+                    style={{ color: 'var(--text-3)' }}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                      <rect x="1" y="1" width="10" height="2" rx="1" stroke="currentColor" strokeWidth="1.2" />
+                      <rect x="1" y="5" width="7" height="2" rx="1" stroke="currentColor" strokeWidth="1.2" />
+                      <rect x="1" y="9" width="5" height="2" rx="1" stroke="currentColor" strokeWidth="1.2" />
+                    </svg>
+                  </Link>
+                  <Link
+                    to={`/projects/${p.id}/sprints`}
+                    title="Sprints"
+                    className="flex-shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[var(--bg-elevated)]"
+                    style={{ color: 'var(--text-3)' }}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 10 C2 6 4 2 10 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                      <path d="M8 1l2 1-1 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </Link>
+                </div>
+              ))}
             </div>
           )}
         </nav>

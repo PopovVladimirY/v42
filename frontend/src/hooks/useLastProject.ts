@@ -1,48 +1,57 @@
-// Tiny localStorage helper for "last visited project" quick nav in sidebar.
-// Key is intentionally short -- no PII, just a UUID.
+// Recent projects list for sidebar quick-nav. Scoped per user to survive
+// multi-account usage. Stores up to MAX_RECENT entries in localStorage.
 import { useState, useEffect } from 'react';
 
-const STORAGE_KEY = 'v42-last-project';
-const CUSTOM_EVENT = 'v42-last-project-changed';
+const MAX_RECENT = 5;
+const CUSTOM_EVENT = 'v42-recent-projects-changed';
 
-interface LastProject {
+export interface RecentProject {
   id: string;
   name: string;
 }
 
-export function getLastProject(): LastProject | null {
+function storageKey(userId: string): string {
+  return `v42-recent-projects-${userId}`;
+}
+
+export function getRecentProjects(userId: string): RecentProject[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as LastProject;
+    const raw = localStorage.getItem(storageKey(userId));
+    if (!raw) return [];
+    return JSON.parse(raw) as RecentProject[];
   } catch {
-    return null;
+    return [];
   }
 }
 
-export function setLastProject(id: string, name: string): void {
+export function pushRecentProject(userId: string, id: string, name: string): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ id, name }));
-    // notify same-tab listeners (storage event only fires in other tabs)
+    const current = getRecentProjects(userId);
+    const filtered = current.filter((p) => p.id !== id); // dedupe
+    const updated = [{ id, name }, ...filtered].slice(0, MAX_RECENT);
+    localStorage.setItem(storageKey(userId), JSON.stringify(updated));
     window.dispatchEvent(new CustomEvent(CUSTOM_EVENT));
   } catch {
     // storage quota exceeded or private mode -- silently ignore
   }
 }
 
-/** Reactive hook -- returns current last project and updates on navigation. */
-export function useLastProject(): LastProject | null {
-  const [value, setValue] = useState<LastProject | null>(getLastProject);
+/** Reactive hook -- updates sidebar whenever a project is visited. */
+export function useRecentProjects(userId: string | undefined): RecentProject[] {
+  const [value, setValue] = useState<RecentProject[]>(() =>
+    userId ? getRecentProjects(userId) : []
+  );
 
   useEffect(() => {
-    function sync() { setValue(getLastProject()); }
+    if (!userId) return;
+    function sync() { setValue(getRecentProjects(userId!)); }
     window.addEventListener(CUSTOM_EVENT, sync);
     window.addEventListener('storage', sync);
     return () => {
       window.removeEventListener(CUSTOM_EVENT, sync);
       window.removeEventListener('storage', sync);
     };
-  }, []);
+  }, [userId]);
 
   return value;
 }

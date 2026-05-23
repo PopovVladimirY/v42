@@ -3,7 +3,7 @@ import { useParams, Link, NavLink, Outlet } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useProject, useProjectTeams, useAddProjectTeam, useRemoveProjectTeam } from '@/hooks/useProjects';
 import { useAuthStore } from '@/hooks/useAuth';
-import { setLastProject } from '@/hooks/useLastProject';
+import { pushRecentProject } from '@/hooks/useLastProject';
 import { teamsApi } from '@/api/endpoints/teams';
 
 // Sub-nav tabs for a project
@@ -25,11 +25,12 @@ const STATUS_BADGE = {
 export function ProjectShell() {
   const { projectId } = useParams<{ projectId: string }>();
   const { data: project, isLoading } = useProject(projectId ?? '');
+  const user = useAuthStore((s) => s.user);
 
-  // Record last visited project for sidebar quick-nav
+  // Record last visited project for sidebar quick-nav (scoped by userId)
   useEffect(() => {
-    if (project) setLastProject(project.id, project.name);
-  }, [project?.id]);
+    if (project && user?.id) pushRecentProject(user.id, project.id, project.name);
+  }, [project?.id, user?.id]);
 
   if (isLoading) {
     return (
