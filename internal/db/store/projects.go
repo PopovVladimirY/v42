@@ -17,6 +17,7 @@ type Project struct {
 	Description *string   `json:"description"`
 	Status      string    `json:"status"`
 	OwnerID     string    `json:"owner_id"`
+	IsArchived  bool      `json:"is_archived"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -38,6 +39,7 @@ func projectFromRow(r dbgen.Project) Project {
 		Description: r.Description,
 		Status:      string(r.Status),
 		OwnerID:     uuidToString(r.OwnerID),
+		IsArchived:  r.IsArchived,
 		CreatedAt:   r.CreatedAt.Time,
 		UpdatedAt:   r.UpdatedAt.Time,
 	}
@@ -155,9 +157,56 @@ func (s *ProjectStore) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return domain.ErrNotFound
 	}
-	// GetByID detects missing rows — DeleteProject returns nil even for 0 rows deleted.
+	// GetByID detects missing rows -- DeleteProject returns nil even for 0 rows deleted.
 	if _, err := s.GetByID(ctx, id); err != nil {
 		return err
 	}
 	return s.q.DeleteProject(ctx, uid)
+}
+
+// Archive sets is_archived = true on a project.
+func (s *ProjectStore) Archive(ctx context.Context, id string) (*Project, error) {
+	uid, err := parseUUID(id)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	r, err := s.q.ArchiveProject(ctx, uid)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	p := projectFromRow(r)
+	return &p, nil
+}
+
+// ListArchived returns all soft-deleted projects.
+func (s *ProjectStore) ListArchived(ctx context.Context) ([]Project, error) {
+	rows, err := s.q.ListArchivedProjects(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Project, len(rows))
+	for i, r := range rows {
+		out[i] = projectFromRow(r)
+	}
+	return out, nil
+}
+
+// Unarchive restores a soft-deleted project.
+func (s *ProjectStore) Unarchive(ctx context.Context, id string) (*Project, error) {
+	uid, err := parseUUID(id)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	r, err := s.q.UnarchiveProject(ctx, uid)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	p := projectFromRow(r)
+	return &p, nil
 }

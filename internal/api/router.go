@@ -106,6 +106,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 
 				// Teams: read for all authenticated users
 				r.Get("/teams", teamH.List)
+				r.With(middleware.RequireRole("admin")).Get("/teams/archived", teamH.ListArchived)
 				r.Get("/teams/{id}", teamH.Get)
 
 				// Teams: write for admin/maintainer
@@ -117,8 +118,10 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 				r.Delete("/teams/{id}/members/{user_id}", teamH.RemoveMember)
 			})
 
-			// Teams: delete for admin only
-			r.With(middleware.RequireRole("admin")).Delete("/teams/{id}", teamH.Delete)
+			// Teams: delete/archive for admin only
+				r.With(middleware.RequireRole("admin")).Delete("/teams/{id}", teamH.Delete)
+				r.With(middleware.RequireRole("admin")).Patch("/teams/{id}/archive", teamH.Archive)
+				r.With(middleware.RequireRole("admin")).Patch("/teams/{id}/unarchive", teamH.Unarchive)
 
 			// Capacity + skill radar (read-only, any authenticated user)
 			r.Get("/users/{id}/skill-radar", capacityH.PersonalRadar)
@@ -135,6 +138,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 
 			// Projects
 			r.Get("/projects", projectH.List)
+			r.With(middleware.RequireRole("admin")).Get("/projects/archived", projectH.ListArchived)
 			r.With(middleware.RequireRole("admin", "maintainer")).Post("/projects", projectH.Create)
 
 			// Project-specific + all nested resources share one subrouter so chi does not
@@ -144,6 +148,8 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 				r.Get("/", projectH.Get)
 				r.With(middleware.RequireRole("admin", "maintainer")).Patch("/", projectH.Update)
 				r.With(middleware.RequireRole("admin")).Delete("/", projectH.Delete)
+				r.With(middleware.RequireRole("admin")).Patch("/archive", projectH.Archive)
+				r.With(middleware.RequireRole("admin")).Patch("/unarchive", projectH.Unarchive)
 
 				// Project teams (M:M)
 				r.Get("/teams", projectH.ListTeams)

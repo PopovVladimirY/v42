@@ -196,3 +196,45 @@ func (h *projectHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// Archive handles PATCH /api/v1/projects/{project_id}/archive (admin only).
+// Soft-deletes the project by setting is_archived = true.
+func (h *projectHandlers) Archive(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "project_id")
+	p, err := h.projects.Archive(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "project not found")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to archive project")
+		return
+	}
+	respond(w, http.StatusOK, p)
+}
+
+// ListArchived handles GET /api/v1/projects/archived (admin only).
+func (h *projectHandlers) ListArchived(w http.ResponseWriter, r *http.Request) {
+	projects, err := h.projects.ListArchived(r.Context())
+	if err != nil {
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to list archived projects")
+		return
+	}
+	respond(w, http.StatusOK, projects)
+}
+
+// Unarchive handles PATCH /api/v1/projects/{project_id}/unarchive (admin only).
+// Restores a previously archived project.
+func (h *projectHandlers) Unarchive(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "project_id")
+	p, err := h.projects.Unarchive(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "project not found")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to unarchive project")
+		return
+	}
+	respond(w, http.StatusOK, p)
+}

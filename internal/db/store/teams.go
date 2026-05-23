@@ -17,6 +17,7 @@ type Team struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	Description *string   `json:"description"`
+	IsArchived  bool      `json:"is_archived"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -150,6 +151,53 @@ func (s *TeamStore) Delete(ctx context.Context, id string) error {
 	return s.q.DeleteTeam(ctx, uid)
 }
 
+// Archive sets is_archived = true on a team.
+func (s *TeamStore) Archive(ctx context.Context, id string) (*Team, error) {
+	uid, err := parseUUID(id)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	r, err := s.q.ArchiveTeam(ctx, uid)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	t := rowToTeam(r)
+	return &t, nil
+}
+
+// ListArchived returns all soft-deleted teams.
+func (s *TeamStore) ListArchived(ctx context.Context) ([]Team, error) {
+	rows, err := s.q.ListArchivedTeams(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Team, len(rows))
+	for i, r := range rows {
+		out[i] = rowToTeam(r)
+	}
+	return out, nil
+}
+
+// Unarchive restores a soft-deleted team.
+func (s *TeamStore) Unarchive(ctx context.Context, id string) (*Team, error) {
+	uid, err := parseUUID(id)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	r, err := s.q.UnarchiveTeam(ctx, uid)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	t := rowToTeam(r)
+	return &t, nil
+}
+
 // AddMember adds a user to a team, or updates capacity_hours if already a member.
 // Returns a fully populated TeamMember with user details.
 func (s *TeamStore) AddMember(ctx context.Context, teamID, userID string, capacityHours int16) (*TeamMember, error) {
@@ -210,6 +258,7 @@ func rowToTeam(r dbgen.Team) Team {
 		ID:          uuidToString(r.ID),
 		Name:        r.Name,
 		Description: r.Description,
+		IsArchived:  r.IsArchived,
 		CreatedAt:   r.CreatedAt.Time,
 		UpdatedAt:   r.UpdatedAt.Time,
 	}

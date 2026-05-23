@@ -19,6 +19,15 @@ export const projectsApi = {
   delete: (id: string) =>
     client.delete<ApiResponse<null>>(`/projects/${id}`),
 
+  archive: (id: string) =>
+    client.patch<ApiResponse<Project>>(`/projects/${id}/archive`),
+
+  unarchive: (id: string) =>
+    client.patch<ApiResponse<Project>>(`/projects/${id}/unarchive`),
+
+  listArchived: () =>
+    client.get<ApiResponse<Project[]>>('/projects/archived'),
+
   // Team associations (M:M)
   listTeams: (projectId: string) =>
     client.get<ApiResponse<ProjectTeamEntry[]>>(`/projects/${projectId}/teams`),

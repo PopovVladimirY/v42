@@ -23,6 +23,15 @@ export const teamsApi = {
 
   delete: (id: string) => apiClient.delete(`/teams/${id}`),
 
+  archive: (id: string) =>
+    apiClient.patch<{ data: Team }>(`/teams/${id}/archive`).then((r) => unwrap(r.data)),
+
+  unarchive: (id: string) =>
+    apiClient.patch<{ data: Team }>(`/teams/${id}/unarchive`).then((r) => unwrap(r.data)),
+
+  listArchived: () =>
+    apiClient.get<{ data: Team[] }>('/teams/archived').then((r) => unwrap(r.data)),
+
   addMember: (id: string, body: { user_id: string; capacity_hours?: number }) =>
     apiClient.post(`/teams/${id}/members`, body),
 

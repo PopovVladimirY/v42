@@ -8,6 +8,7 @@ import { ProfilePage } from '@/pages/ProfilePage';
 import { AdminUsersPage } from '@/pages/AdminUsersPage';
 import { AdminSkillsPage } from '@/pages/AdminSkillsPage';
 import { AdminSettingsPage } from '@/pages/AdminSettingsPage';
+import { AdminArchivePage } from '@/pages/AdminArchivePage';
 import { ChangePasswordPage } from '@/pages/ChangePasswordPage';
 import { ProjectsPage } from '@/pages/ProjectsPage';
 import { ProjectShell, ProjectOverviewPage } from '@/pages/ProjectShell';
@@ -44,6 +45,7 @@ export const router = createBrowserRouter([
           { path: '/admin/settings', element: <AdminSettingsPage /> },
           { path: '/admin/users', element: <AdminUsersPage /> },
           { path: '/admin/skills', element: <AdminSkillsPage /> },
+          { path: '/admin/archive', element: <AdminArchivePage /> },
           // Project routes -- nested under ProjectShell (header + tab nav)
           {
             path: '/projects/:projectId',

@@ -145,10 +145,14 @@ export function TeamDetailPage() {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  // archive flow: idle -> step1 (first confirm) -> step2 (type name) -> step3 (final confirm)
+  const [archiveStep, setArchiveStep] = useState<'idle' | 'step1' | 'step2' | 'step3'>('idle');
+  const [archiveNameInput, setArchiveNameInput] = useState('');
   const [memberPage, setMemberPage] = useState(0);
   // user_ids excluded from radar -- empty = all shown
   const [radarExcluded, setRadarExcluded] = useState<Set<string>>(new Set());
+  // hovered member row -- drives sonar pulse animation on their radar overlay
+  const [hoveredMember, setHoveredMember] = useState<string | null>(null);
   const [visibleCols, setVisibleCols] = useState<Set<string>>(
     () => new Set(MEMBER_COLS.filter((c) => c.defaultOn).map((c) => c.id))
   );
@@ -212,8 +216,8 @@ export function TeamDetailPage() {
     },
   });
 
-  const deleteTeam = useMutation({
-    mutationFn: () => teamsApi.delete(id!),
+  const archiveTeam = useMutation({
+    mutationFn: () => teamsApi.archive(id!),
     onSuccess: () => navigate('/teams'),
   });
 
@@ -325,29 +329,73 @@ export function TeamDetailPage() {
                   </svg>
                 </button>
                 {canDelete && (
-                  confirmDelete ? (
+                  archiveStep === 'step1' ? (
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs" style={{ color: 'var(--color-danger)' }}>Delete?</span>
+                      <span className="text-xs font-medium" style={{ color: 'var(--color-danger)' }}>Archive team?</span>
                       <button
-                        onClick={() => void deleteTeam.mutate()}
-                        disabled={deleteTeam.isPending}
-                        className="px-2 py-1 text-xs font-medium rounded-md disabled:opacity-40"
+                        onClick={() => { setArchiveStep('step2'); setArchiveNameInput(''); }}
+                        className="px-2 py-1 text-xs font-medium rounded-md"
                         style={{ background: 'var(--color-danger)', color: '#fff' }}
                       >
-                        {deleteTeam.isPending ? '...' : 'Yes'}
+                        Continue
                       </button>
                       <button
-                        onClick={() => setConfirmDelete(false)}
+                        onClick={() => setArchiveStep('idle')}
                         className="px-2 py-1 text-xs rounded-md"
                         style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
                       >
-                        No
+                        Cancel
+                      </button>
+                    </div>
+                  ) : archiveStep === 'step2' ? (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        autoFocus
+                        value={archiveNameInput}
+                        onChange={(e) => setArchiveNameInput(e.target.value)}
+                        placeholder={`Type "${team?.name}" to confirm`}
+                        className="px-2 py-1 text-xs rounded-md"
+                        style={{ background: 'var(--bg-surface)', border: '1px solid var(--color-danger)', color: 'var(--text-1)', width: 180 }}
+                      />
+                      <button
+                        onClick={() => setArchiveStep('step3')}
+                        disabled={archiveNameInput !== team?.name}
+                        className="px-2 py-1 text-xs font-medium rounded-md disabled:opacity-30"
+                        style={{ background: 'var(--color-danger)', color: '#fff' }}
+                      >
+                        Next
+                      </button>
+                      <button
+                        onClick={() => setArchiveStep('idle')}
+                        className="px-2 py-1 text-xs rounded-md"
+                        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : archiveStep === 'step3' ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-medium" style={{ color: 'var(--color-danger)' }}>Absolutely sure?</span>
+                      <button
+                        onClick={() => void archiveTeam.mutate()}
+                        disabled={archiveTeam.isPending}
+                        className="px-2 py-1 text-xs font-medium rounded-md disabled:opacity-40"
+                        style={{ background: 'var(--color-danger)', color: '#fff' }}
+                      >
+                        {archiveTeam.isPending ? '...' : 'Archive'}
+                      </button>
+                      <button
+                        onClick={() => setArchiveStep('idle')}
+                        className="px-2 py-1 text-xs rounded-md"
+                        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
+                      >
+                        Cancel
                       </button>
                     </div>
                   ) : (
                     <button
-                      onClick={() => setConfirmDelete(true)}
-                      title="Delete team"
+                      onClick={() => setArchiveStep('step1')}
+                      title="Archive team"
                       className="p-1.5 rounded-md transition-colors"
                       style={{ color: 'var(--color-danger)', background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
                     >
@@ -571,6 +619,8 @@ export function TeamDetailPage() {
                       <tr
                         key={m.user_id}
                         className="group transition-colors"
+                        onMouseEnter={() => setHoveredMember(m.user_id)}
+                        onMouseLeave={() => setHoveredMember(null)}
                         style={{
                           background: idx % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-base)',
                           borderBottom: '1px solid var(--border)',
@@ -762,19 +812,24 @@ export function TeamDetailPage() {
                       dot={false}
                       isAnimationActive={false}
                     />
-                    {/* Per-member overlays -- same accent color, additive fill shows team strength */}
-                    {filteredRadarMemberIds.map((uid) => (
-                      <Radar
-                        key={uid}
-                        name={uid}
-                        dataKey={uid}
-                        stroke="none"
-                        fill="var(--accent)"
-                        fillOpacity={0.18}
-                        dot={false}
-                        isAnimationActive={false}
-                      />
-                    ))}
+                    {/* Per-member overlays -- animated sonar pulse on hover, others dim */}
+                    {filteredRadarMemberIds.map((uid) => {
+                      const isHovered = hoveredMember === uid;
+                      const isAnyHovered = hoveredMember !== null;
+                      return (
+                        <Radar
+                          key={uid}
+                          name={uid}
+                          dataKey={uid}
+                          stroke="none"
+                          fill="var(--accent)"
+                          fillOpacity={isHovered ? 0.6 : isAnyHovered ? 0.05 : 0.18}
+                          dot={false}
+                          isAnimationActive={false}
+                          className={isHovered ? 'radar-scan-active' : ''}
+                        />
+                      );
+                    })}
                   </RadarChart>
                 </ResponsiveContainer>
               </div>

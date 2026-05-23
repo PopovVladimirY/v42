@@ -146,6 +146,50 @@ func (h *teamHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusNoContent, nil)
 }
 
+// Archive handles PATCH /api/v1/teams/{id}/archive (admin only).
+// Soft-deletes the team by setting is_archived = true.
+func (h *teamHandlers) Archive(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	team, err := h.teams.Archive(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "team not found")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to archive team")
+		return
+	}
+	respond(w, http.StatusOK, team)
+}
+
+// ListArchived handles GET /api/v1/teams/archived (admin only).
+func (h *teamHandlers) ListArchived(w http.ResponseWriter, r *http.Request) {
+	teams, err := h.teams.ListArchived(r.Context())
+	if err != nil {
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to list archived teams")
+		return
+	}
+	respond(w, http.StatusOK, teams)
+}
+
+// Unarchive handles PATCH /api/v1/teams/{id}/unarchive (admin only).
+// Restores a previously archived team.
+func (h *teamHandlers) Unarchive(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	team, err := h.teams.Unarchive(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "team not found")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to unarchive team")
+		return
+	}
+	respond(w, http.StatusOK, team)
+}
+
 // AddMember handles POST /api/v1/teams/{id}/members (admin/maintainer only)
 func (h *teamHandlers) AddMember(w http.ResponseWriter, r *http.Request) {
 	teamID := chi.URLParam(r, "id")

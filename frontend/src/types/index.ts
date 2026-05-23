@@ -126,6 +126,7 @@ export interface Project {
   description: string | null;
   status: ProjectStatus;
   owner_id: string;
+  is_archived: boolean;
   created_at: string;
   updated_at: string;
 }

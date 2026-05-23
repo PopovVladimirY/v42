@@ -54,6 +54,19 @@ const SETTINGS_SECTIONS = [
       </svg>
     ),
   },
+  {
+    to: '/admin/archive',
+    label: 'Archive',
+    description: 'Browse archived teams and projects. Restore them to active state or keep in archive.',
+    soon: false,
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <rect x="2" y="4" width="20" height="4" rx="1" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M4 8v11a1 1 0 001 1h14a1 1 0 001-1V8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M9 13h6M12 10v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+  },
 ];
 
 export function AdminSettingsPage() {
