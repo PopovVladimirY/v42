@@ -261,14 +261,40 @@ function CreateItemPanel({
 
 // -- Main page ---------------------------------------------------------------
 
+// Persist backlog filters per project in localStorage
+function _filtersKey(projectId: string) { return `v42-backlog-filters-${projectId}`; }
+function _loadFilters(projectId: string) {
+  try {
+    const raw = localStorage.getItem(_filtersKey(projectId));
+    return raw ? (JSON.parse(raw) as { status: BacklogItemStatus | ''; clarity: ClarityQuadrant | ''; epicId: string }) : null;
+  } catch { return null; }
+}
+function _saveFilters(projectId: string, status: BacklogItemStatus | '', clarity: ClarityQuadrant | '', epicId: string) {
+  try { localStorage.setItem(_filtersKey(projectId), JSON.stringify({ status, clarity, epicId })); } catch { /* quota */ }
+}
+
 export function BacklogPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [showCreate, setShowCreate] = useState(false);
 
-  // Filter state
-  const [filterStatus, setFilterStatus] = useState<BacklogItemStatus | ''>('');
-  const [filterClarity, setFilterClarity] = useState<ClarityQuadrant | ''>('');
-  const [filterEpicId, setFilterEpicId] = useState('');
+  // Filter state -- persisted per project
+  const saved = projectId ? _loadFilters(projectId) : null;
+  const [filterStatus, setFilterStatusRaw] = useState<BacklogItemStatus | ''>(saved?.status ?? '');
+  const [filterClarity, setFilterClarityRaw] = useState<ClarityQuadrant | ''>(saved?.clarity ?? '');
+  const [filterEpicId, setFilterEpicIdRaw] = useState(saved?.epicId ?? '');
+
+  function setFilterStatus(v: BacklogItemStatus | '') {
+    setFilterStatusRaw(v);
+    if (projectId) _saveFilters(projectId, v, filterClarity, filterEpicId);
+  }
+  function setFilterClarity(v: ClarityQuadrant | '') {
+    setFilterClarityRaw(v);
+    if (projectId) _saveFilters(projectId, filterStatus, v, filterEpicId);
+  }
+  function setFilterEpicId(v: string) {
+    setFilterEpicIdRaw(v);
+    if (projectId) _saveFilters(projectId, filterStatus, filterClarity, v);
+  }
 
   const { data: epics = [] } = useEpics(projectId ?? '');
   const { data: items = [], isLoading, isError } = useBacklog(projectId ?? '', {

@@ -2,6 +2,7 @@ import { NavLink, Outlet, Link } from 'react-router-dom';
 import { useAuthStore } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { useIdleTimeout } from '@/hooks/useIdleTimeout';
+import { useLastProject } from '@/hooks/useLastProject';
 
 // Nav item structure. Icons are inline SVG to avoid extra deps.
 const NAV_ITEMS = [
@@ -35,6 +36,9 @@ export function AppShell() {
   const navigate = useNavigate();
 
   useIdleTimeout();
+
+  // Reactive: updates sidebar immediately when user visits a project
+  const lastProject = useLastProject();
 
   async function handleLogout() {
     await logout();
@@ -144,6 +148,45 @@ export function AppShell() {
               </svg>
               <span>Users</span>
             </NavLink>
+          )}
+
+          {/* Last project quick links */}
+          {lastProject && (
+            <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
+              <p className="px-3 mb-1 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
+                Last project
+              </p>
+              <p
+                className="px-3 mb-1.5 text-xs truncate"
+                style={{ color: 'var(--text-2)' }}
+                title={lastProject.name}
+              >
+                {lastProject.name}
+              </p>
+              <Link
+                to={`/projects/${lastProject.id}/backlog`}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-colors hover:bg-[var(--bg-hover)]"
+                style={{ color: 'var(--text-2)' }}
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <rect x="1" y="1" width="10" height="2" rx="1" stroke="currentColor" strokeWidth="1.2" />
+                  <rect x="1" y="5" width="7" height="2" rx="1" stroke="currentColor" strokeWidth="1.2" />
+                  <rect x="1" y="9" width="5" height="2" rx="1" stroke="currentColor" strokeWidth="1.2" />
+                </svg>
+                Backlog
+              </Link>
+              <Link
+                to={`/projects/${lastProject.id}/sprints`}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-colors hover:bg-[var(--bg-hover)]"
+                style={{ color: 'var(--text-2)' }}
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M2 10 C2 6 4 2 10 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                  <path d="M8 1l2 1-1 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Sprints
+              </Link>
+            </div>
           )}
         </nav>
 

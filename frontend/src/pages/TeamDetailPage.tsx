@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
@@ -31,66 +31,84 @@ function initials(name: string) {
 // Role badge colors -- uses CSS tokens
 const ROLE_COLOR: Record<string, string> = {
   admin: 'var(--accent)',
-  maintainer: 'var(--success)',
+  maintainer: 'var(--color-success)',
   member: 'var(--text-3)',
 };
 
-function MemberCard({
-  m,
-  canManage,
-  onRemove,
-  isRemoving,
+// -- Members table -----------------------------------------------------------
+
+const PAGE_SIZE = 10;
+
+interface ColDef {
+  id: string;
+  label: string;
+  defaultOn: boolean;
+  always?: boolean; // cannot be hidden
+}
+
+const MEMBER_COLS: ColDef[] = [
+  { id: 'name',     label: 'Name',      defaultOn: true,  always: true },
+  { id: 'email',    label: 'Email',     defaultOn: false },
+  { id: 'role',     label: 'Role',      defaultOn: true  },
+  { id: 'capacity', label: 'Capacity',  defaultOn: true  },
+  { id: 'growing',  label: 'Growing',   defaultOn: true  },
+  { id: 'curious',  label: 'Curious',   defaultOn: true  },
+];
+
+function ColChooser({
+  visible,
+  onChange,
 }: {
-  m: TeamMember;
-  canManage: boolean;
-  onRemove: (userId: string) => void;
-  isRemoving: boolean;
+  visible: Set<string>;
+  onChange: (id: string, on: boolean) => void;
 }) {
-  const label = m.display_name || m.email;
-  const color = ROLE_COLOR[m.role] ?? 'var(--text-3)';
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [open]);
 
   return (
-    <div
-      className="flex items-center gap-3 rounded-lg p-3 group"
-      style={{
-        background: 'var(--bg-surface)',
-        border: '1px solid var(--border)',
-      }}
-    >
-      {m.avatar_url ? (
-        <img src={m.avatar_url} alt={label} className="w-9 h-9 rounded-full flex-shrink-0 object-cover" />
-      ) : (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors"
+        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-3)' }}
+        title="Choose columns"
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <rect x="1" y="1" width="4" height="10" rx="1" stroke="currentColor" strokeWidth="1.2" />
+          <rect x="7" y="1" width="4" height="10" rx="1" stroke="currentColor" strokeWidth="1.2" />
+        </svg>
+        Columns
+      </button>
+      {open && (
         <div
-          className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-semibold"
-          style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}
+          className="absolute right-0 top-full mt-1 z-20 rounded-lg py-1 min-w-36"
+          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}
         >
-          {initials(label)}
+          {MEMBER_COLS.filter((c) => !c.always).map((col) => (
+            <label
+              key={col.id}
+              className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[var(--bg-hover)] text-xs"
+              style={{ color: 'var(--text-2)' }}
+            >
+              <input
+                type="checkbox"
+                checked={visible.has(col.id)}
+                onChange={(e) => onChange(col.id, e.target.checked)}
+                className="accent-[var(--accent)]"
+              />
+              {col.label}
+            </label>
+          ))}
         </div>
-      )}
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium truncate" style={{ color: 'var(--text-1)' }} title={label}>
-          {label}
-        </p>
-        {m.display_name && (
-          <p className="text-xs truncate" style={{ color: 'var(--text-3)' }}>{m.email}</p>
-        )}
-      </div>
-      <div className="flex-shrink-0 flex flex-col items-end gap-0.5">
-        <span className="text-xs font-medium capitalize" style={{ color }}>{m.role}</span>
-        <span className="text-xs" style={{ color: 'var(--text-3)' }}>{fmtCapacity(m.capacity_hours)}</span>
-      </div>
-      {canManage && (
-        <button
-          onClick={() => onRemove(m.user_id)}
-          disabled={isRemoving}
-          title="Remove from team"
-          className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 p-1 rounded disabled:opacity-40"
-          style={{ color: 'var(--color-danger)' }}
-        >
-          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-            <path d="M1.5 1.5l10 10M11.5 1.5l-10 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-        </button>
       )}
     </div>
   );
@@ -110,15 +128,6 @@ function buildRadarData(matrix: MatrixEntry[]) {
   }));
 }
 
-function SkeletonCard() {
-  return (
-    <div
-      className="h-16 rounded-lg animate-pulse"
-      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-    />
-  );
-}
-
 export function TeamDetailPage() {
   const { id } = useParams<{ id: string }>();
   const user = useAuthStore((s) => s.user);
@@ -131,6 +140,10 @@ export function TeamDetailPage() {
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [memberPage, setMemberPage] = useState(0);
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(
+    () => new Set(MEMBER_COLS.filter((c) => c.defaultOn).map((c) => c.id))
+  );
 
   const canManage = user?.role === 'admin' || user?.role === 'maintainer';
   const canDelete = user?.role === 'admin';
@@ -173,7 +186,13 @@ export function TeamDetailPage() {
 
   const removeMember = useMutation({
     mutationFn: (userId: string) => teamsApi.removeMember(id!, userId),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['team', id] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['team', id] });
+      void qc.invalidateQueries({ queryKey: ['team-skill-matrix', id] });
+      void qc.invalidateQueries({ queryKey: ['team-tandems', id] });
+      void qc.invalidateQueries({ queryKey: ['team-learning-appetite', id] });
+      void qc.invalidateQueries({ queryKey: ['team-member-capacity', id] });
+    },
   });
 
   const updateTeam = useMutation({
@@ -194,6 +213,10 @@ export function TeamDetailPage() {
     mutationFn: () => teamsApi.addMember(id!, { user_id: addUserId, capacity_hours: addCapacity }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['team', id] });
+      void qc.invalidateQueries({ queryKey: ['team-skill-matrix', id] });
+      void qc.invalidateQueries({ queryKey: ['team-tandems', id] });
+      void qc.invalidateQueries({ queryKey: ['team-learning-appetite', id] });
+      void qc.invalidateQueries({ queryKey: ['team-member-capacity', id] });
       setAddingMember(false);
       setAddUserId('');
       setAddCapacity(32);
@@ -217,7 +240,8 @@ export function TeamDetailPage() {
   const availableUsers = allUsers?.filter((u) => !existingMemberIds.has(u.id)) ?? [];
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="h-full overflow-y-auto">
+    <div className="p-6">
       {/* Back link */}
       <Link to="/teams" className="inline-flex items-center gap-1.5 text-xs mb-6" style={{ color: 'var(--text-3)' }}>
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -372,65 +396,44 @@ export function TeamDetailPage() {
         </div>
       )}
 
-      {/* Skill Radar */}
-      {radarData.length > 0 && (
-        <section className="mb-8">
-          <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
-            Skill Coverage
-          </h2>
-          <div
-            className="rounded-xl p-4"
-            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-          >
-            <ResponsiveContainer width="100%" height={260}>
-              <RadarChart data={radarData} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
-                <PolarGrid stroke="var(--border)" />
-                <PolarAngleAxis
-                  dataKey="skill"
-                  tick={{ fill: 'var(--text-3)', fontSize: 11 }}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: 'var(--bg-elevated)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '8px',
-                    color: 'var(--text-1)',
-                    fontSize: '12px',
-                  }}
-                  formatter={(v) => [typeof v === 'number' ? v.toFixed(1) : v, 'Avg level']}
-                />
-                <Radar
-                  name="Team"
-                  dataKey="avgLevel"
-                  stroke="var(--accent)"
-                  fill="var(--accent)"
-                  fillOpacity={0.25}
-                />
-              </RadarChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-      )}
+      {/* Two-column layout: left = members (2/3), right = radar + capacity (1/3) */}
+      <div className="flex gap-6 items-start">
 
-      {/* Members */}
+        {/* LEFT column */}
+        <div className="flex-1 min-w-0">
+
+      {/* Members table */}
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold" style={{ color: 'var(--text-2)' }}>Members</h2>
-        {canManage && (
-          <button
-            onClick={() => setAddingMember((v) => !v)}
-            className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md transition-colors"
-            style={{
-              background: addingMember ? 'var(--bg-active)' : 'var(--bg-surface)',
-              border: '1px solid var(--border)',
-              color: 'var(--text-2)',
+        <div className="flex items-center gap-2">
+          <ColChooser
+            visible={visibleCols}
+            onChange={(colId, on) => {
+              setVisibleCols((prev) => {
+                const next = new Set(prev);
+                if (on) next.add(colId); else next.delete(colId);
+                return next;
+              });
+              setMemberPage(0);
             }}
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-            Add member
-          </button>
-        )}
+          />
+          {canManage && (
+            <button
+              onClick={() => setAddingMember((v) => !v)}
+              className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md transition-colors"
+              style={{
+                background: addingMember ? 'var(--bg-active)' : 'var(--bg-surface)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-2)',
+              }}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              Add member
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Add member form */}
@@ -484,72 +487,173 @@ export function TeamDetailPage() {
         </div>
       )}
 
-      <div className="flex flex-col gap-2">
-        {isLoading
-          ? Array.from({ length: 3 }, (_, i) => <SkeletonCard key={i} />)
-          : team?.members.length === 0
-          ? (
-            <p className="text-sm py-6 text-center" style={{ color: 'var(--text-3)' }}>No members yet.</p>
-          )
-          : team?.members.map((m) => (
-            <MemberCard
-              key={m.user_id}
-              m={m}
-              canManage={canManage}
-              onRemove={(uid) => void removeMember.mutate(uid)}
-              isRemoving={removeMember.isPending && removeMember.variables === m.user_id}
-            />
-          ))
-        }
-      </div>
-
-      {/* Capacity Bars */}
-      {memberCapacity && memberCapacity.length > 0 && (() => {
-        const memberMap = new Map<string, string>(
-          (team?.members ?? []).map((m) => [m.user_id, m.display_name || m.email])
+      {/* Members table */}
+      {(() => {
+        const appetiteMap = new Map<string, TeamMemberAppetite>(
+          (appetite ?? []).map((a) => [a.user_id, a])
         );
-        const maxCap = Math.max(...memberCapacity.map((m) => m.capacity_hours), 1);
-        return (
-          <section className="mt-8">
-            <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
-              Capacity
-            </h2>
-            <div
-              className="rounded-xl p-4 flex flex-col gap-3"
-              style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-            >
-              {memberCapacity.map((m) => {
-                const name = memberMap.get(m.user_id) ?? m.user_id.slice(0, 8);
-                const pct = maxCap > 0 ? (m.capacity_hours / maxCap) * 100 : 0;
-                return (
-                  <div key={m.user_id}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-medium truncate max-w-36" style={{ color: 'var(--text-2)' }}>{name}</span>
-                      <div className="flex items-center gap-3 flex-shrink-0">
-                        {m.assigned_items > 0 && (
-                          <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>
-                            {m.assigned_items} active
-                          </span>
-                        )}
-                        <span className="text-xs font-medium" style={{ color: 'var(--text-1)' }}>
-                          {m.capacity_hours}h/wk
-                        </span>
-                      </div>
-                    </div>
-                    <div className="relative h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-elevated)' }}>
-                      <div
-                        className="absolute inset-y-0 left-0 rounded-full transition-all"
-                        style={{ width: `${pct}%`, background: 'var(--accent)' }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+        const members = team?.members ?? [];
+        const totalPages = Math.ceil(members.length / PAGE_SIZE);
+        const page = Math.min(memberPage, Math.max(0, totalPages - 1));
+        const pageRows = members.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+        const show = (col: string) => visibleCols.has(col);
+
+        if (isLoading) {
+          return (
+            <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+              {Array.from({ length: 4 }, (_, i) => (
+                <div key={i} className="h-10 animate-pulse" style={{ background: i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }} />
+              ))}
             </div>
-          </section>
+          );
+        }
+
+        if (members.length === 0) {
+          return <p className="text-sm py-6 text-center" style={{ color: 'var(--text-3)' }}>No members yet.</p>;
+        }
+
+        return (
+          <>
+            <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
+                    {show('name') && (
+                      <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Name</th>
+                    )}
+                    {show('email') && (
+                      <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Email</th>
+                    )}
+                    {show('role') && (
+                      <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Role</th>
+                    )}
+                    {show('capacity') && (
+                      <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>h/wk</th>
+                    )}
+                    {show('growing') && (
+                      <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Growing</th>
+                    )}
+                    {show('curious') && (
+                      <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Curious</th>
+                    )}
+                    {canManage && <th className="w-8" />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageRows.map((m, idx) => {
+                    const label = m.display_name || m.email;
+                    const roleColor = ROLE_COLOR[m.role] ?? 'var(--text-3)';
+                    const apt = appetiteMap.get(m.user_id);
+                    return (
+                      <tr
+                        key={m.user_id}
+                        className="group transition-colors"
+                        style={{
+                          background: idx % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-base)',
+                          borderBottom: '1px solid var(--border)',
+                        }}
+                      >
+                        {show('name') && (
+                          <td className="px-3 py-2.5 max-w-0">
+                            <div className="flex items-center gap-2 min-w-0">
+                              {m.avatar_url ? (
+                                <img src={m.avatar_url} alt={label} className="w-6 h-6 rounded-full flex-shrink-0 object-cover" />
+                              ) : (
+                                <div
+                                  className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-semibold"
+                                  style={{ background: 'var(--accent-muted)', color: 'var(--accent)', fontSize: '9px' }}
+                                >
+                                  {initials(label)}
+                                </div>
+                              )}
+                              <span className="truncate text-sm font-medium" style={{ color: 'var(--text-1)' }} title={label}>{label}</span>
+                            </div>
+                          </td>
+                        )}
+                        {show('email') && (
+                          <td className="px-3 py-2.5 max-w-0">
+                            <span className="truncate block text-xs" style={{ color: 'var(--text-3)' }} title={m.email}>{m.email}</span>
+                          </td>
+                        )}
+                        {show('role') && (
+                          <td className="px-3 py-2.5 whitespace-nowrap">
+                            <span className="text-xs font-medium capitalize" style={{ color: roleColor }}>{m.role}</span>
+                          </td>
+                        )}
+                        {show('capacity') && (
+                          <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                            <span className="text-xs" style={{ color: 'var(--text-2)' }}>{m.capacity_hours > 0 ? m.capacity_hours : '--'}</span>
+                          </td>
+                        )}
+                        {show('growing') && (
+                          <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                            {apt ? (
+                              <span className="text-xs font-medium" style={{ color: 'var(--accent)' }}>{apt.reaching_count}</span>
+                            ) : (
+                              <span className="text-xs" style={{ color: 'var(--text-3)' }}>--</span>
+                            )}
+                          </td>
+                        )}
+                        {show('curious') && (
+                          <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                            {apt ? (
+                              <span className="text-xs" style={{ color: 'var(--text-2)' }}>{apt.curious_breadth}</span>
+                            ) : (
+                              <span className="text-xs" style={{ color: 'var(--text-3)' }}>--</span>
+                            )}
+                          </td>
+                        )}
+                        {canManage && (
+                          <td className="px-2 py-2.5 text-center">
+                            <button
+                              onClick={() => void removeMember.mutate(m.user_id)}
+                              disabled={removeMember.isPending && removeMember.variables === m.user_id}
+                              title="Remove"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded disabled:opacity-40"
+                              style={{ color: 'var(--color-danger)' }}
+                            >
+                              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                                <path d="M1 1l9 9M10 1l-9 9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                              </svg>
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+                  {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, members.length)} of {members.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setMemberPage((p) => Math.max(0, p - 1))}
+                    disabled={page === 0}
+                    className="px-2 py-1 text-xs rounded-md disabled:opacity-30"
+                    style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
+                  >
+                    ‹ Prev
+                  </button>
+                  <button
+                    onClick={() => setMemberPage((p) => Math.min(totalPages - 1, p + 1))}
+                    disabled={page >= totalPages - 1}
+                    className="px-2 py-1 text-xs rounded-md disabled:opacity-30"
+                    style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
+                  >
+                    Next ›
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         );
       })()}
-
       {/* Tandem Opportunities */}
       {tandems && tandems.length > 0 && (() => {
         const memberMap = new Map<string, string>(
@@ -589,39 +693,102 @@ export function TeamDetailPage() {
         );
       })()}
 
-      {/* Learning Appetite */}
-      {appetite && appetite.length > 0 && (
-        <section className="mt-8">
-          <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
-            Learning Appetite
-          </h2>
-          <div className="flex flex-col gap-2">
-            {(appetite as TeamMemberAppetite[]).map((a) => {
-              const member = team?.members.find((m) => m.user_id === a.user_id);
-              const name = member?.display_name || member?.email || a.user_id.slice(0, 8);
-              return (
+        </div>{/* end LEFT column */}
+
+        {/* RIGHT column: radar + capacity */}
+        <div className="w-96 flex-shrink-0 flex flex-col gap-6">
+
+          {/* Skill Radar */}
+          {radarData.length > 0 && (
+            <section>
+              <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
+                Skill Coverage
+              </h2>
+              <div
+                className="rounded-xl p-4"
+                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+              >
+                <ResponsiveContainer width="100%" height={300}>
+                  <RadarChart data={radarData} outerRadius="66%" margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+                    <PolarGrid stroke="var(--border)" />
+                    <PolarAngleAxis
+                      dataKey="skill"
+                      tick={{ fill: 'var(--text-3)', fontSize: 10 }}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: 'var(--bg-elevated)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '8px',
+                        color: 'var(--text-1)',
+                        fontSize: '12px',
+                      }}
+                      formatter={(v) => [typeof v === 'number' ? v.toFixed(1) : v, 'Avg level']}
+                    />
+                    <Radar
+                      name="Team"
+                      dataKey="avgLevel"
+                      stroke="var(--accent)"
+                      fill="var(--accent)"
+                      fillOpacity={0.25}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+            </section>
+          )}
+
+          {/* Capacity Bars */}
+          {memberCapacity && memberCapacity.length > 0 && (() => {
+            const memberMap = new Map<string, string>(
+              (team?.members ?? []).map((m) => [m.user_id, m.display_name || m.email])
+            );
+            const maxCap = Math.max(...memberCapacity.map((m) => m.capacity_hours), 1);
+            return (
+              <section>
+                <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
+                  Capacity
+                </h2>
                 <div
-                  key={a.user_id}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg"
+                  className="rounded-xl p-4 flex flex-col gap-3"
                   style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
                 >
-                  <p className="flex-1 text-sm font-medium truncate min-w-0" style={{ color: 'var(--text-1)' }}>{name}</p>
-                  <div className="flex items-center gap-4 flex-shrink-0">
-                    <div className="text-center">
-                      <p className="text-sm font-semibold" style={{ color: 'var(--accent)' }}>{a.reaching_count}</p>
-                      <p className="text-xs" style={{ color: 'var(--text-3)' }}>growing</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm font-semibold" style={{ color: 'var(--text-2)' }}>{a.curious_breadth}</p>
-                      <p className="text-xs" style={{ color: 'var(--text-3)' }}>curious</p>
-                    </div>
-                  </div>
+                  {memberCapacity.map((m) => {
+                    const name = memberMap.get(m.user_id) ?? m.user_id.slice(0, 8);
+                    const pct = maxCap > 0 ? (m.capacity_hours / maxCap) * 100 : 0;
+                    return (
+                      <div key={m.user_id}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-medium truncate max-w-28" style={{ color: 'var(--text-2)' }}>{name}</span>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            {m.assigned_items > 0 && (
+                              <span className="text-xs px-1 py-0.5 rounded" style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>
+                                {m.assigned_items}
+                              </span>
+                            )}
+                            <span className="text-xs font-medium" style={{ color: 'var(--text-1)' }}>
+                              {m.capacity_hours}h
+                            </span>
+                          </div>
+                        </div>
+                        <div className="relative h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-elevated)' }}>
+                          <div
+                            className="absolute inset-y-0 left-0 rounded-full transition-all"
+                            style={{ width: `${pct}%`, background: 'var(--accent)' }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
+              </section>
+            );
+          })()}
+
+        </div>{/* end RIGHT column */}
+
+      </div>
+    </div>
     </div>
   );
 }

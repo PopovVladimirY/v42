@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { useParams, Link, NavLink, Outlet } from 'react-router-dom';
 import { useProject } from '@/hooks/useProjects';
 import { useAuthStore } from '@/hooks/useAuth';
+import { setLastProject } from '@/hooks/useLastProject';
 
 // Sub-nav tabs for a project
 const TABS = [
@@ -21,6 +23,11 @@ const STATUS_BADGE = {
 export function ProjectShell() {
   const { projectId } = useParams<{ projectId: string }>();
   const { data: project, isLoading } = useProject(projectId ?? '');
+
+  // Record last visited project for sidebar quick-nav
+  useEffect(() => {
+    if (project) setLastProject(project.id, project.name);
+  }, [project?.id]);
 
   if (isLoading) {
     return (

@@ -181,6 +181,11 @@ function SkillEditor({
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['user-skills', userId] });
+      void qc.invalidateQueries({ queryKey: ['personal-radar', userId] });
+      // Invalidate team queries so TeamDetailPage radar updates live
+      void qc.invalidateQueries({ queryKey: ['team-skill-matrix'] });
+      void qc.invalidateQueries({ queryKey: ['team-tandems'] });
+      void qc.invalidateQueries({ queryKey: ['team-learning-appetite'] });
       onDone();
     },
   });
@@ -336,7 +341,13 @@ export function ProfilePage() {
 
   const deleteSkill = useMutation({
     mutationFn: (skillId: string) => usersApi.deleteSkill(userId, skillId),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['user-skills', userId] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['user-skills', userId] });
+      void qc.invalidateQueries({ queryKey: ['personal-radar', userId] });
+      void qc.invalidateQueries({ queryKey: ['team-skill-matrix'] });
+      void qc.invalidateQueries({ queryKey: ['team-tandems'] });
+      void qc.invalidateQueries({ queryKey: ['team-learning-appetite'] });
+    },
   });
 
   async function handleThemeChange(t: Theme) {
@@ -390,30 +401,25 @@ export function ProfilePage() {
           <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
             Appearance
           </h2>
-          <div className="grid grid-cols-2 gap-2">
-            {THEMES.map((t) => {
-              const active = activeTheme === t;
-              return (
-                <button
-                  key={t}
-                  onClick={() => void handleThemeChange(t)}
-                  className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-left transition-colors w-full"
-                  style={{
-                    background: active ? 'var(--bg-active)' : 'var(--bg-surface)',
-                    border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
-                    color: active ? 'var(--text-1)' : 'var(--text-2)',
-                  }}
-                >
-                  <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: ACCENT_MAP[t] ?? '#888' }} />
-                  <span className="text-sm capitalize truncate">{t.replace(/-/g, ' ')}</span>
-                  {active && (
-                    <svg className="ml-auto flex-shrink-0" width="12" height="12" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 6l3 3 5-5" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  )}
-                </button>
-              );
-            })}
+          <div className="flex items-center gap-2">
+            <span
+              className="w-3 h-3 rounded-full flex-shrink-0"
+              style={{ background: ACCENT_MAP[activeTheme] ?? '#888' }}
+            />
+            <select
+              value={activeTheme}
+              onChange={(e) => void handleThemeChange(e.target.value as Theme)}
+              className="text-sm px-2 py-1.5 rounded-md"
+              style={{
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-1)',
+              }}
+            >
+              {THEMES.map((t) => (
+                <option key={t} value={t}>{t.replace(/-/g, ' ')}</option>
+              ))}
+            </select>
           </div>
         </section>
 
