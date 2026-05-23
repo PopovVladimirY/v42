@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
-  RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip,
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer,
 } from 'recharts';
 import { teamsApi } from '@/api/endpoints/teams';
 import { usersApi } from '@/api/endpoints/users';
@@ -115,17 +115,23 @@ function ColChooser({
 }
 
 // Aggregates matrix entries into radar-friendly [{skill, avgLevel}] array
-function buildRadarData(matrix: MatrixEntry[]) {
-  const map = new Map<string, { sum: number; count: number }>();
+// Returns per-skill rows with per-user levels, and ordered member IDs
+function buildMultiRadarData(matrix: MatrixEntry[]) {
+  const skillMap = new Map<string, Map<string, number>>();
   for (const e of matrix) {
-    const existing = map.get(e.skill_name);
-    if (existing) { existing.sum += e.level_rank; existing.count += 1; }
-    else map.set(e.skill_name, { sum: e.level_rank, count: 1 });
+    if (!skillMap.has(e.skill_name)) skillMap.set(e.skill_name, new Map());
+    skillMap.get(e.skill_name)!.set(e.user_id, e.level_rank);
   }
-  return Array.from(map.entries()).map(([skill, { sum, count }]) => ({
-    skill,
-    avgLevel: Math.round((sum / count) * 10) / 10,
-  }));
+  const memberIds = Array.from(new Set(matrix.map((e) => e.user_id)));
+  const rows = Array.from(skillMap.entries()).map(([skill, byMember]) => {
+    const row: Record<string, string | number> = {
+      skill,
+      max: Math.max(0, ...byMember.values()),
+    };
+    for (const uid of memberIds) row[uid] = byMember.get(uid) ?? 0;
+    return row;
+  });
+  return { rows, memberIds };
 }
 
 export function TeamDetailPage() {
@@ -141,6 +147,8 @@ export function TeamDetailPage() {
   const [editDesc, setEditDesc] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [memberPage, setMemberPage] = useState(0);
+  // user_ids excluded from radar -- empty = all shown
+  const [radarExcluded, setRadarExcluded] = useState<Set<string>>(new Set());
   const [visibleCols, setVisibleCols] = useState<Set<string>>(
     () => new Set(MEMBER_COLS.filter((c) => c.defaultOn).map((c) => c.id))
   );
@@ -223,8 +231,9 @@ export function TeamDetailPage() {
     },
   });
 
-  // Radar data: per skill, average level_rank across members
-  const radarData = buildRadarData(matrix ?? []);
+  // Radar data: per skill -- per-member levels
+  const { rows: radarData, memberIds: radarMemberIds } = buildMultiRadarData(matrix ?? []);
+  const filteredRadarMemberIds = radarMemberIds.filter((uid) => !radarExcluded.has(uid));
 
   if (isError) {
     return (
@@ -518,6 +527,20 @@ export function TeamDetailPage() {
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
+                    <th className="w-8 px-2 py-2 text-center" title="Show in radar">
+                      <input
+                        type="checkbox"
+                        checked={radarExcluded.size === 0}
+                        onChange={() =>
+                          setRadarExcluded(
+                            radarExcluded.size === 0
+                              ? new Set(members.map((m) => m.user_id))
+                              : new Set(),
+                          )
+                        }
+                        title={radarExcluded.size === 0 ? 'Deselect all from radar' : 'Select all for radar'}
+                      />
+                    </th>
                     {show('name') && (
                       <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Name</th>
                     )}
@@ -553,6 +576,20 @@ export function TeamDetailPage() {
                           borderBottom: '1px solid var(--border)',
                         }}
                       >
+                        <td className="px-2 py-2.5 text-center">
+                          <input
+                            type="checkbox"
+                            checked={!radarExcluded.has(m.user_id)}
+                            onChange={() =>
+                              setRadarExcluded((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(m.user_id)) next.delete(m.user_id);
+                                else next.add(m.user_id);
+                                return next;
+                              })
+                            }
+                          />
+                        </td>
                         {show('name') && (
                           <td className="px-3 py-2.5 max-w-0">
                             <div className="flex items-center gap-2 min-w-0">
@@ -709,29 +746,35 @@ export function TeamDetailPage() {
                 style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
               >
                 <ResponsiveContainer width="100%" height={300}>
-                  <RadarChart data={radarData} outerRadius="66%" margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+                  <RadarChart data={radarData} outerRadius="80%" margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
                     <PolarGrid stroke="var(--border)" />
-                    <PolarAngleAxis
-                      dataKey="skill"
-                      tick={{ fill: 'var(--text-3)', fontSize: 10 }}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: 'var(--bg-elevated)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '8px',
-                        color: 'var(--text-1)',
-                        fontSize: '12px',
-                      }}
-                      formatter={(v) => [typeof v === 'number' ? v.toFixed(1) : v, 'Avg level']}
-                    />
+                    <PolarAngleAxis dataKey="skill" tick={{ fill: 'var(--text-3)', fontSize: 10 }} />
+                    <PolarRadiusAxis domain={[0, 5]} tickCount={6} tick={false} axisLine={false} />
+                    {/* Max envelope -- team ceiling, rendered behind member overlays */}
                     <Radar
-                      name="Team"
-                      dataKey="avgLevel"
+                      name="Max"
+                      dataKey="max"
                       stroke="var(--accent)"
+                      strokeWidth={1.5}
+                      strokeOpacity={0.35}
                       fill="var(--accent)"
-                      fillOpacity={0.25}
+                      fillOpacity={0.08}
+                      dot={false}
+                      isAnimationActive={false}
                     />
+                    {/* Per-member overlays -- same accent color, additive fill shows team strength */}
+                    {filteredRadarMemberIds.map((uid) => (
+                      <Radar
+                        key={uid}
+                        name={uid}
+                        dataKey={uid}
+                        stroke="none"
+                        fill="var(--accent)"
+                        fillOpacity={0.18}
+                        dot={false}
+                        isAnimationActive={false}
+                      />
+                    ))}
                   </RadarChart>
                 </ResponsiveContainer>
               </div>

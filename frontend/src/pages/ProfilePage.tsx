@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer,
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer,
 } from 'recharts';
 import { useAuthStore } from '@/hooks/useAuth';
 import { useThemeStore, THEMES } from '@/stores/useTheme';
@@ -604,6 +604,7 @@ export function ProfilePage() {
                 <RadarChart data={personalRadar.map((s) => ({ skill: s.skill_name, level: s.level_rank }))} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
                   <PolarGrid stroke="var(--border)" />
                   <PolarAngleAxis dataKey="skill" tick={{ fill: 'var(--text-3)', fontSize: 11 }} />
+                  <PolarRadiusAxis domain={[0, 5]} tickCount={6} tick={false} axisLine={false} />
                   <Radar name="Me" dataKey="level" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.25} />
                 </RadarChart>
               </ResponsiveContainer>
