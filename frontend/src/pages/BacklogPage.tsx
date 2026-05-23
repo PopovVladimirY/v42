@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   useBacklog,
@@ -130,7 +130,7 @@ function MoveDropdown({
         disabled={isPending}
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
         title={`Move ${label}`}
-        className="text-xs px-1.5 py-0.5 rounded opacity-0 group-hover/row:opacity-100 transition-opacity"
+        className="text-xs px-1.5 py-0.5 rounded opacity-30 group-hover/row:opacity-100 transition-opacity"
         style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}
       >
         {isPending ? '...' : 'Move'}
@@ -613,7 +613,7 @@ export function BacklogPage() {
 
       {!isLoading && !isError && (
         <>
-          <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+          <div className="rounded-xl" style={{ border: '1px solid var(--border)', overflow: 'clip' }}>
             <table className="w-full border-collapse" data-testid="backlog-list">
               <thead style={{ background: 'var(--bg-elevated)' }}>
                 <tr>
@@ -651,9 +651,8 @@ export function BacklogPage() {
                   const epicTitle = epics.find((e) => e.id === item.epic_id)?.title;
                   const isExpanded = expandedItems.has(item.id);
                   return (
-                    <>
+                    <React.Fragment key={item.id}>
                       <tr
-                        key={item.id}
                         data-testid={`backlog-row-${item.id}`}
                         className="group transition-colors hover:bg-[var(--bg-elevated)]"
                         style={{ borderBottom: isExpanded ? 'none' : '1px solid var(--border)' }}
@@ -731,13 +730,12 @@ export function BacklogPage() {
                     </tr>
                     {isExpanded && (
                       <ExpandedItemPanel
-                        key={`exp-${item.id}`}
                         projectId={projectId}
                         item={item}
                         allItems={items}
                       />
                     )}
-                    </>
+                    </React.Fragment>
                   );
                 })}
               </tbody>
