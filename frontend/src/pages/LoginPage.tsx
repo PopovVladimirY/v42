@@ -71,14 +71,26 @@ export function LoginPage() {
           Idle 30s -> auto-appears in colorful (1) or rotating squares (2). */}
       <BubbleCanvas active={bubblesActive} mode={bubbleMode} />
 
-      {/* Easter egg: click anywhere on the dark background to toggle classic blue bubbles. */}
+      {/* Easter egg hotspot: 80x80px invisible zone in bottom-left corner. */}
+      <div
+        style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          width: 80,
+          height: 80,
+          zIndex: 50,
+          cursor: 'default',
+        }}
+        onClick={() => {
+          setBubbleMode(0);            // manual click = classic blue mode
+          setBubblesActive((v) => !v);
+        }}
+      />
+
       <div
         className="min-h-screen flex items-center justify-center"
         style={{ cursor: 'default' }}
-        onClick={() => {
-          setBubbleMode(0);            // manual click = classic mode
-          setBubblesActive((v) => !v);
-        }}
       >
         <div
           className="w-full max-w-sm rounded-xl p-8"

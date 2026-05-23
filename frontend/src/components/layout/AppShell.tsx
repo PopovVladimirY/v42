@@ -1,6 +1,7 @@
 import { NavLink, Outlet, Link } from 'react-router-dom';
 import { useAuthStore } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
+import { useIdleTimeout } from '@/hooks/useIdleTimeout';
 
 // Nav item structure. Icons are inline SVG to avoid extra deps.
 const NAV_ITEMS = [
@@ -32,6 +33,8 @@ export function AppShell() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
+
+  useIdleTimeout();
 
   async function handleLogout() {
     await logout();

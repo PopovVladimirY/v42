@@ -39,16 +39,17 @@ var (
 
 // User is the domain user without the password hash (safe to pass to handlers).
 type User struct {
-	ID                 string    `json:"id"`
-	Email              string    `json:"email"`
-	DisplayName        string    `json:"display_name"`
-	Role               string    `json:"role"`
-	IsActive           bool      `json:"is_active"`
-	MustChangePassword bool      `json:"must_change_password"`
-	AvatarURL          *string   `json:"avatar_url"`
-	Theme              string    `json:"theme"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	ID                  string    `json:"id"`
+	Email               string    `json:"email"`
+	DisplayName         string    `json:"display_name"`
+	Role                string    `json:"role"`
+	IsActive            bool      `json:"is_active"`
+	MustChangePassword  bool      `json:"must_change_password"`
+	AvatarURL           *string   `json:"avatar_url"`
+	Theme               string    `json:"theme"`
+	IdleTimeoutMinutes  int       `json:"idle_timeout_minutes"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 // StoredUser includes the password hash -- only used inside Login for verification.
@@ -73,6 +74,7 @@ type UserRepo interface {
 	GetByID(ctx context.Context, id string) (*User, error)
 	Create(ctx context.Context, email, passwordHash, displayName, role string, mustChangePassword bool) (*User, error)
 	UpdateTheme(ctx context.Context, userID, theme string) (*User, error)
+	UpdateUserIdleTimeout(ctx context.Context, userID string, minutes int) (*User, error)
 	ChangePassword(ctx context.Context, userID, passwordHash string, mustChange bool) (*User, error)
 }
 

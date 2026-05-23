@@ -344,6 +344,10 @@ export function ProfilePage() {
     try { await authApi.patchMe({ theme: t }); } catch { /* non-critical */ }
   }
 
+  async function handleIdleTimeoutChange(minutes: number) {
+    try { await authApi.patchMe({ idle_timeout_minutes: minutes }); } catch { /* non-critical */ }
+  }
+
   const label = user?.full_name ?? user?.display_name ?? user?.email ?? '?';
   const userInitials = initials(label);
   const existingSkillIds = new Set(skills?.map((s) => s.skill_id) ?? []);
@@ -413,8 +417,29 @@ export function ProfilePage() {
           </div>
         </section>
 
-        {/* Skills */}
+        {/* Session */}
         <section className="mb-8">
+          <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
+            Session
+          </h2>
+          <div className="flex items-center gap-3">
+            <label className="text-sm" style={{ color: 'var(--text-2)' }}>Auto-logout after inactivity</label>
+            <select
+              defaultValue={user?.idle_timeout_minutes ?? 30}
+              onChange={(e) => void handleIdleTimeoutChange(Number(e.target.value))}
+              className="text-sm px-2 py-1 rounded-md"
+              style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+            >
+              <option value={0}>Never</option>
+              <option value={15}>15 minutes</option>
+              <option value={30}>30 minutes</option>
+              <option value={60}>1 hour</option>
+              <option value={120}>2 hours</option>
+            </select>
+          </div>
+        </section>
+
+        {/* Skills */}        <section className="mb-8">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
               Skills

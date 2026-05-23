@@ -12,6 +12,7 @@ export interface User {
   must_change_password: boolean;
   avatar_url?: string;
   theme?: string;
+  idle_timeout_minutes: number;
   created_at: string;
 }
 

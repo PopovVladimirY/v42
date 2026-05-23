@@ -34,7 +34,7 @@ export const authApi = {
   me: (): Promise<User> =>
     client.get<ApiResponse<User>>('/auth/me').then(unwrap),
 
-  patchMe: (patch: { theme: string }): Promise<User> =>
+  patchMe: (patch: { theme?: string; idle_timeout_minutes?: number }): Promise<User> =>
     client.patch<ApiResponse<User>>('/auth/me', patch).then(unwrap),
 
   changePassword: (body: { current_password?: string; new_password: string }): Promise<{ access_token: string; user: User }> =>

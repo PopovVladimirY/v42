@@ -34,8 +34,8 @@ client.interceptors.response.use(
           .getState()
           .refresh()
           .catch(() => {
-            // Refresh failed -- clear auth state
-            useAuthStore.getState().clear();
+            // Refresh failed -- honest logout (revokes cookie on server too)
+            void useAuthStore.getState().logout();
           })
           .finally(() => {
             refreshPromise = null;

@@ -137,7 +137,8 @@ func (h *authHandlers) Me(w http.ResponseWriter, r *http.Request) {
 
 // patchMeRequest is the body for PATCH /auth/me.
 type patchMeRequest struct {
-	Theme string `json:"theme"`
+	Theme              *string `json:"theme"`
+	IdleTimeoutMinutes *int    `json:"idle_timeout_minutes"`
 }
 
 // valid themes -- kept in sync with DB CHECK constraint and frontend THEMES const.
@@ -148,7 +149,7 @@ var validThemes = map[string]bool{
 }
 
 // PatchMe handles PATCH /auth/me.
-// Lets an authenticated user update their own theme preference.
+// Lets an authenticated user update their own theme and/or idle timeout.
 func (h *authHandlers) PatchMe(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.ClaimsFromContext(r.Context())
 	if claims == nil {
@@ -161,17 +162,42 @@ func (h *authHandlers) PatchMe(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON")
 		return
 	}
-	if !validThemes[body.Theme] {
-		respondErr(w, http.StatusBadRequest, "BAD_REQUEST", "unknown theme")
+
+	// Nothing to update.
+	if body.Theme == nil && body.IdleTimeoutMinutes == nil {
+		respondErr(w, http.StatusBadRequest, "BAD_REQUEST", "no fields to update")
 		return
 	}
 
-	u, err := h.svc.Users.UpdateTheme(r.Context(), claims.UserID, body.Theme)
-	if err != nil {
-		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update theme")
-		return
+	var lastUser interface{}
+
+	if body.Theme != nil {
+		if !validThemes[*body.Theme] {
+			respondErr(w, http.StatusBadRequest, "BAD_REQUEST", "unknown theme")
+			return
+		}
+		u, err := h.svc.Users.UpdateTheme(r.Context(), claims.UserID, *body.Theme)
+		if err != nil {
+			respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update theme")
+			return
+		}
+		lastUser = u
 	}
-	respond(w, http.StatusOK, u)
+
+	if body.IdleTimeoutMinutes != nil {
+		if *body.IdleTimeoutMinutes < 0 {
+			respondErr(w, http.StatusBadRequest, "BAD_REQUEST", "idle_timeout_minutes must be >= 0")
+			return
+		}
+		u, err := h.svc.Users.UpdateUserIdleTimeout(r.Context(), claims.UserID, *body.IdleTimeoutMinutes)
+		if err != nil {
+			respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update idle timeout")
+			return
+		}
+		lastUser = u
+	}
+
+	respond(w, http.StatusOK, lastUser)
 }
 
 // ChangePassword handles POST /auth/change-password.
