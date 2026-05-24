@@ -8,12 +8,12 @@
 
 | Слой        | Технология                              | Почему                                      |
 |-------------|------------------------------------------|---------------------------------------------|
-| Backend     | Go 1.22+                                | Стабильность, один бинарник, нет node_modules |
+| Backend     | Go 1.25                                 | Стабильность, один бинарник, нет node_modules |
 | Router      | [chi v5](DETAILS.md#chi----http-роутер) | Минималистичный, idiomatic, без магии        |
 | SQL         | [sqlc](DETAILS.md#sqlc----типизированный-sql-без-orm) + [golang-migrate](DETAILS.md#golang-migrate----миграции-схемы) | Типизированный SQL без ORM |
 | Database    | [PostgreSQL 16](DETAILS.md#postgresql----база-данных) | Стандарт, надёжность, JSONB когда надо |
 | Auth        | [JWT](DETAILS.md#jwt----авторизация-без-состояния) (golang-jwt/jwt/v5) | Прозрачно, без фреймворк-магии |
-| Frontend    | React 19 + TypeScript + Vite            | Лучший экосистем для board UI                |
+| Frontend    | React 18 + TypeScript + Vite            | Лучший экосистем для board UI                |
 | Drag&Drop   | dnd-kit                                 | Зрелый, a11y, гибкий                         |
 | Real-time   | [SSE](DETAILS.md#sse----server-sent-events-real-time) (Server-Sent Events) | Проще WebSocket, встроено в Go |
 | Deployment  | [Docker Compose](DETAILS.md#docker-compose----запускаем-всё-вместе) | `docker compose up` -- и всё работает |
@@ -31,21 +31,17 @@ v42/
       main.go              -- точка входа, wire-up всего
   internal/
     api/
-      handler/             -- HTTP handlers (один файл на домен)
-        projects.go
-        epics.go
-        backlog.go
-        tasks.go
-        tests.go
-        releases.go
-        stages.go
-        sprints.go         -- sprint planning + sprint board
-        teams.go
-        users.go
-        auth.go
-        comments.go        -- comments for all entity types
-        stats.go
-        events.go          -- SSE endpoint
+      handler_auth.go      -- login, refresh, logout, me, change-password
+      handler_backlog.go   -- backlog items + reorder
+      handler_comments_capacity.go  -- comments + capacity analytics (skill-radar etc.)
+      handler_epics.go     -- CRUD epics
+      handler_projects.go  -- CRUD projects + archive/tree/hierarchy + project-teams
+      handler_skills.go    -- CRUD skills catalog + hidden toggle
+      handler_tasks_sprints.go     -- tasks + time-logging + sprints + sprint test-results
+      handler_teams.go     -- CRUD teams + members + archive/category
+      handler_tests.go     -- CRUD tests at project/epic/backlog-item level
+      handler_test_results.go      -- sprint test result update
+      handler_users.go     -- CRUD users + reset-password + user skills
       middleware/
         auth.go            -- JWT validation
         roles.go           -- role-based access
@@ -66,18 +62,24 @@ v42/
     db/
       queries/             -- .sql files (sqlc reads these)
         projects.sql
+        project_teams.sql
         epics.sql
         backlog.sql
         tasks.sql
         tests.sql
-        releases.sql
-        stages.sql
         sprints.sql
+        sprint_test_results.sql
         teams.sql
         users.sql
         skills.sql
+        skills_capacity.sql
         comments.sql
-        stats.sql
+        milestones.sql
+        time_entries.sql
+        refresh_tokens.sql
+        node_skill_requirements.sql
+      gen/                 -- sqlc-generated Go code (do not edit)
+      store/               -- store interface + implementation
       sqlc.yaml            -- sqlc config
       db.go                -- connection setup
     config/
@@ -85,17 +87,32 @@ v42/
     auth/
       jwt.go               -- token generation and validation
       password.go          -- bcrypt helpers
-  migrations/              -- golang-migrate SQL files
-    000001_init_schema.up.sql
-    000001_init_schema.down.sql
-    000002_skills.up.sql
-    000002_skills.down.sql
-  web/                     -- React app (built to web/dist/)
+  migrations/              -- golang-migrate SQL files (000001-000019)
+    000001_init.{up,down}.sql
+    000002_schema.{up,down}.sql
+    000003_drop_redundant_token_hash_index.{up,down}.sql
+    000004_seed_builtin_skills.{up,down}.sql
+    000005_growth_mechanics.{up,down}.sql
+    000006_user_theme.{up,down}.sql
+    000007_must_change_password.{up,down}.sql
+    000008_add_new_york_theme.{up,down}.sql
+    000009_user_idle_timeout.{up,down}.sql
+    000010_project_teams.{up,down}.sql          -- M:M project<->team
+    000011_seq_ids.{up,down}.sql                -- sequential numeric IDs
+    000012_epic_clarity.{up,down}.sql           -- clarity_level on epics
+    000013_backlog_clarity.{up,down}.sql        -- clarity_level on backlog items
+    000014_item_status_expansion.{up,down}.sql  -- expanded status enum
+    000015_item_status_migrate_data.{up,down}.sql
+    000016_skills_hidden.{up,down}.sql          -- is_hidden flag on skills
+    000017_archive_teams_projects.{up,down}.sql -- archive for teams + projects
+    000018_project_hierarchy.{up,down}.sql      -- parent/child project nodes
+    000019_team_category.{up,down}.sql          -- team category enum
+  frontend/                -- React app (built to frontend/dist/)
     src/
-      api/                 -- typed API client (fetch wrappers)
+      api/                 -- typed API client (axios wrappers)
       components/
       pages/
-      store/               -- Zustand or similar lightweight state
+      store/               -- Zustand global state
     index.html
     vite.config.ts
     tsconfig.json
@@ -889,169 +906,170 @@ Outbox-паттерн не зависит от выбора -- меняется 
 Ответ всегда в формате `{ "data": ..., "meta": ..., "error": ... }`.
 
 ```
-AUTH
-  POST   /api/v1/auth/login              -- { email, password } -> { access_token, user } + httpOnly refresh cookie
-  POST   /api/v1/auth/refresh            -- refresh_token cookie -> new access_token + rotated refresh cookie
-  POST   /api/v1/auth/logout             -- revoke refresh token (idempotent), clear cookie
-  GET    /api/v1/auth/me                 -- current user profile (requires Bearer token)
+-- Legend: [*] = implemented  [ ] = planned (Phase N)
 
-USERS  [admin only for write]
-  GET    /api/v1/users                   -- list users (filterable)
-  POST   /api/v1/users                   -- create user
-  GET    /api/v1/users/{id}              -- get user
-  PATCH  /api/v1/users/{id}             -- update user
-  GET    /api/v1/users/{id}/skills       -- user skill profile
-  PUT    /api/v1/users/{id}/skills       -- replace full skill profile (intentional PUT:
-                                         --   partial PATCH would silently drop unlisted skills)
+HEALTH
+  [*] GET    /api/v1/health
+
+AUTH  (rate-limited: burst=10, then 1 req/6s per IP)
+  [*] POST   /api/v1/auth/login              -- { email, password } -> { access_token, user } + httpOnly refresh cookie
+  [*] POST   /api/v1/auth/refresh            -- refresh cookie -> new access_token + rotated cookie
+  [*] POST   /api/v1/auth/logout             -- revoke refresh token (idempotent)
+  [*] GET    /api/v1/auth/me                 -- current user profile
+  [*] PATCH  /api/v1/auth/me                 -- update own preferences: { theme, idle_timeout_minutes }
+  [*] POST   /api/v1/auth/change-password    -- { current_password, new_password }; clears must_change_password
+
+USERS
+  [*] GET    /api/v1/users                   -- list users (role-filtered)
+  [*] POST   /api/v1/users                   -- create user [admin]; sets must_change_password=true
+  [*] GET    /api/v1/users/{id}              -- get user
+  [*] PATCH  /api/v1/users/{id}             -- update (self: display_name/avatar_url; admin: all fields)
+  [*] PATCH  /api/v1/users/{id}/reset-password  -- [admin] force new password + must_change_password=true
+  [*] GET    /api/v1/users/{id}/skills       -- user skill profile (level + interest per skill)
+  [*] PUT    /api/v1/users/{id}/skills/{skill_id}   -- upsert skill entry { level, interest, interest_note }
+  [*] DELETE /api/v1/users/{id}/skills/{skill_id}
 
 SKILLS
-  GET    /api/v1/skills                  -- skill catalog
-  POST   /api/v1/skills                  -- create custom skill [admin]
+  [*] GET    /api/v1/skills                  -- skill catalog (?all=true admin: includes hidden)
+  [*] POST   /api/v1/skills                  -- create custom skill [admin] { name, category }
+  [*] PATCH  /api/v1/skills/{id}             -- update skill [admin]
+  [*] PATCH  /api/v1/skills/{id}/hidden      -- { hidden: bool } [admin]; built-in skills use this instead of DELETE
+  [*] DELETE /api/v1/skills/{id}             -- [admin]; fails 409 on built-in skills
 
 TEAMS
-  GET    /api/v1/teams                   -- list teams
-  POST   /api/v1/teams                   -- create team [admin/maintainer]
-  GET    /api/v1/teams/{id}              -- team details + members
-  PATCH  /api/v1/teams/{id}             -- update team
-  POST   /api/v1/teams/{id}/members     -- add member { user_id, capacity_hours }
-  DELETE /api/v1/teams/{id}/members/{user_id}
+  [*] GET    /api/v1/teams                   -- list teams (non-archived by default)
+  [*] GET    /api/v1/teams/mine              -- teams current user belongs to
+  [*] POST   /api/v1/teams                   -- create team [admin/maintainer]
+  [*] GET    /api/v1/teams/{id}              -- team details + members
+  [*] PATCH  /api/v1/teams/{id}             -- update team [admin/maintainer]
+  [*] DELETE /api/v1/teams/{id}             -- [admin]
+  [*] PATCH  /api/v1/teams/{id}/archive      -- [admin]
+  [*] PATCH  /api/v1/teams/{id}/unarchive    -- [admin]
+  [*] PATCH  /api/v1/teams/{id}/category     -- { category: normal|admin_team|management_team } [admin]
+  [*] POST   /api/v1/teams/{id}/members      -- add member { user_id, capacity_hours } [admin/maintainer]
+  [*] DELETE /api/v1/teams/{id}/members/{user_id}  -- [admin/maintainer]
 
 PROJECTS
-  GET    /api/v1/projects                -- list projects (role-filtered)
-  POST   /api/v1/projects                -- create project
-  GET    /api/v1/projects/{id}           -- project details
-  PATCH  /api/v1/projects/{id}          -- update project
-  PATCH  /api/v1/projects/{id}          -- archive: { "status": "archived" } [admin/maintainer]
-                                         -- no DELETE: projects are archived, not destroyed
+  [*] GET    /api/v1/projects                -- list (role-filtered; ?team_id= ?status=)
+  [*] GET    /api/v1/projects/archived       -- [admin] list archived projects
+  [*] POST   /api/v1/projects                -- create project [admin/maintainer]
+  [*] GET    /api/v1/projects/{id}           -- project details
+  [*] PATCH  /api/v1/projects/{id}          -- update [admin/maintainer]
+  [*] DELETE /api/v1/projects/{id}          -- [admin]
+  [*] PATCH  /api/v1/projects/{id}/archive   -- [admin]
+  [*] PATCH  /api/v1/projects/{id}/unarchive -- [admin]
+  [*] GET    /api/v1/projects/{id}/tree      -- hierarchical node tree (?show_archived=true)
+  [*] POST   /api/v1/projects/{id}/children  -- create child node { name, description }
+  [*] PATCH  /api/v1/projects/{id}/move      -- move in hierarchy { parent_id, order_index }
+  [*] GET    /api/v1/projects/{id}/teams     -- teams linked to project
+  [*] POST   /api/v1/projects/{id}/teams     -- link team { team_id } [admin/maintainer]
+  [*] DELETE /api/v1/projects/{id}/teams/{team_id}  -- unlink team [admin/maintainer]
 
 EPICS
-  GET    /api/v1/projects/{id}/epics     -- list epics
-  POST   /api/v1/projects/{id}/epics     -- create epic
-  GET    /api/v1/epics/{id}              -- epic details + progress
-  PATCH  /api/v1/epics/{id}             -- update epic
-  DELETE /api/v1/epics/{id}
+  [*] GET    /api/v1/projects/{id}/epics           -- list epics
+  [*] POST   /api/v1/projects/{id}/epics           -- create epic { title, description, status, clarity, target_date }
+  [*] GET    /api/v1/projects/{id}/epics/{epic_id} -- epic details
+  [*] PATCH  /api/v1/projects/{id}/epics/{epic_id} -- update epic [admin/maintainer]
+  [*] DELETE /api/v1/projects/{id}/epics/{epic_id} -- [admin/maintainer]
 
-RELEASES
-  GET    /api/v1/projects/{id}/releases  -- list releases
-  POST   /api/v1/projects/{id}/releases  -- create release
-  GET    /api/v1/releases/{id}           -- release + stages
-  PATCH  /api/v1/releases/{id}          -- update release
-  GET    /api/v1/releases/{id}/stages    -- list stages
-  POST   /api/v1/releases/{id}/stages    -- create stage
-  GET    /api/v1/stages/{id}             -- stage details
-  PATCH  /api/v1/stages/{id}            -- update stage
+RELEASES (Phase 5 -- not yet implemented)
+  [ ] GET    /api/v1/projects/{id}/releases
+  [ ] POST   /api/v1/projects/{id}/releases
+  [ ] GET    /api/v1/releases/{id}
+  [ ] PATCH  /api/v1/releases/{id}
+  [ ] GET    /api/v1/releases/{id}/stages
+  [ ] POST   /api/v1/releases/{id}/stages
+  [ ] GET    /api/v1/stages/{id}
+  [ ] PATCH  /api/v1/stages/{id}
 
 BACKLOG
-  GET    /api/v1/projects/{id}/backlog   -- list items, query params:
-                                         --   ?epic={id}  ?release={id}  ?stage={id}
-                                         --   ?status=backlog,in_progress
-                                         --   ?assignee={id}  ?unplanned=true
-                                         --   ?sort=priority&order=asc
-                                         --   ?page=1&per_page=50
-  POST   /api/v1/projects/{id}/backlog   -- create item
-  GET    /api/v1/backlog/{id}            -- item details + tasks + tests
-  PATCH  /api/v1/backlog/{id}           -- update item (status, epic, stage, release, priority...)
-  DELETE /api/v1/backlog/{id}
-  GET    /api/v1/backlog/{id}/tasks      -- tasks for item
-  POST   /api/v1/backlog/{id}/tasks      -- create task
+  [*] GET    /api/v1/projects/{id}/backlog   -- list items
+                                             --   ?epic_id= ?status= ?clarity= ?assignee_id=
+                                             --   ?page=1 &per_page=50
+  [*] POST   /api/v1/projects/{id}/backlog   -- create item (ATDD fields: ac_setup, ac_steps, ac_expected)
+  [*] GET    /api/v1/projects/{id}/backlog/{item_id}   -- item details
+  [*] PATCH  /api/v1/projects/{id}/backlog/{item_id}   -- partial update (status, epic, priority, clarity...)
+  [*] DELETE /api/v1/projects/{id}/backlog/{item_id}
+  [*] POST   /api/v1/projects/{id}/backlog/reorder     -- { items: [{id, priority},...] } atomically
 
-TASKS
-  GET    /api/v1/tasks/{id}              -- task details
-  PATCH  /api/v1/tasks/{id}            -- update task
-  DELETE /api/v1/tasks/{id}
-  POST   /api/v1/tasks/{id}/time         -- log time { hours, date, note }
-  GET    /api/v1/tasks/{id}/time         -- time entries for task
+TASKS  (nested under backlog items)
+  [*] GET    /api/v1/projects/{id}/backlog/{item_id}/tasks
+  [*] POST   /api/v1/projects/{id}/backlog/{item_id}/tasks
+  [*] GET    /api/v1/projects/{id}/backlog/{item_id}/tasks/{task_id}
+  [*] PATCH  /api/v1/projects/{id}/backlog/{item_id}/tasks/{task_id}
+  [*] DELETE /api/v1/projects/{id}/backlog/{item_id}/tasks/{task_id}
+  [*] POST   /api/v1/projects/{id}/backlog/{item_id}/tasks/{task_id}/move   -- { target_item_id }
 
-TESTS
-  GET    /api/v1/projects/{id}/tests     -- all project tests (filterable)
-  POST   /api/v1/projects/{id}/tests     -- create test (body includes backlog_item_id or epic_id)
-  GET    /api/v1/tests/{id}              -- test details
-  PATCH  /api/v1/tests/{id}            -- update test (status, steps, etc.)
-  DELETE /api/v1/tests/{id}
+TIME LOGGING
+  [*] POST   /api/v1/projects/{id}/backlog/{item_id}/tasks/{task_id}/time         -- { hours, logged_date, note }
+  [*] GET    /api/v1/projects/{id}/backlog/{item_id}/tasks/{task_id}/time         -- time entries
+  [*] DELETE /api/v1/projects/{id}/backlog/{item_id}/tasks/{task_id}/time/{entry_id}
+
+TESTS  (three scopes: project / epic / backlog item)
+  [*] GET    /api/v1/projects/{id}/tests                                 -- all project tests
+  [*] POST   /api/v1/projects/{id}/tests                                 -- create test
+  [*] GET    /api/v1/projects/{id}/tests/{test_id}
+  [*] PATCH  /api/v1/projects/{id}/tests/{test_id}
+  [*] DELETE /api/v1/projects/{id}/tests/{test_id}
+  [*] GET    /api/v1/projects/{id}/epics/{epic_id}/tests
+  [*] POST   /api/v1/projects/{id}/epics/{epic_id}/tests
+  [*] GET    /api/v1/projects/{id}/backlog/{item_id}/tests
+  [*] POST   /api/v1/projects/{id}/backlog/{item_id}/tests
+  [*] POST   /api/v1/projects/{id}/backlog/{item_id}/tests/{test_id}/move   -- { target_item_id }
 
 SPRINTS
-  GET    /api/v1/projects/{id}/sprints           -- list sprints (with status filter)
-  POST   /api/v1/projects/{id}/sprints           -- create sprint
-  GET    /api/v1/sprints/{id}                    -- sprint details
-  PATCH  /api/v1/sprints/{id}                    -- update sprint (name, sprint_goal, dates, status)
-  POST   /api/v1/sprints/{id}/items              -- add backlog item to sprint { backlog_item_id }
-  DELETE /api/v1/sprints/{id}/items/{item_id}    -- remove item from sprint
-  GET    /api/v1/sprints/{id}/board              -- board view: items grouped by status
-  GET    /api/v1/sprints/{id}/tests              -- all tests for sprint's backlog items
-  GET    /api/v1/sprints/{id}/test-results       -- sprint test result summary
-  POST   /api/v1/sprints/{id}/test-results       -- record test result { test_id, status, notes }
-  PATCH  /api/v1/test-results/{id}               -- update result (status, notes, skip_reason)
-  GET    /api/v1/sprints/{id}/goal-coverage      -- how well sprint covers active goals:
-                                                 --   { goal_id, title, importance, items_total,
-                                                 --     items_in_sprint, items_done, coverage_pct }
+  [*] GET    /api/v1/projects/{id}/sprints                           -- list sprints
+  [*] POST   /api/v1/projects/{id}/sprints                          -- create sprint [admin/maintainer]
+  [*] GET    /api/v1/projects/{id}/sprints/{sprint_id}
+  [*] PATCH  /api/v1/projects/{id}/sprints/{sprint_id}             -- setting status=active seeds test-results
+  [*] DELETE /api/v1/projects/{id}/sprints/{sprint_id}             -- [admin/maintainer]
+  [*] GET    /api/v1/projects/{id}/sprints/{sprint_id}/items        -- backlog items in sprint
+  [*] POST   /api/v1/projects/{id}/sprints/{sprint_id}/items        -- { backlog_item_id }
+  [*] DELETE /api/v1/projects/{id}/sprints/{sprint_id}/items/{backlog_item_id}
+  [*] POST   /api/v1/projects/{id}/sprints/{sprint_id}/test-results/init  -- seed results (idempotent)
+  [*] GET    /api/v1/projects/{id}/sprints/{sprint_id}/test-results
+  [*] PATCH  /api/v1/projects/{id}/sprints/{sprint_id}/test-results/{result_id}  -- { status, notes, skip_reason }
+  [ ] GET    /api/v1/projects/{id}/sprints/{sprint_id}/board        -- board view (Phase 5)
 
-GOALS
-  GET    /api/v1/projects/{id}/goals             -- list goals, ?status=active&sort=importance
-  POST   /api/v1/projects/{id}/goals             -- create goal { title, description, source, target_date }
-  GET    /api/v1/goals/{id}                      -- goal detail + progress + linked items
-  PATCH  /api/v1/goals/{id}                      -- update { title, description, source, status,
-                                                 --   importance (admin/maintainer only), target_date }
-  DELETE /api/v1/goals/{id}                      -- delete goal (only if status=draft or cancelled)
+CAPACITY ANALYTICS
+  [*] GET    /api/v1/users/{id}/skill-radar        -- skill profile data for radar chart
+  [*] GET    /api/v1/users/{id}/learning-appetite  -- interest signal analysis
+  [*] GET    /api/v1/users/{id}/engagement         -- computed engagement score
+  [*] GET    /api/v1/teams/{id}/skill-matrix       -- members x skills proficiency matrix
+  [*] GET    /api/v1/teams/{id}/tandems            -- mentoring pair candidates
+  [*] GET    /api/v1/teams/{id}/learning-appetite  -- team-level interest aggregation
+  [*] GET    /api/v1/teams/{id}/skill-coverage     -- ?skill_id={uuid}; proficiency distribution
+  [*] GET    /api/v1/teams/{id}/member-capacity    -- capacity vs assigned workload per member
 
-  -- Voting (one vote per user; PUT replaces existing vote)
-  PUT    /api/v1/goals/{id}/vote                 -- { weight: 1-5, rationale? }
-  DELETE /api/v1/goals/{id}/vote                 -- retract my vote
-  GET    /api/v1/goals/{id}/votes                -- list votes (admin/maintainer view)
+COMMENTS  (implemented for backlog items and tasks only)
+  [*] GET    /api/v1/projects/{id}/backlog/{item_id}/comments
+  [*] POST   /api/v1/projects/{id}/backlog/{item_id}/comments          -- { body, parent_id? }
+  [*] GET    /api/v1/projects/{id}/backlog/{item_id}/tasks/{task_id}/comments
+  [*] POST   /api/v1/projects/{id}/backlog/{item_id}/tasks/{task_id}/comments
+  [*] PATCH  /api/v1/comments/{id}                                     -- [author] edit body
+  [*] DELETE /api/v1/comments/{id}                                     -- [author or admin] soft delete
+  -- Comments on epics, releases, stages, tests: schema supports it; API Phase 6b
 
-  -- Linked backlog items
-  GET    /api/v1/goals/{id}/items                -- items linked to goal (with necessity, item status)
-  POST   /api/v1/goals/{id}/items                -- { backlog_item_id, necessity: 0-100 }
-  PATCH  /api/v1/goals/{id}/items/{item_id}      -- { necessity: 0-100 }
-  DELETE /api/v1/goals/{id}/items/{item_id}      -- unlink item from goal
+STATS (Phase 6b -- not yet implemented)
+  [ ] GET    /api/v1/projects/{id}/stats/overview
+  [ ] GET    /api/v1/projects/{id}/stats/capacity
+  [ ] GET    /api/v1/projects/{id}/stats/time
+  [ ] GET    /api/v1/sprints/{id}/burndown
+  [ ] GET    /api/v1/projects/{id}/velocity
 
-  -- Epic alignment (thematic, optional)
-  GET    /api/v1/goals/{id}/epics                -- epics aligned to this goal
-  POST   /api/v1/goals/{id}/epics                -- { epic_id }
-  DELETE /api/v1/goals/{id}/epics/{epic_id}      -- remove alignment
+GOALS (Phase 7 -- not yet implemented)
+  [ ] GET/POST   /api/v1/projects/{id}/goals
+  [ ] GET/PATCH/DELETE  /api/v1/goals/{id}
+  [ ] PUT/DELETE /api/v1/goals/{id}/vote
+  [ ] GET/POST/PATCH/DELETE  /api/v1/goals/{id}/items
+  [ ] GET/POST/DELETE  /api/v1/goals/{id}/epics
+  [ ] GET  /api/v1/goals/{id}/progress
+  [ ] GET  /api/v1/projects/{id}/goals/priority
+  [ ] GET  /api/v1/projects/{id}/goals/matrix
+  [ ] GET  /api/v1/projects/{id}/goals/recommendation
 
-  -- Analytics
-  GET    /api/v1/goals/{id}/progress             -- { items_total, items_done, coverage_pct,
-                                                 --   importance, status, by_epic: [...] }
-  GET    /api/v1/projects/{id}/goals/priority    -- auto-computed item priorities:
-                                                 --   sorted list of backlog items with auto_priority score
-                                                 --   formula: SUM(goal.importance * necessity) / SUM(goal.importance)
-  GET    /api/v1/projects/{id}/goals/matrix      -- 2x2: importance vs necessity per item
-                                                 --   { quadrant: "do_first"|"schedule"|"discuss"|"parking",
-                                                 --     items: [...] }
-  GET    /api/v1/projects/{id}/goals/recommendation -- sprint auto-balance suggestion
-                                                 --   ?sprint_id={id} -- against existing sprint
-                                                 --   ?capacity={sp}  -- hypothetical capacity
-                                                 --   returns ranked items by value/effort + goal coverage delta
-
-STATS
-  GET    /api/v1/projects/{id}/stats/overview    -- summary: items by status, velocity
-  GET    /api/v1/projects/{id}/stats/capacity    -- team capacity vs load in period
-  GET    /api/v1/projects/{id}/stats/time        -- hours by member, by skill, by period
-
-COMMENTS  (доступны для каждого элемента планирования)
-  -- Response shape: flat list, top-level comments first, replies embedded in "replies": [...].
-  -- Client gets a ready-to-render tree; server does one query with ORDER BY created_at.
-  GET    /api/v1/projects/{id}/comments              -- все комментарии проекта
-  GET    /api/v1/epics/{id}/comments
-  GET    /api/v1/releases/{id}/comments
-  GET    /api/v1/stages/{id}/comments
-  GET    /api/v1/backlog/{id}/comments
-  GET    /api/v1/tasks/{id}/comments
-  GET    /api/v1/tests/{id}/comments
-
-  POST   /api/v1/projects/{id}/comments              -- { body, parent_id? }
-  POST   /api/v1/epics/{id}/comments
-  POST   /api/v1/releases/{id}/comments
-  POST   /api/v1/stages/{id}/comments
-  POST   /api/v1/backlog/{id}/comments
-  POST   /api/v1/tasks/{id}/comments
-  POST   /api/v1/tests/{id}/comments
-
-  PATCH  /api/v1/comments/{id}                       -- edit own comment (24h window)
-  DELETE /api/v1/comments/{id}                       -- soft delete (author or admin)
-
-REAL-TIME
-  GET    /api/v1/projects/{id}/events    -- SSE stream: item updates, status changes, new comments
+REAL-TIME (Phase 7 -- not yet implemented)
+  [ ] GET    /api/v1/projects/{id}/events    -- SSE: item updates, status changes, new comments
 ```
 
 ---
@@ -1138,7 +1156,7 @@ PATCH /api/v1/projects/{id}/backlog/reorder
   - malformed UUID → 404 on all DELETE handlers
   - ErrConflict / ErrNotFound propagation сквозь store → handler
 
-### Фаза 4 -- Рабочие элементы ✓ PARTIAL (см. PHASE4_SUMMARY.md)
+### Фаза 4 -- Рабочие элементы ✓ DONE (см. PHASE4_SUMMARY.md)
 - [x] CRUD projects (archive via PATCH status, admin DELETE)
 - [x] CRUD epics (с базовым прогрессом через поле status)
 - [x] CRUD backlog items (с фильтрацией по всем измерениям)
@@ -1149,12 +1167,12 @@ PATCH /api/v1/projects/{id}/backlog/reorder
 - [x] CRUD comments (soft delete + one-level threading; 24h edit window -- pending)
 - [x] 136 integration tests (cumulative); 2 audit passes; 39 bugs found and fixed
 
-### Фаза 4.5 -- Спринты ✓ PARTIAL DONE
+### Фаза 4.5 -- Спринты ✓ DONE
 - [x] CRUD sprints
 - [x] Sprint items: добавление/удаление/список backlog items из спринта
 - [x] Sprint test runs: инициализация результатов при старте спринта
 - [x] Auto-skip логика при failed тесте (domain/testrun.go)
-- [ ] Sprint board view: `GET /sprints/{id}/board`
+- [ ] Sprint board view: `GET /sprints/{id}/board` (Phase 5)
 
 ### Фаза 5 -- Таймлайн (2-3 дня)
 - [ ] CRUD releases
@@ -1258,7 +1276,7 @@ API для time_logs:
 
 ---
 
-### Фаза 3c -- Multi-team projects (миграция модели данных)
+### Фаза 3c -- Multi-team projects ✓ DONE (миграция 000010)
 
 **Суть проблемы:** `projects.team_id` -- жёсткий FK на одну команду. В реальности:
 QA-инженер работает на трёх проектах. DevOps -- на всех. У проекта есть dev-команда,
@@ -1361,7 +1379,7 @@ DELETE /projects/{id}/teams/{team_id}   -- убрать команду с про
 | DB | `db/queries/projects.sql` | ListProjectsByTeam, UserCanAccessProject |
 | DB | `db/queries/project_teams.sql` | новый файл |
 | Go | `internal/api/middleware/roles.go` | projectVisibility SQL |
-| Go | `internal/api/handler/projects.go` | list, create, + 3 new handlers |
+| Go | `internal/api/handler_projects.go` | list, create, + 3 new handlers |
 | Go | `internal/api/router.go` | 3 new routes |
 | TS | `frontend/src/api/projects.ts` | listTeams, addTeam, removeTeam |
 | TS | `frontend/src/pages/ProjectOverviewPage.tsx` | Teams section |
