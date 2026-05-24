@@ -1,6 +1,7 @@
 .PHONY: dev build test lint migrate-up migrate-down sqlc \
         docker-up docker-down docker-dev docker-dev-down \
         prod-up prod-down prod-seed prod-rebuild \
+        dist \
         test-db-up test-db-down test-migrate-up test-migrate-down test-integration \
         db-dump db-restore \
         clean
@@ -99,6 +100,46 @@ prod-seed:
 # Rebuild images without cache (use after upgrading Go / Node versions)
 prod-rebuild:
 	docker compose -f docker-compose.prod.yml build --no-cache
+
+# ----------------------------------------------------------------
+# Distributable offline package
+# Creates dist/v42-<version>.tar.gz with pre-built images + all
+# deployment files. No internet or git required on the target machine.
+# Usage: make dist   (then ship the .tar.gz file)
+# ----------------------------------------------------------------
+
+VERSION  ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
+DIST_DIR := dist
+DIST_NAME := v42-$(VERSION)
+DIST_FILE := $(DIST_DIR)/$(DIST_NAME).tar.gz
+
+dist:
+	@echo "[1/4] Building production Docker images..."
+	docker compose -f docker-compose.prod.yml build
+	@echo "[2/4] Pulling standard base images..."
+	docker pull postgres:16-alpine
+	docker pull migrate/migrate
+	@echo "[3/4] Saving images to tar.gz..."
+	@mkdir -p $(DIST_DIR)/_tmp/$(DIST_NAME)/images
+	docker save v42-api:latest     | gzip > $(DIST_DIR)/_tmp/$(DIST_NAME)/images/v42-api.tar.gz
+	docker save v42-frontend:latest | gzip > $(DIST_DIR)/_tmp/$(DIST_NAME)/images/v42-frontend.tar.gz
+	docker save postgres:16-alpine  | gzip > $(DIST_DIR)/_tmp/$(DIST_NAME)/images/postgres.tar.gz
+	docker save migrate/migrate     | gzip > $(DIST_DIR)/_tmp/$(DIST_NAME)/images/migrate.tar.gz
+	@echo "[4/4] Assembling package..."
+	@cp docker-compose.offline.yml $(DIST_DIR)/_tmp/$(DIST_NAME)/docker-compose.yml
+	@cp .env.dist                  $(DIST_DIR)/_tmp/$(DIST_NAME)/.env.dist
+	@cp install.sh                 $(DIST_DIR)/_tmp/$(DIST_NAME)/install.sh
+	@cp QUICK_START.md             $(DIST_DIR)/_tmp/$(DIST_NAME)/QUICK_START.md
+	@cp -r migrations              $(DIST_DIR)/_tmp/$(DIST_NAME)/migrations
+	@cp -r docker                  $(DIST_DIR)/_tmp/$(DIST_NAME)/docker
+	@cp -r scripts                 $(DIST_DIR)/_tmp/$(DIST_NAME)/scripts
+	@chmod +x $(DIST_DIR)/_tmp/$(DIST_NAME)/install.sh
+	@mkdir -p $(DIST_DIR)
+	@cd $(DIST_DIR)/_tmp && tar -czf ../$(DIST_NAME).tar.gz $(DIST_NAME)/
+	@rm -rf $(DIST_DIR)/_tmp
+	@echo ""
+	@echo "Package ready: $(DIST_FILE)"
+	@echo "Size: $$(du -sh $(DIST_FILE) | cut -f1)"
 
 # Remove built binary
 clean:

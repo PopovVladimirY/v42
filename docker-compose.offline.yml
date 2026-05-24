@@ -1,0 +1,100 @@
+# V.42 Offline Production Stack
+# --------------------------------
+# For deployments WITHOUT internet access or git.
+# Images are pre-built and loaded from the distributable package.
+#
+# Usage:
+#   ./install.sh          -- load images, create .env from template
+#   edit .env             -- set DB_PASSWORD, JWT_SECRET, admin credentials
+#   docker compose up -d  -- start the full stack
+#
+# This file is included in the dist/ package as docker-compose.yml.
+
+services:
+
+  # ----------------------------------------------------------------
+  # Database
+  # ----------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB:       ${DB_NAME}
+      POSTGRES_USER:     ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  # ----------------------------------------------------------------
+  # Schema migrations (one-shot -- exits 0 when done)
+  # ----------------------------------------------------------------
+  migrate:
+    image: migrate/migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations:ro
+    command: >
+      -database postgres://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}?sslmode=${DB_SSL_MODE:-disable}
+      -path /migrations up
+    restart: on-failure
+
+  # ----------------------------------------------------------------
+  # Go API backend -- pre-built image, no source required
+  # ----------------------------------------------------------------
+  api:
+    image: v42-api:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file: .env
+    environment:
+      DB_HOST: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:${SERVER_PORT:-8080}/api/v1/health 2>/dev/null | grep -q ok || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
+
+  # ----------------------------------------------------------------
+  # Frontend: React SPA served by nginx -- pre-built image
+  # ----------------------------------------------------------------
+  frontend:
+    image: v42-frontend:latest
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-8042}:80"
+    restart: unless-stopped
+
+  # ----------------------------------------------------------------
+  # Demo seed (optional)
+  # docker compose --profile seed run --rm seed
+  # ----------------------------------------------------------------
+  seed:
+    image: python:3.12-alpine
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts:ro
+    working_dir: /scripts
+    command: >
+      sh -c "pip install requests -q && python seed_demo.py --base-url http://api:${SERVER_PORT:-8080}"
+    profiles:
+      - seed
+    restart: "no"
+
+volumes:
+  postgres_data:

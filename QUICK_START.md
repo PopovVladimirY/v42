@@ -12,6 +12,9 @@ Get from zero to running in under 10 minutes.
 
 That is it. No Go, no Node, no database client required -- everything runs in containers.
 
+> **Got a distributable package (v42-vX.Y.Z.tar.gz)?**
+> Skip straight to [Offline / USB install](#offline--usb-install) below -- no git or internet needed.
+
 ---
 
 ## 1. Clone the repo
@@ -143,6 +146,73 @@ make prod-up     # rebuilds API and frontend images with new code
 ```
 
 Migrations run automatically on startup.
+
+---
+
+## Offline / USB install
+
+Use this path when you have a distributable package (`v42-vX.Y.Z.tar.gz`) and the
+target machine has **no internet access** and no git.  Docker must be installed.
+
+### 1. Extract and load images
+
+```bash
+tar -xzf v42-vX.Y.Z.tar.gz
+cd v42-vX.Y.Z
+./install.sh
+```
+
+`install.sh` loads all four pre-built Docker images and creates a `.env` file from the template.
+
+### 2. Configure secrets
+
+Open the generated `.env` and set the three required values:
+
+| Variable              | What to put there                                            |
+|-----------------------|--------------------------------------------------------------|
+| `DB_PASSWORD`         | Strong random password, e.g. `openssl rand -base64 18`      |
+| `JWT_SECRET`          | 32+ char hex string: `openssl rand -hex 32`                  |
+| `SEED_ADMIN_PASSWORD` | Temporary admin password -- forced change on first login     |
+
+Optionally change `SEED_ADMIN_EMAIL` and `FRONTEND_PORT` (default `8042`).
+
+### 3. Start
+
+```bash
+docker compose up -d
+```
+
+Wait ~15 seconds for migrations to complete and the API to become healthy.
+
+### 4. Open the app
+
+Navigate to **http://localhost:8042** (or your `FRONTEND_PORT`).
+Log in with the admin credentials from `.env`. Change the password when prompted.
+
+### 5. Load demo data (optional)
+
+Note: the seed step requires internet to pull `python:3.12-alpine` on first run.
+If the machine is fully air-gapped, skip this.
+
+```bash
+docker compose --profile seed run --rm seed
+```
+
+### Stop / start / backup
+
+The same commands as the git install (see sections above), but replace
+`docker compose -f docker-compose.prod.yml` with plain `docker compose`.
+
+### Building a new package
+
+On a machine with internet access, Go, and Node (or just Docker):
+
+```bash
+git clone https://github.com/vpo/v42.git
+cd v42
+make dist
+# Produces dist/v42-<version>.tar.gz
+```
 
 ---
 
