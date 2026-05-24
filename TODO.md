@@ -330,6 +330,23 @@ Opus оправдан когда:
 - Проверить адекватность во всех цветовых темах.
 
 
+## ненужные приятности и приятные ненужности. изотерика.
+
+Цветовая палитра тем - это приятно.
+Можно это дело ещё и оживить слегка. Добавить оверлей анимацию в левом сайдбаре, когда пользователь не активен.
+Например:
+- NewYork - steam rising from the bottom, like from manholes on Manhattan. Fading as it goes up
+- DeepDive - bubbles, like from exhale of a diver
+- Sunrise - light glow of a dawn
+- PaperWhite - inky lines, or something in this line
+- OceanBlue - surf, from the bottom. No to high up. Faiding as well.
+
+Оверлей должен быть ненавязчивым, эфимерным, прозрачным.
+Предлагай свои варианты, в том числе и для других тем. Оцени аврианты и возможности. 
+Чем натуральней, тем интересней. GPU и WebGL 2.0 нам в помощь
+
+
+----
 ##  Сворачивание левого навбара
 
 Навбар слева не всегда нужен.
@@ -433,21 +450,6 @@ Opus оправдан когда:
 - Например: A-B-C-D-E. A = 1, B = 3 и так далее. Эксоненциально. Можно вообще числа Фибоначчи через одно взять. Тогда 
 можно продолжить ряд -F-G- ... Для любителей дебатов В)).
 
-
-## ненужные приятности и приятные ненужности. изотерика.
-
-Цветовая палитра тем - это приятно.
-Можно это дело ещё и оживить слегка. Добавить оверлей анимацию в левом сайдбаре, когда пользователь не активен.
-Например:
-- NewYork - steam rising from the bottom, like from manholes on Manhattan. Fading as it goes up
-- DeepDive - bubbles, like from exhale of a diver
-- Sunrise - light glow of a dawn
-- PaperWhite - inky lines, or something in this line
-- OceanBlue - surf, from the bottom. No to high up. Faiding as well.
-
-Оверлей должен быть ненавязчивым, эфимерным, прозрачным.
-Предлагай свои варианты, в том числе и для других тем. Оцени аврианты и возможности. 
-Чем натуральней, тем интересней. GPU и WebGL 2.0 нам в помощь
 
 ## навигация
 

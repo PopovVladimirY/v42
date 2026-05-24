@@ -11,6 +11,8 @@ export const THEMES = [
   'paper-white',
   'sunrise',
   'high-contrast',
+  'classic-light',
+  'gray-scale-light',
 ] as const;
 
 export type Theme = (typeof THEMES)[number];
@@ -18,6 +20,9 @@ export type Theme = (typeof THEMES)[number];
 interface ThemeState {
   theme: Theme;
   setTheme: (t: Theme) => void;
+  /** Milliseconds of inactivity before ambient sidebar art fades in. null = never. */
+  ambientDelayMs: number | null;
+  setAmbientDelay: (ms: number | null) => void;
 }
 
 export const useThemeStore = create<ThemeState>()(
@@ -28,6 +33,8 @@ export const useThemeStore = create<ThemeState>()(
         document.documentElement.setAttribute('data-theme', t);
         set({ theme: t });
       },
+      ambientDelayMs: 30_000,
+      setAmbientDelay: (ms) => set({ ambientDelayMs: ms }),
     }),
     {
       name: 'v42-theme',

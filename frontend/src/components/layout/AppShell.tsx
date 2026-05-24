@@ -2,7 +2,10 @@ import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { useIdleTimeout } from '@/hooks/useIdleTimeout';
+import { useIdleDetect } from '@/hooks/useIdleDetect';
 import { useRecentProjects } from '@/hooks/useLastProject';
+import { SidebarAmbient } from '@/components/SidebarAmbient';
+import { useThemeStore } from '@/stores/useTheme';
 
 // Nav item structure. Icons are inline SVG to avoid extra deps.
 const NAV_ITEMS = [
@@ -48,6 +51,8 @@ export function AppShell() {
   const navigate = useNavigate();
 
   useIdleTimeout();
+  const ambientDelayMs = useThemeStore((s) => s.ambientDelayMs);
+  const isIdle = useIdleDetect(ambientDelayMs);
 
   // Reactive: updates sidebar immediately when user visits a project
   const recentProjects = useRecentProjects(user?.id);
@@ -75,10 +80,13 @@ export function AppShell() {
       <aside
         className="flex flex-col w-52 flex-shrink-0 h-full"
         style={{
+          position: 'relative',
           background: 'var(--bg-surface)',
           borderRight: '1px solid var(--border)',
         }}
       >
+        {/* Ambient idle animation -- fades in after 30 s of inactivity */}
+        <SidebarAmbient isIdle={isIdle} />
         {/* Logo */}
         <div
           className="px-4 py-4 flex items-center gap-2 flex-shrink-0"

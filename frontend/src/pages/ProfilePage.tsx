@@ -62,6 +62,15 @@ const ROLE_LABEL: Record<string, string> = {
   observer: 'Observer',
 };
 
+// 5 steps from "show immediately" to "never" -- stored as ms (null = disabled)
+const AMBIENT_OPTS: { ms: number | null; label: string }[] = [
+  { ms: 5_000,   label: '5 sec'  },
+  { ms: 30_000,  label: '30 sec' },
+  { ms: 60_000,  label: '1 min'  },
+  { ms: 120_000, label: '2 min'  },
+  { ms: null,    label: 'Never'  },
+];
+
 const ACCENT_MAP: Record<string, string> = {
   'deep-dive': '#00c4b8',
   'night-sky': '#b89aff',
@@ -71,6 +80,8 @@ const ACCENT_MAP: Record<string, string> = {
   'paper-white': '#d97706',
   'sunrise': '#f59e0b',
   'high-contrast': '#ffffff',
+  'classic-light': '#0078d4',
+  'gray-scale-light': '#1a1a1a',
 };
 
 // ------------------------------------------------------------------
@@ -340,7 +351,7 @@ function DisplayPrefsSection() {
 
 export function ProfilePage() {
   const user = useAuthStore((s) => s.user);
-  const { theme: activeTheme, setTheme } = useThemeStore();
+  const { theme: activeTheme, setTheme, ambientDelayMs, setAmbientDelay } = useThemeStore();
   const qc = useQueryClient();
 
   const userId = user?.id ?? '';
@@ -444,25 +455,56 @@ export function ProfilePage() {
           <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
             Appearance
           </h2>
-          <div className="flex items-center gap-2">
-            <span
-              className="w-3 h-3 rounded-full flex-shrink-0"
-              style={{ background: ACCENT_MAP[activeTheme] ?? '#888' }}
-            />
-            <select
-              value={activeTheme}
-              onChange={(e) => void handleThemeChange(e.target.value as Theme)}
-              className="text-sm px-2 py-1.5 rounded-md"
-              style={{
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border)',
-                color: 'var(--text-1)',
-              }}
-            >
-              {THEMES.map((t) => (
-                <option key={t} value={t}>{t.replace(/-/g, ' ')}</option>
-              ))}
-            </select>
+          <div className="rounded-xl p-4 flex flex-col gap-4" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+            {/* Theme picker */}
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm" style={{ color: 'var(--text-2)' }}>Theme</span>
+              <div className="flex items-center gap-2">
+                <span
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{ background: ACCENT_MAP[activeTheme] ?? '#888' }}
+                />
+                <select
+                  value={activeTheme}
+                  onChange={(e) => void handleThemeChange(e.target.value as Theme)}
+                  className="text-sm px-2 py-1.5 rounded-md"
+                  style={{
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-1)',
+                  }}
+                >
+                  {THEMES.map((t) => (
+                    <option key={t} value={t}>
+                      {t.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {/* Ambient art idle delay */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <span className="text-sm block" style={{ color: 'var(--text-2)' }}>Ambient art</span>
+                <span className="text-xs" style={{ color: 'var(--text-3)' }}>Sidebar animation after idle</span>
+              </div>
+              <select
+                value={ambientDelayMs === null ? 'never' : String(ambientDelayMs)}
+                onChange={(e) => setAmbientDelay(e.target.value === 'never' ? null : Number(e.target.value))}
+                className="text-sm px-2 py-1.5 rounded-md flex-shrink-0"
+                style={{
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-1)',
+                }}
+              >
+                {AMBIENT_OPTS.map((o) => (
+                  <option key={o.label} value={o.ms === null ? 'never' : String(o.ms)}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </section>
 

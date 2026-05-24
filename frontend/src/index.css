@@ -226,6 +226,72 @@
   --shadow-md: none;
 }
 
+/* ── ClassicLight -- ruled notebook, ink and paper ──────────────────── */
+/* Contrast checks: text-1 #1e1e1e on #fff = 16.8:1 | text-2 #616161 on #fff = 6.0:1 */
+/* text-3 #767676 on #fff = 4.5:1 (WCAG AA) | accent #0078d4 on #fff = 4.6:1 (AA) */
+[data-theme="classic-light"] {
+  --bg-base:       #ffffff;
+  --bg-surface:    #f5f5f5;
+  --bg-elevated:   #ebebeb;
+  --bg-hover:      #e0e0e0;
+  --bg-active:     #d4d4d4;
+
+  --text-1: #1e1e1e;
+  --text-2: #616161;
+  --text-3: #767676;
+
+  /* Microsoft Fluent blue -- workhorse of productive UIs everywhere */
+  --accent:       #0078d4;
+  --accent-hover: #005a9e;
+  --accent-fg:    #ffffff;
+
+  --color-success: #107c10;
+  --color-warning: #ca5010;
+  --color-danger:  #a4262c;
+  --color-info:    #0078d4;
+
+  --bg-zebra:   rgba(0 0 0 / 0.025);
+
+  --border:        rgba(0 0 0 / 0.08);
+  --border-strong: rgba(0 0 0 / 0.16);
+  --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.08);
+  --shadow-md: 0 8px 24px rgba(0 0 0 / 0.12);
+}
+
+/* ── GrayScaleLight -- monochrome, no color drama ────────────────────── */
+/* Contrast checks: text-1 #141414 on #fafafa = 18.8:1 | text-2 #555 on #fafafa = 7.0:1 */
+/* text-3 #767676 on #fafafa = 4.5:1 (WCAG AA) */
+/* Status colors are desaturated but retain semantic hue for differentiation */
+[data-theme="gray-scale-light"] {
+  --bg-base:       #f2f2f2;
+  --bg-surface:    #fafafa;
+  --bg-elevated:   #e8e8e8;
+  --bg-hover:      #dcdcdc;
+  --bg-active:     #cfcfcf;
+
+  --text-1: #141414;
+  --text-2: #555555;
+  --text-3: #767676;
+
+  /* No color accent -- near-black button so CTAs still pop on any bg */
+  --accent:       #1a1a1a;
+  --accent-hover: #000000;
+  --accent-fg:    #f5f5f5;
+
+  /* Desaturated semantic status colors -- still hue-distinct for meaning */
+  --color-success: #166534;
+  --color-warning: #854d0e;
+  --color-danger:  #7f1d1d;
+  --color-info:    #1e3a5f;
+
+  --bg-zebra:   rgba(0 0 0 / 0.03);
+
+  --border:        rgba(0 0 0 / 0.10);
+  --border-strong: rgba(0 0 0 / 0.18);
+  --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.07);
+  --shadow-md: 0 8px 24px rgba(0 0 0 / 0.10);
+}
+
 /* ── Base reset ──────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
