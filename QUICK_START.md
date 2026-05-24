@@ -169,6 +169,96 @@ make prod-seed
 
 ---
 
+## Backup
+
+PostgreSQL stores everything: users, hashed passwords, teams, projects, backlog -- the whole state.
+The backup is a standard `pg_dump` SQL file, portable across PostgreSQL 16 instances.
+
+### Create a backup
+
+```bash
+docker compose -f docker-compose.prod.yml exec postgres \
+  pg_dump -U "$DB_USER" -d "$DB_NAME" --format=custom --compress=9 \
+  > backup_$(date +%Y%m%d_%H%M%S).dump
+```
+
+Or with explicit values (if you have not exported the env):
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T postgres \
+  pg_dump -U v42user -d v42db --format=custom --compress=9 \
+  > backup_$(date +%Y%m%d_%H%M%S).dump
+```
+
+Replace `v42user` / `v42db` with the values of `DB_USER` / `DB_NAME` from your `.env`.
+
+**What the dump contains:**
+- All tables and schema (users, teams, projects, backlog items, sprints, ...)
+- User accounts with `bcrypt`-hashed passwords -- credentials are preserved but
+  never stored in plain text
+- All ENUM types, indexes, constraints
+- **Does not contain** the `.env` file -- back that up separately (it holds JWT_SECRET,
+  DB_PASSWORD, etc.)
+
+**Automate it (cron example):**
+
+```bash
+# /etc/cron.d/v42-backup  -- runs daily at 03:00
+0 3 * * *  root  cd /path/to/v42 && \
+  docker compose -f docker-compose.prod.yml exec -T postgres \
+  pg_dump -U v42user -d v42db --format=custom --compress=9 \
+  > /backups/v42_$(date +\%Y\%m\%d).dump \
+  && find /backups -name 'v42_*.dump' -mtime +30 -delete
+```
+
+---
+
+## Restore from backup
+
+### Into the running stack (in-place restore)
+
+Stop the API so nothing is writing to the database while you restore:
+
+```bash
+docker compose -f docker-compose.prod.yml stop api frontend
+```
+
+Drop and recreate the database:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T postgres \
+  psql -U v42user -d postgres -c "DROP DATABASE IF EXISTS v42db; CREATE DATABASE v42db;"
+```
+
+Load the dump:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T postgres \
+  pg_restore -U v42user -d v42db --no-owner --role=v42user \
+  < backup_20260101_030000.dump
+```
+
+Bring the stack back up (migrations re-run automatically and are idempotent):
+
+```bash
+make prod-up
+```
+
+### Into a fresh installation
+
+1. Follow steps 1-3 of this guide (clone, configure `.env`, `make prod-up`).
+2. Stop the API: `docker compose -f docker-compose.prod.yml stop api frontend`
+3. Drop + recreate DB and load the dump as shown above.
+4. `make prod-up`
+
+> **Note:** The `JWT_SECRET` in `.env` does NOT need to match the original -- it only
+> affects session tokens, not stored data. Users log in normally after restore.
+> The `DB_PASSWORD` in `.env` MUST match the one used when the container was first
+> created (it is baked into the volume). If you are moving to a new machine, copy
+> `.env` verbatim along with the dump file.
+
+---
+
 ## Architecture summary
 
 ```
