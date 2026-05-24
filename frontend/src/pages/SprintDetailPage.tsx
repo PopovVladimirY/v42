@@ -504,20 +504,19 @@ function BacklogPickerRow({
 
   return (
     <tr
-      className="border-b hover:bg-[var(--bg-hover)] transition-colors"
-      style={{ borderColor: 'var(--border)' }}
+      className="hover:bg-[var(--bg-hover)] transition-colors"
     >
-      <td className="px-3 py-2">
+      <td className="px-3 py-1.5">
         <span className="font-mono font-bold" style={{ color: 'var(--accent)' }}>
           {item.number != null ? `B-${item.number}` : '--'}
         </span>
       </td>
-      <td className="px-3 py-2">
+      <td className="px-3 py-1.5">
         <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${TYPE_COLOR[item.type] ?? 'bg-gray-500/20 text-gray-400'}`}>
           {item.type}
         </span>
       </td>
-      <td className="px-3 py-2 max-w-0">
+      <td className="px-3 py-1.5 max-w-0">
         <button
           className="truncate text-left w-full hover:underline"
           style={{ color: 'var(--text-1)' }}
@@ -526,13 +525,13 @@ function BacklogPickerRow({
           {item.title}
         </button>
       </td>
-      <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--text-3)' }}>
+      <td className="px-3 py-1.5 whitespace-nowrap" style={{ color: 'var(--text-3)' }}>
         {item.status}
       </td>
-      <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--text-3)' }}>
+      <td className="px-3 py-1.5 text-center font-mono" style={{ color: 'var(--text-3)' }}>
         {item.estimate ?? '--'}
       </td>
-      <td className="px-3 py-2 text-right">
+      <td className="px-3 py-1.5 text-right">
         <button
           onClick={() => void handleAdd()}
           disabled={add.isPending || added}

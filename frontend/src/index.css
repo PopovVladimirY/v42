@@ -29,6 +29,8 @@
   --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.5);
   --shadow-md: 0 8px 24px rgba(0 0 0 / 0.7);
 
+  --bg-zebra:   rgba(0 180 220 / 0.04);
+
   --radius-sm: 4px;
   --radius:    6px;
   --radius-lg: 10px;
@@ -61,6 +63,8 @@
   --color-danger:  #e06060;
   --color-info:    #7eb8ff;
 
+  --bg-zebra:   rgba(180 160 255 / 0.04);
+
   --border:        rgba(180 160 255 / 0.07);
   --border-strong: rgba(180 160 255 / 0.14);
   --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.55);
@@ -89,6 +93,8 @@
   --color-danger:  #d94040;
   --color-info:    #4488cc;
 
+  --bg-zebra:   rgba(245 200 80 / 0.04);
+
   --border:        rgba(245 200 80 / 0.06);
   --border-strong: rgba(245 200 80 / 0.12);
   --shadow-sm: 0 1px 4px rgba(0 0 0 / 0.5);
@@ -112,6 +118,8 @@
   --color-warning: #dcdcaa;
   --color-danger:  #f44747;
   --color-info:    #9cdcfe;
+  --bg-zebra:   rgba(255 255 255 / 0.04);
+
   --border:        rgba(255 255 255 / 0.08);
   --border-strong: rgba(255 255 255 / 0.15);
   --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.4);
@@ -135,6 +143,8 @@
   --color-warning: #d97706;
   --color-danger:  #dc2626;
   --color-info:    #0284c7;
+  --bg-zebra:   rgba(0 0 0 / 0.025);
+
   --border:        rgba(0 0 0 / 0.08);
   --border-strong: rgba(0 0 0 / 0.15);
   --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.08);
@@ -158,6 +168,8 @@
   --color-warning: #b45309;
   --color-danger:  #b91c1c;
   --color-info:    #0369a1;
+  --bg-zebra:   rgba(0 0 0 / 0.025);
+
   --border:        rgba(0 0 0 / 0.08);
   --border-strong: rgba(0 0 0 / 0.15);
   --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.08);
@@ -181,6 +193,8 @@
   --color-warning: #b45309;
   --color-danger:  #b91c1c;
   --color-info:    #0369a1;
+  --bg-zebra:   rgba(0 0 0 / 0.025);
+
   --border:        rgba(0 0 0 / 0.08);
   --border-strong: rgba(0 0 0 / 0.15);
   --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.08);
@@ -204,6 +218,8 @@
   --color-warning: #ffaa00;
   --color-danger:  #ff4444;
   --color-info:    #00aaff;
+  --bg-zebra:   rgba(255 255 255 / 0.05);
+
   --border:        rgba(255 255 255 / 0.3);
   --border-strong: rgba(255 255 255 / 0.6);
   --shadow-sm: none;
@@ -212,6 +228,10 @@
 
 /* ── Base reset ──────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
+
+/* ── Table: zebra rows + hover highlight ─────────────────── */
+table tbody tr:nth-child(even) { background-color: var(--bg-zebra); }
+table tbody tr:hover { background-color: var(--bg-hover); }
 
 html { font-size: 14px; }
 

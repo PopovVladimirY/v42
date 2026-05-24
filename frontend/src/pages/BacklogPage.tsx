@@ -247,9 +247,8 @@ function DroppableBacklogRow({
     <tr
       ref={setNodeRef}
       data-testid={`backlog-row-${item.id}`}
-      className="group transition-colors hover:bg-[var(--bg-elevated)]"
+      className="group transition-colors"
       style={{
-        borderBottom: isExpanded ? 'none' : '1px solid var(--border)',
         outline: isOver ? '2px solid var(--accent)' : undefined,
         outlineOffset: isOver ? '-2px' : undefined,
       }}
@@ -1193,7 +1192,7 @@ export function BacklogPage() {
                         />
                       ) : (
                         <DroppableBacklogRow item={item} isExpanded={isExpanded} onDoubleClick={() => startEditItem(item)}>
-                          <td className="px-2 py-2 align-middle" style={{ width: '2rem' }}>
+                          <td className="px-2 py-1 align-middle" style={{ width: '2rem' }}>
                             <button
                               onClick={() => toggleExpand(item.id)}
                               title={isExpanded ? 'Collapse' : 'Expand tasks & tests'}
@@ -1203,15 +1202,15 @@ export function BacklogPage() {
                               {isExpanded ? '-' : '+'}
                             </button>
                           </td>
-                          <td className="px-3 py-2 align-middle" style={{ width: '4rem' }}>
+                          <td className="px-3 py-1 align-middle" style={{ width: '4rem' }}>
                             <span className="text-xs font-mono" style={{ color: 'var(--text-3)' }}>B-{item.number}</span>
                           </td>
-                        <td className="px-3 py-2 align-middle">
+                        <td className="px-3 py-1 align-middle">
                           <span className="text-xs font-mono uppercase opacity-60" style={{ color: 'var(--text-3)' }}>
                             {item.type}
                           </span>
                         </td>
-                        <td className="px-3 py-2 align-middle" style={{ maxWidth: 0 }}>
+                        <td className="px-3 py-1 align-middle" style={{ maxWidth: 0 }}>
                           <Link
                             to={`/projects/${projectId}/backlog/${item.id}`}
                             className="block truncate hover:underline text-sm"
@@ -1222,25 +1221,25 @@ export function BacklogPage() {
                             {item.title}
                           </Link>
                         </td>
-                        <td className="px-3 py-2 align-middle">
+                        <td className="px-3 py-1 align-middle">
                           {epicTitle && (
                             <span className="text-xs truncate block" style={{ color: 'var(--text-3)', maxWidth: '7rem' }} title={epicTitle}>
                               {epicTitle}
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-2 align-middle">
+                        <td className="px-3 py-1 align-middle">
                           <ClarityBadge clarity={item.clarity} />
                         </td>
-                        <td className="px-3 py-2 align-middle">
+                        <td className="px-3 py-1 align-middle">
                           <StatusPill item={item} projectId={projectId} />
                         </td>
-                        <td className="px-3 py-2 align-middle">
+                        <td className="px-3 py-1 align-middle">
                           {item.estimate && (
                             <span className="text-xs font-mono font-semibold" style={{ color: 'var(--accent)' }}>{item.estimate}</span>
                           )}
                         </td>
-                        <td className="px-3 py-2 align-middle">
+                        <td className="px-3 py-1 align-middle">
                           {item.sprint_name ? (
                             <span
                               className="text-xs px-2 py-0.5 rounded font-medium truncate block"
@@ -1253,7 +1252,7 @@ export function BacklogPage() {
                             <span className="text-xs" style={{ color: 'var(--text-3)' }}>--</span>
                           )}
                         </td>
-                        <td className="px-3 py-2 align-middle">
+                        <td className="px-3 py-1 align-middle">
                           <button
                             data-testid={`delete-item-${item.id}`}
                             onClick={() => handleDelete(item.id)}

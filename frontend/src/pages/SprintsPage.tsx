@@ -240,13 +240,12 @@ export function SprintsPage() {
                   <tr
                     key={s.id}
                     data-testid={`sprint-row-${s.id}`}
-                    className="group transition-colors hover:bg-[var(--bg-elevated)]"
-                    style={{ borderBottom: '1px solid var(--border)' }}
+                    className="group transition-colors"
                   >
-                    <td className="px-3 py-2 align-middle">
+                    <td className="px-3 py-1 align-middle">
                       <SprintStatusBadge status={s.status} />
                     </td>
-                    <td className="px-3 py-2 align-middle" style={{ maxWidth: 0 }}>
+                    <td className="px-3 py-1 align-middle" style={{ maxWidth: 0 }}>
                       <Link
                         to={`/projects/${projectId}/sprints/${s.id}`}
                         className="block truncate text-sm font-medium hover:underline"
@@ -256,23 +255,23 @@ export function SprintsPage() {
                         {s.name}
                       </Link>
                     </td>
-                    <td className="px-3 py-2 align-middle" style={{ maxWidth: 0 }}>
+                    <td className="px-3 py-1 align-middle" style={{ maxWidth: 0 }}>
                       {s.goal && (
                         <span className="block truncate text-xs" style={{ color: 'var(--text-3)' }} title={s.goal}>{s.goal}</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 align-middle">
+                    <td className="px-3 py-1 align-middle">
                       <span className="text-xs" style={{ color: 'var(--text-3)' }}>{fmtDate(s.start_date)}</span>
                     </td>
-                    <td className="px-3 py-2 align-middle">
+                    <td className="px-3 py-1 align-middle">
                       <span className="text-xs" style={{ color: 'var(--text-3)' }}>{fmtDate(s.end_date)}</span>
                     </td>
-                    <td className="px-3 py-2 align-middle">
+                    <td className="px-3 py-1 align-middle">
                       {s.capacity_hours != null && (
                         <span className="text-xs" style={{ color: 'var(--text-3)' }}>{s.capacity_hours}h</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 align-middle">
+                    <td className="px-3 py-1 align-middle">
                       {canCreate && (
                         <button
                           data-testid={`delete-sprint-${s.id}`}

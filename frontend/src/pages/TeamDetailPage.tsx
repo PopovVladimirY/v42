@@ -621,12 +621,8 @@ export function TeamDetailPage() {
                         className="group transition-colors"
                         onMouseEnter={() => setHoveredMember(m.user_id)}
                         onMouseLeave={() => setHoveredMember(null)}
-                        style={{
-                          background: idx % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-base)',
-                          borderBottom: '1px solid var(--border)',
-                        }}
                       >
-                        <td className="px-2 py-2.5 text-center">
+                        <td className="px-2 py-1.5 text-center">
                           <input
                             type="checkbox"
                             checked={!radarExcluded.has(m.user_id)}
@@ -641,7 +637,7 @@ export function TeamDetailPage() {
                           />
                         </td>
                         {show('name') && (
-                          <td className="px-3 py-2.5 max-w-0">
+                          <td className="px-3 py-1.5 max-w-0">
                             <div className="flex items-center gap-2 min-w-0">
                               {m.avatar_url ? (
                                 <img src={m.avatar_url} alt={label} className="w-6 h-6 rounded-full flex-shrink-0 object-cover" />
@@ -658,22 +654,22 @@ export function TeamDetailPage() {
                           </td>
                         )}
                         {show('email') && (
-                          <td className="px-3 py-2.5 max-w-0">
+                          <td className="px-3 py-1.5 max-w-0">
                             <span className="truncate block text-xs" style={{ color: 'var(--text-3)' }} title={m.email}>{m.email}</span>
                           </td>
                         )}
                         {show('role') && (
-                          <td className="px-3 py-2.5 whitespace-nowrap">
+                          <td className="px-3 py-1.5 whitespace-nowrap">
                             <span className="text-xs font-medium capitalize" style={{ color: roleColor }}>{m.role}</span>
                           </td>
                         )}
                         {show('capacity') && (
-                          <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          <td className="px-3 py-1.5 text-right whitespace-nowrap">
                             <span className="text-xs" style={{ color: 'var(--text-2)' }}>{m.capacity_hours > 0 ? m.capacity_hours : '--'}</span>
                           </td>
                         )}
                         {show('growing') && (
-                          <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          <td className="px-3 py-1.5 text-right whitespace-nowrap">
                             {apt ? (
                               <span className="text-xs font-medium" style={{ color: 'var(--accent)' }}>{apt.reaching_count}</span>
                             ) : (
@@ -682,7 +678,7 @@ export function TeamDetailPage() {
                           </td>
                         )}
                         {show('curious') && (
-                          <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          <td className="px-3 py-1.5 text-right whitespace-nowrap">
                             {apt ? (
                               <span className="text-xs" style={{ color: 'var(--text-2)' }}>{apt.curious_breadth}</span>
                             ) : (
@@ -691,7 +687,7 @@ export function TeamDetailPage() {
                           </td>
                         )}
                         {canManage && (
-                          <td className="px-2 py-2.5 text-center">
+                          <td className="px-2 py-1.5 text-center">
                             <button
                               onClick={() => void removeMember.mutate(m.user_id)}
                               disabled={removeMember.isPending && removeMember.variables === m.user_id}
