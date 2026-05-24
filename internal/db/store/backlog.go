@@ -21,6 +21,7 @@ type BacklogItem struct {
 	EpicID        *string   `json:"epic_id"`
 	ReleaseID     *string   `json:"release_id"`
 	StageID       *string   `json:"stage_id"`
+	NodeID        *string   `json:"node_id"`
 	Title         string    `json:"title"`
 	Description   *string   `json:"description"`
 	Type          string    `json:"type"`
@@ -60,33 +61,34 @@ func NewBacklogStore(q *dbgen.Queries, pool *pgxpool.Pool) *BacklogStore {
 
 // buildBacklogItem assembles a store.BacklogItem from fields shared by all
 // sqlc-generated backlog row types.
-func buildBacklogItem(id, projectID pgtype.UUID, number int64, epicID, releaseID, stageID pgtype.UUID,
-	title string, description *string, typ dbgen.ItemType, status dbgen.ItemStatus, clarity string,
-	priority float64, estimate *string, assigneeID, skillRequired pgtype.UUID,
-	acSetup, acSteps, acExpected *string, createdBy pgtype.UUID,
-	createdAt, updatedAt pgtype.Timestamptz) BacklogItem {
-	b := BacklogItem{
-		ID:          uuidToString(id),
-		ProjectID:   uuidToString(projectID),
-		Number:      number,
-		Title:       title,
-		Description: description,
-		Type:        string(typ),
-		Status:      string(status),
-		Clarity:     clarity,
-		Priority:    priority,
-		Estimate:    estimate,
-		AcSetup:     acSetup,
-		AcSteps:     acSteps,
-		AcExpected:  acExpected,
-		CreatedBy:   uuidToString(createdBy),
-		CreatedAt:   createdAt.Time,
-		UpdatedAt:   updatedAt.Time,
-	}
-	if epicID.Valid      { v := uuidToString(epicID);      b.EpicID = &v }
-	if releaseID.Valid   { v := uuidToString(releaseID);   b.ReleaseID = &v }
-	if stageID.Valid     { v := uuidToString(stageID);     b.StageID = &v }
-	if assigneeID.Valid  { v := uuidToString(assigneeID);  b.AssigneeID = &v }
+func buildBacklogItem(id, projectID pgtype.UUID, number int64, epicID, releaseID, stageID, nodeID pgtype.UUID,
+        title string, description *string, typ dbgen.ItemType, status dbgen.ItemStatus, clarity string,
+        priority float64, estimate *string, assigneeID, skillRequired pgtype.UUID,
+        acSetup, acSteps, acExpected *string, createdBy pgtype.UUID,
+        createdAt, updatedAt pgtype.Timestamptz) BacklogItem {
+        b := BacklogItem{
+                ID:          uuidToString(id),
+                ProjectID:   uuidToString(projectID),
+                Number:      number,
+                Title:       title,
+                Description: description,
+                Type:        string(typ),
+                Status:      string(status),
+                Clarity:     clarity,
+                Priority:    priority,
+                Estimate:    estimate,
+                AcSetup:     acSetup,
+                AcSteps:     acSteps,
+                AcExpected:  acExpected,
+                CreatedBy:   uuidToString(createdBy),
+                CreatedAt:   createdAt.Time,
+                UpdatedAt:   updatedAt.Time,
+        }
+        if epicID.Valid        { v := uuidToString(epicID);        b.EpicID = &v }
+        if releaseID.Valid     { v := uuidToString(releaseID);     b.ReleaseID = &v }
+        if stageID.Valid       { v := uuidToString(stageID);       b.StageID = &v }
+        if nodeID.Valid        { v := uuidToString(nodeID);        b.NodeID = &v }
+        if assigneeID.Valid    { v := uuidToString(assigneeID);    b.AssigneeID = &v }
 	if skillRequired.Valid { v := uuidToString(skillRequired); b.SkillRequired = &v }
 	return b
 }
@@ -169,7 +171,7 @@ func (s *BacklogStore) List(ctx context.Context, projectID string, epicID *strin
 	sprints := s.loadSprintMemberships(ctx, ids)
 	out := make([]BacklogItem, len(rows))
 	for i, r := range rows {
-		b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
+		b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.NodeID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
 		if m, ok := sprints[b.ID]; ok {
 			b.SprintID = &m.SprintID
 			b.SprintName = &m.SprintName
@@ -192,7 +194,7 @@ func (s *BacklogStore) GetByID(ctx context.Context, id string) (*BacklogItem, er
 		}
 		return nil, err
 	}
-	b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
+	b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.NodeID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
 	if m := s.loadSprintMemberships(ctx, []pgtype.UUID{uid}); m != nil {
 		if info, ok := m[b.ID]; ok {
 			b.SprintID = &info.SprintID
@@ -284,7 +286,7 @@ func (s *BacklogStore) Create(ctx context.Context, req CreateBacklogItemRequest)
 		}
 		return nil, err
 	}
-	b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
+	b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.NodeID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
 	return &b, nil
 }
 
@@ -302,6 +304,7 @@ type UpdateBacklogItemRequest struct {
 	EpicID        *string
 	ReleaseID     *string
 	StageID       *string
+	NodeID        *string
 	AcSetup       *string
 	AcSteps       *string
 	AcExpected    *string
@@ -326,7 +329,7 @@ func (s *BacklogStore) Update(ctx context.Context, req UpdateBacklogItemRequest)
 	if req.Status != nil {
 		st = dbgen.NullItemStatus{ItemStatus: dbgen.ItemStatus(*req.Status), Valid: true}
 	}
-	var aid, skr, eid, rid, sid pgtype.UUID
+	var aid, skr, eid, rid, sid, nid pgtype.UUID
 	if req.AssigneeID != nil {
 		if aid, err = parseUUID(*req.AssigneeID); err != nil {
 			return nil, domain.ErrNotFound
@@ -352,6 +355,11 @@ func (s *BacklogStore) Update(ctx context.Context, req UpdateBacklogItemRequest)
 			return nil, domain.ErrNotFound
 		}
 	}
+	if req.NodeID != nil {
+		if nid, err = parseUUID(*req.NodeID); err != nil {
+			return nil, domain.ErrNotFound
+		}
+	}
 	r, err := s.q.UpdateBacklogItem(ctx, dbgen.UpdateBacklogItemParams{
 		ID:            uid,
 		Title:         req.Title,
@@ -365,6 +373,7 @@ func (s *BacklogStore) Update(ctx context.Context, req UpdateBacklogItemRequest)
 		EpicID:        eid,
 		ReleaseID:     rid,
 		StageID:       sid,
+		NodeID:        nid,
 		AcSetup:       req.AcSetup,
 		AcSteps:       req.AcSteps,
 		AcExpected:    req.AcExpected,
@@ -375,7 +384,7 @@ func (s *BacklogStore) Update(ctx context.Context, req UpdateBacklogItemRequest)
 		}
 		return nil, err
 	}
-	b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
+	b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.NodeID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
 	// Explicitly clear estimate in the DB when empty string was sent.
 	if clearEstimate {
 		_, _ = s.pool.Exec(ctx, `UPDATE backlog_items SET estimate = NULL, updated_at = now() WHERE id = $1`, uid)

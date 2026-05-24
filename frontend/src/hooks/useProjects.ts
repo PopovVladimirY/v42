@@ -184,10 +184,13 @@ export function useUpdateBacklogItem(projectId: string) {
     mutationFn: ({ itemId, ...data }: {
       itemId: string;
       title?: string;
+      description?: string;
       status?: BacklogItemStatus;
       clarity?: ClarityQuadrant;
       estimate?: string | null;
       epic_id?: string;
+      stage_id?: string | null;
+      node_id?: string | null;
       assignee_id?: string;
       ac_setup?: string;
       ac_steps?: string;

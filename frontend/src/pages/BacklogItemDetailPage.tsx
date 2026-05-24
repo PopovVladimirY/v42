@@ -1,13 +1,14 @@
 import { useState, useMemo } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useBacklogItem, useUpdateBacklogItem, useDeleteBacklogItem, useEpics, backlogKeys } from '@/hooks/useProjects';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { useBacklogItem, useUpdateBacklogItem, useDeleteBacklogItem, backlogKeys } from '@/hooks/useProjects';
 import { useTasks, useCreateTask, useUpdateTask, useDeleteTask, useItemTests, useCreateItemTest, useDeleteItemTest } from '@/hooks/useItemDetails';
 import { useSprints } from '@/hooks/useSprints';
 import { sprintsApi } from '@/api/endpoints/sprints';
+import { projectsApi } from '@/api/endpoints/projects';
 import { useAuthStore } from '@/hooks/useAuth';
 import { CLARITY_COLOR, CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
-import type { BacklogItemStatus, ClarityQuadrant, Task, TestType } from '@/types';
+import type { BacklogItemStatus, ClarityQuadrant, Project, Task, TestType } from '@/types';
 
 // ---------------------------------------------------------------------------
 //  Constants
@@ -267,6 +268,104 @@ function CreateTaskForm({
 const SP_OPTS = ['1', '3', '8', '20', '50'] as const;
 
 // ---------------------------------------------------------------------------
+//  Stage picker -- project subtree dropdown
+// ---------------------------------------------------------------------------
+
+interface StageOpt { id: string; name: string; depth: number; }
+
+function buildStageOpts(nodes: Project[]): StageOpt[] {
+  const byParent = new Map<string | null, Project[]>();
+  for (const n of nodes) {
+    const key = n.parent_id ?? null;
+    if (!byParent.has(key)) byParent.set(key, []);
+    byParent.get(key)!.push(n);
+  }
+  for (const ch of byParent.values())
+    ch.sort((a, b) => a.order_index - b.order_index || a.node_number - b.node_number);
+  const result: StageOpt[] = [];
+  function walk(parentId: string | null, depth: number) {
+    for (const n of byParent.get(parentId) ?? []) {
+      result.push({ id: n.id, name: n.name, depth });
+      walk(n.id, depth + 1);
+    }
+  }
+  walk(null, 0);
+  return result;
+}
+
+function StagePicker({
+  projectId,
+  itemId,
+  stageId,
+}: {
+  projectId: string;
+  itemId: string;
+  stageId: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const updateItem = useUpdateBacklogItem(projectId);
+
+  const { data: stageNodes = [] } = useQuery({
+    queryKey: ['project-tree', projectId, false],
+    queryFn: async () => {
+      const { data } = await projectsApi.getTree(projectId, false);
+      return data.data ?? [];
+    },
+  });
+
+  const opts = useMemo(() => buildStageOpts(stageNodes), [stageNodes]);
+  const stageName = stageNodes.find(n => n.id === stageId)?.name ?? null;
+
+  function handlePick(newId: string | null) {
+    setOpen(false);
+    void updateItem.mutate({ itemId, node_id: newId });
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="text-xs px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5"
+        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: stageName ? 'var(--text-1)' : 'var(--text-3)' }}
+      >
+        {stageName ?? 'Stage...'}
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ opacity: 0.5 }}>
+          <path d="M2 4l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div
+            className="absolute right-0 top-full mt-1 rounded-lg overflow-hidden z-30 py-1 min-w-48"
+            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)' }}
+          >
+            <button
+              onClick={() => handlePick(null)}
+              className="w-full text-left text-xs px-3 py-2 hover:bg-[var(--bg-hover)]"
+              style={{ color: 'var(--text-3)' }}
+            >
+              No stage
+            </button>
+            {opts.map(({ id, name, depth }) => (
+              <button
+                key={id}
+                onClick={() => handlePick(id)}
+                className="w-full text-left text-xs py-2 hover:bg-[var(--bg-hover)] flex items-center gap-1"
+                style={{ paddingLeft: `${12 + depth * 16}px`, color: id === stageId ? 'var(--accent)' : 'var(--text-1)' }}
+              >
+                {depth > 0 && <span style={{ color: 'var(--text-3)', fontSize: 11, flexShrink: 0 }}>{'\u2514'}</span>}
+                {name}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 //  Sprint panel -- shows current sprint and allows add/remove/change
 // ---------------------------------------------------------------------------
 
@@ -291,106 +390,52 @@ function SprintPanel({
     void qc.invalidateQueries({ queryKey: backlogKeys.detail(projectId, itemId) });
   }
 
-  const addMutation = useMutation({
-    mutationFn: ({ sid }: { sid: string }) => sprintsApi.addItem(projectId, sid, itemId),
-    onSuccess: invalidateBacklog,
-  });
-
-  const removeMutation = useMutation({
-    mutationFn: () => sprintsApi.removeItem(projectId, sprintId!, itemId),
-    onSuccess: invalidateBacklog,
-  });
-
-  if (sprintId) {
-    // Currently in a sprint -- show badge + remove + move-to
-    return (
-      <div className="flex items-center gap-2 flex-wrap">
-        <span
-          className="text-xs px-2 py-1 rounded font-medium"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--color-success)', border: '1px solid var(--border)' }}
-        >
-          {sprintName ?? sprintId}
-        </span>
-        <button
-          onClick={() => void removeMutation.mutate()}
-          disabled={removeMutation.isPending}
-          className="text-xs px-2 py-1 rounded"
-          style={{ color: 'var(--color-danger)', border: '1px solid var(--border)' }}
-        >
-          {removeMutation.isPending ? '...' : 'Remove'}
-        </button>
-        {/* Move to another sprint */}
-        {actionable.filter((s) => s.id !== sprintId).length > 0 && (
-          <div className="relative">
-            <button
-              onClick={() => setOpen((v) => !v)}
-              className="text-xs px-2 py-1 rounded"
-              style={{ border: '1px solid var(--border)', color: 'var(--text-2)' }}
-            >
-              Move to...
-            </button>
-            {open && (
-              <>
-                <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-                <div
-                  className="absolute left-0 top-full mt-1 rounded-lg overflow-hidden z-30 py-1 min-w-40"
-                  style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)' }}
-                >
-                  {actionable.filter((s) => s.id !== sprintId).map((s) => (
-                    <button
-                      key={s.id}
-                      disabled={addMutation.isPending || removeMutation.isPending}
-                      onClick={async () => {
-                        setOpen(false);
-                        await sprintsApi.removeItem(projectId, sprintId, itemId);
-                        await sprintsApi.addItem(projectId, s.id, itemId);
-                        invalidateBacklog();
-                      }}
-                      className="w-full text-left text-xs px-3 py-2 hover:bg-[var(--bg-hover)] disabled:opacity-50"
-                      style={{ color: 'var(--text-1)' }}
-                    >
-                      {s.name}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-    );
+  async function handlePick(sid: string | null) {
+    setOpen(false);
+    if (sid === sprintId) return;
+    if (sprintId) await sprintsApi.removeItem(projectId, sprintId, itemId);
+    if (sid)     await sprintsApi.addItem(projectId, sid, itemId);
+    invalidateBacklog();
   }
 
-  // Not in any sprint -- show picker
   return (
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="text-xs px-3 py-1.5 rounded-lg font-medium"
-        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+        className="text-xs px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5"
+        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: sprintName ? 'var(--text-1)' : 'var(--text-3)' }}
       >
-        + Sprint
+        {sprintName ?? 'Sprint...'}
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ opacity: 0.5 }}>
+          <path d="M2 4l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
           <div
-            className="absolute right-0 top-full mt-1 rounded-lg overflow-hidden z-30 py-1 min-w-48"
+            className="absolute left-0 top-full mt-1 rounded-lg overflow-hidden z-30 py-1 min-w-48"
             style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)' }}
           >
+            <button
+              onClick={() => void handlePick(null)}
+              className="w-full text-left text-xs px-3 py-2 hover:bg-[var(--bg-hover)]"
+              style={{ color: 'var(--text-3)' }}
+            >
+              No sprint
+            </button>
             {actionable.length === 0 ? (
               <p className="text-xs px-3 py-2" style={{ color: 'var(--text-3)' }}>No planning/active sprints</p>
             ) : (
               actionable.map((s) => (
                 <button
                   key={s.id}
-                  disabled={addMutation.isPending}
-                  onClick={() => { setOpen(false); void addMutation.mutate({ sid: s.id }); }}
-                  className="w-full text-left text-xs px-3 py-2 flex items-center gap-2 hover:bg-[var(--bg-hover)] disabled:opacity-50"
-                  style={{ color: 'var(--text-1)' }}
+                  onClick={() => void handlePick(s.id)}
+                  className="w-full text-left text-xs px-3 py-2 flex items-center gap-2 hover:bg-[var(--bg-hover)]"
+                  style={{ color: s.id === sprintId ? 'var(--accent)' : 'var(--text-1)' }}
                 >
                   <span
-                    className="text-[10px] px-1.5 py-0.5 rounded"
+                    className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
                     style={{ background: s.status === 'active' ? 'rgba(16,184,154,.15)' : 'rgba(59,130,246,.15)', color: s.status === 'active' ? 'var(--color-success)' : 'var(--color-info)' }}
                   >
                     {s.status}
@@ -417,7 +462,6 @@ export function BacklogItemDetailPage() {
   const canManage = user?.role === 'admin' || user?.role === 'maintainer';
 
   const { data: item, isLoading, error } = useBacklogItem(projectId, itemId);
-  const { data: epics = [] } = useEpics(projectId);
   const { data: tasks = [] } = useTasks(projectId, itemId);
   const { data: tests = [] } = useItemTests(projectId, itemId);
 
@@ -429,6 +473,10 @@ export function BacklogItemDetailPage() {
   const [showCreateTest, setShowCreateTest] = useState(false);
   const [editDesc, setEditDesc] = useState(false);
   const [descDraft, setDescDraft] = useState('');
+  const [editAC, setEditAC] = useState(false);
+  const [acSetupDraft, setAcSetupDraft] = useState('');
+  const [acStepsDraft, setAcStepsDraft] = useState('');
+  const [acExpectedDraft, setAcExpectedDraft] = useState('');
 
   if (isLoading) {
     return (
@@ -449,7 +497,6 @@ export function BacklogItemDetailPage() {
     );
   }
 
-  const epic = epics.find((e) => e.id === item.epic_id);
   const statusCol = STATUS_COLOR[item.status] ?? { bg: '#6B7280', fg: '#fff' };
 
   function startEditDesc() {
@@ -460,6 +507,23 @@ export function BacklogItemDetailPage() {
   function commitDesc() {
     setEditDesc(false);
     void updateItem.mutate({ itemId: item.id, description: descDraft });
+  }
+
+  function startEditAC() {
+    setAcSetupDraft(item.ac_setup ?? '');
+    setAcStepsDraft(item.ac_steps ?? '');
+    setAcExpectedDraft(item.ac_expected ?? '');
+    setEditAC(true);
+  }
+
+  function commitAC() {
+    setEditAC(false);
+    void updateItem.mutate({
+      itemId: item.id,
+      ac_setup: acSetupDraft,
+      ac_steps: acStepsDraft,
+      ac_expected: acExpectedDraft,
+    });
   }
 
   async function handleDelete() {
@@ -489,11 +553,6 @@ export function BacklogItemDetailPage() {
           </h1>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className="text-xs font-mono uppercase" style={{ color: 'var(--text-3)' }}>{item.type}</span>
-            {epic && (
-              <span className="text-xs px-2 py-0.5 rounded" style={{ background: 'var(--bg-elevated)', color: 'var(--color-info)' }}>
-                {epic.title}
-              </span>
-            )}
             <span
               className="text-xs px-2 py-0.5 rounded-full font-medium"
               style={{ background: statusCol.bg, color: statusCol.fg }}
@@ -528,7 +587,6 @@ export function BacklogItemDetailPage() {
               <option key={v} value={v}>{v} SP</option>
             ))}
           </select>
-          <SprintPanel projectId={projectId} itemId={itemId} sprintId={item.sprint_id ?? null} sprintName={item.sprint_name ?? null} />
           {canManage && (
             <button
               onClick={() => void handleDelete()}
@@ -540,6 +598,14 @@ export function BacklogItemDetailPage() {
           )}
         </div>
       </div>
+
+      {/* ── Sprint & Stage ── */}
+      <section className="flex items-center gap-3 flex-wrap">
+        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)', minWidth: '3rem' }}>Sprint</span>
+        <SprintPanel projectId={projectId} itemId={itemId} sprintId={item.sprint_id ?? null} sprintName={item.sprint_name ?? null} />
+        <span className="text-xs font-semibold uppercase tracking-wider ml-4" style={{ color: 'var(--text-3)', minWidth: '3rem' }}>Stage</span>
+        <StagePicker projectId={projectId} itemId={itemId} stageId={item.node_id ?? null} />
+      </section>
 
       {/* ── Description ── */}
       <section className="flex flex-col gap-2">
@@ -576,31 +642,70 @@ export function BacklogItemDetailPage() {
       </section>
 
       {/* ── Acceptance Criteria (ATDD) ── */}
-      {(item.ac_setup || item.ac_steps || item.ac_expected) && (
-        <section className="flex flex-col gap-3">
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>
             Acceptance Criteria (ATDD)
           </span>
-          {item.ac_setup && (
-            <div>
-              <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-2)' }}>Setup / Given</p>
-              <pre className="text-xs whitespace-pre-wrap leading-relaxed" style={{ color: 'var(--text-1)' }}>{item.ac_setup}</pre>
-            </div>
+          {!editAC && (
+            <button onClick={startEditAC} className="text-xs" style={{ color: 'var(--accent)' }}>Edit</button>
           )}
-          {item.ac_steps && (
-            <div>
-              <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-2)' }}>Steps / When</p>
-              <pre className="text-xs whitespace-pre-wrap leading-relaxed" style={{ color: 'var(--text-1)' }}>{item.ac_steps}</pre>
+        </div>
+        {editAC ? (
+          <div className="flex flex-col gap-3">
+            {[
+              { label: 'Setup / Given', value: acSetupDraft, set: setAcSetupDraft },
+              { label: 'Steps / When',  value: acStepsDraft, set: setAcStepsDraft },
+              { label: 'Expected / Then', value: acExpectedDraft, set: setAcExpectedDraft },
+            ].map(({ label, value, set }) => (
+              <div key={label} className="flex flex-col gap-1">
+                <p className="text-xs font-medium" style={{ color: 'var(--text-2)' }}>{label}</p>
+                <textarea
+                  rows={3}
+                  className="text-sm px-3 py-2 rounded-lg outline-none resize-y font-mono"
+                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--accent)', color: 'var(--text-1)' }}
+                  value={value}
+                  onChange={(e) => set(e.target.value)}
+                  placeholder={`${label}...`}
+                />
+              </div>
+            ))}
+            <div className="flex gap-2">
+              <button onClick={commitAC} className="text-xs px-3 py-1 rounded font-medium" style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}>Save</button>
+              <button onClick={() => setEditAC(false)} className="text-xs px-3 py-1 rounded" style={{ color: 'var(--text-3)' }}>Cancel</button>
             </div>
-          )}
-          {item.ac_expected && (
-            <div>
-              <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-2)' }}>Expected / Then</p>
-              <pre className="text-xs whitespace-pre-wrap leading-relaxed" style={{ color: 'var(--text-1)' }}>{item.ac_expected}</pre>
-            </div>
-          )}
-        </section>
-      )}
+          </div>
+        ) : (item.ac_setup || item.ac_steps || item.ac_expected) ? (
+          <div className="flex flex-col gap-3 cursor-text" onClick={startEditAC}>
+            {item.ac_setup && (
+              <div>
+                <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-2)' }}>Setup / Given</p>
+                <pre className="text-xs whitespace-pre-wrap leading-relaxed" style={{ color: 'var(--text-1)' }}>{item.ac_setup}</pre>
+              </div>
+            )}
+            {item.ac_steps && (
+              <div>
+                <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-2)' }}>Steps / When</p>
+                <pre className="text-xs whitespace-pre-wrap leading-relaxed" style={{ color: 'var(--text-1)' }}>{item.ac_steps}</pre>
+              </div>
+            )}
+            {item.ac_expected && (
+              <div>
+                <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-2)' }}>Expected / Then</p>
+                <pre className="text-xs whitespace-pre-wrap leading-relaxed" style={{ color: 'var(--text-1)' }}>{item.ac_expected}</pre>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p
+            className="text-sm cursor-text"
+            style={{ color: 'var(--text-3)' }}
+            onClick={startEditAC}
+          >
+            Click to add acceptance criteria...
+          </p>
+        )}
+      </section>
 
       {/* ── Skill Load ── */}
       {tasks.length > 0 && (

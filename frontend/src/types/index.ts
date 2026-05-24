@@ -223,6 +223,7 @@ export interface BacklogItem {
   estimate: string | null;
   assignee_id: string | null;
   stage_id: string | null;
+  node_id: string | null;
   release_id: string | null;
   order_index: number;
   // Sprint membership -- null when not assigned.

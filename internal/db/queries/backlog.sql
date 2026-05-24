@@ -12,14 +12,14 @@ INSERT INTO backlog_items (
     $13, $14, $15,
     $16
 )
-RETURNING id, project_id, number, epic_id, release_id, stage_id,
+RETURNING id, project_id, number, epic_id, release_id, stage_id, node_id,
           title, description, type, status, clarity, priority,
           estimate, assignee_id, skill_required,
           ac_setup, ac_steps, ac_expected,
           created_by, created_at, updated_at;
 
 -- name: GetBacklogItemByID :one
-SELECT id, project_id, number, epic_id, release_id, stage_id,
+SELECT id, project_id, number, epic_id, release_id, stage_id, node_id,
        title, description, type, status, clarity, priority,
        estimate, assignee_id, skill_required,
        ac_setup, ac_steps, ac_expected,
@@ -29,7 +29,7 @@ WHERE id = $1;
 
 -- name: ListBacklogItems :many
 -- Ordered by priority ascending (lower float = higher up).
-SELECT id, project_id, number, epic_id, release_id, stage_id,
+SELECT id, project_id, number, epic_id, release_id, stage_id, node_id,
        title, description, type, status, clarity, priority,
        estimate, assignee_id, skill_required,
        ac_setup, ac_steps, ac_expected,
@@ -54,12 +54,13 @@ SET title          = coalesce(sqlc.narg('title'),          title),
     epic_id        = coalesce(sqlc.narg('epic_id'),        epic_id),
     release_id     = coalesce(sqlc.narg('release_id'),     release_id),
     stage_id       = coalesce(sqlc.narg('stage_id'),       stage_id),
+    node_id        = coalesce(sqlc.narg('node_id'),        node_id),
     ac_setup       = coalesce(sqlc.narg('ac_setup'),       ac_setup),
     ac_steps       = coalesce(sqlc.narg('ac_steps'),       ac_steps),
     ac_expected    = coalesce(sqlc.narg('ac_expected'),    ac_expected),
     updated_at     = now()
 WHERE id = $1
-RETURNING id, project_id, number, epic_id, release_id, stage_id,
+RETURNING id, project_id, number, epic_id, release_id, stage_id, node_id,
           title, description, type, status, clarity, priority,
           estimate, assignee_id, skill_required,
           ac_setup, ac_steps, ac_expected,

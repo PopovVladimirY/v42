@@ -169,6 +169,7 @@ func (h *backlogHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		EpicID        *string `json:"epic_id"`
 		ReleaseID     *string `json:"release_id"`
 		StageID       *string `json:"stage_id"`
+		NodeID        *string `json:"node_id"`
 		Title         *string `json:"title"`
 		Description   *string `json:"description"`
 		Type          *string `json:"type"`
@@ -220,6 +221,7 @@ func (h *backlogHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		EpicID:        req.EpicID,
 		ReleaseID:     req.ReleaseID,
 		StageID:       req.StageID,
+		NodeID:        req.NodeID,
 		Title:         req.Title,
 		Description:   req.Description,
 		Type:          req.Type,

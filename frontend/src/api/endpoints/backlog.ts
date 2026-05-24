@@ -35,6 +35,8 @@ export const backlogApi = {
     estimate?: string | null;
     assignee_id?: string;
     epic_id?: string;
+    stage_id?: string | null;
+    node_id?: string | null;
     ac_setup?: string;
     ac_steps?: string;
     ac_expected?: string;
