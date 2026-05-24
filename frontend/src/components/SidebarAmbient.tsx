@@ -401,27 +401,28 @@ vec4 effect_gray_scale_light(vec2 uv, float t) {
   float smoke = column * dens * puff;
 
   // ─── Ring: tilted disc (smoke ring viewed from slight angle) ───
-  // Rendered as a horizontal ellipse: wide in X, squished in Y (~70 deg tilt).
-  float phi   = fract(s * 0.20);              // 0→1 lifetime
+  // Ellipse: 1:3 height-to-width ratio. Independent trajectory. Blurry gaussian.
+  float phi   = fract(s * 0.20);              // 0->1 lifetime
   float ry    = 0.04 + phi * 0.90;            // rises from near-base to near-top
   float rx    = 0.016 + phi * 0.080;          // horizontal expand
-  float tilt  = 0.28;                         // Y/X ratio: flat disc, viewed ~72 deg
+  float asp_s = u_res.x / u_res.y;            // sidebar aspect ratio (<1, narrow)
+  float tilt  = asp_s / 3.0;                  // 1:3 in physical pixels
   float rfade = smoothstep(0.0, 0.06, phi) * (1.0 - phi);
-  float thick = 0.006 + phi * 0.006;
+  float thick = 0.012 + phi * 0.012;          // thicker = blurrier / smokier
 
-  // Ring center follows the tendril axis at height ry
-  float rh     = ry * 0.60 + s * 0.22;
-  float rdrift = fbm(vec2(rh,         s * 0.15)) * 2.0 - 1.0;
-  float rdrift2= fbm(vec2(rh * 2.4 + 4.3, s * 0.38)) * 2.0 - 1.0;
+  // Independent ring trajectory -- different fbm seeds from the tendril
+  float rh     = ry * 0.55 + s * 0.18;
+  float rdrift = fbm(vec2(rh + 7.5,          s * 0.11 + 2.3)) * 2.0 - 1.0;
+  float rdrift2= fbm(vec2(rh * 1.9 + 11.7,  s * 0.29 + 5.1)) * 2.0 - 1.0;
   float rturb  = smoothstep(0.05, 0.80, ry);
-  float ringX  = 0.46 + (rdrift * 0.22 + rdrift2 * 0.09) * rturb;
+  float ringX  = 0.46 + (rdrift * 0.20 + rdrift2 * 0.10) * rturb;
 
-  // Ellipse distance: unit circle in (ex, ey) space maps to the tilted ring
+  // Ellipse distance: squashed 1:3 ring with soft gaussian blur
   float ex    = (uv.x - ringX) / rx;
   float ey    = (uv.y - ry)    / (rx * tilt);
   float er    = sqrt(ex * ex + ey * ey);
   float rdist = abs(er - 1.0) * rx;
-  float ring  = exp(-(rdist / thick) * (rdist / thick)) * rfade * 0.70;
+  float ring  = exp(-(rdist / thick) * (rdist / thick)) * rfade * 0.65;
 
   vec3 col = vec3(0.28, 0.28, 0.34); // cool blue-gray
   return vec4(col, clamp(smoke + ring, 0.0, 1.0) * 0.60);

@@ -145,7 +145,7 @@ type patchMeRequest struct {
 var validThemes = map[string]bool{
 	"deep-dive": true, "night-sky": true, "classic-dark": true,
 	"ocean-blue": true, "paper-white": true, "sunrise": true, "high-contrast": true,
-	"new-york": true,
+	"new-york": true, "classic-light": true, "gray-scale-light": true,
 }
 
 // PatchMe handles PATCH /auth/me.
