@@ -16,7 +16,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # Stage 2: runtime -- 15MB instead of 800MB, as it should be
 FROM alpine:3.19
 
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk --no-cache add ca-certificates tzdata wget
 
 WORKDIR /app
 COPY --from=builder /bin/v42 ./v42

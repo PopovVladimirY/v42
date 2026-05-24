@@ -1,5 +1,6 @@
 .PHONY: dev build test lint migrate-up migrate-down sqlc \
         docker-up docker-down docker-dev docker-dev-down \
+        prod-up prod-down prod-seed prod-rebuild \
         test-db-up test-db-down test-migrate-up test-migrate-down test-integration \
         db-dump db-restore \
         clean
@@ -62,11 +63,11 @@ migrate-down:
 sqlc:
 	sqlc generate --no-remote
 
-# Full stack: postgres + adminer + api (production-like)
+# Full stack: postgres + adminer + api (dev compose)
 docker-up:
 	docker compose up -d --build
 
-# Stop full stack
+# Stop full stack (dev compose)
 docker-down:
 	docker compose down
 
@@ -77,6 +78,27 @@ docker-dev:
 # Stop dev infrastructure
 docker-dev-down:
 	docker compose -f docker-compose.dev.yml down
+
+# ----------------------------------------------------------------
+# Production distribution
+# ----------------------------------------------------------------
+
+# Start the full production stack (postgres + api + frontend/nginx)
+# Requires .env copied from .env.dist and filled with real secrets.
+prod-up:
+	docker compose -f docker-compose.prod.yml up -d --build
+
+# Stop production stack (data is preserved in the postgres_data volume)
+prod-down:
+	docker compose -f docker-compose.prod.yml down
+
+# Load demo data (users, team, project, backlog) into a running prod stack
+prod-seed:
+	docker compose -f docker-compose.prod.yml --profile seed run --rm seed
+
+# Rebuild images without cache (use after upgrading Go / Node versions)
+prod-rebuild:
+	docker compose -f docker-compose.prod.yml build --no-cache
 
 # Remove built binary
 clean:

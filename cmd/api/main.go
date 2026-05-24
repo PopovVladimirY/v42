@@ -127,10 +127,11 @@ func seedAdmin(ctx context.Context, cfg *config.Config, q *dbgen.Queries, log *s
 	}
 
 	_, err = q.CreateUser(ctx, dbgen.CreateUserParams{
-		Email:        cfg.SeedAdminEmail,
-		PasswordHash: hash,
-		DisplayName:  "Admin",
-		Role:         dbgen.UserRoleAdmin,
+		Email:              cfg.SeedAdminEmail,
+		PasswordHash:       hash,
+		DisplayName:        "Admin",
+		Role:               dbgen.UserRoleAdmin,
+		MustChangePassword: cfg.IsProduction(), // force password change on first login in production
 	})
 	if err != nil {
 		return fmt.Errorf("seed admin create: %w", err)

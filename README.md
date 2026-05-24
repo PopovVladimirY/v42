@@ -99,7 +99,7 @@ curl http://localhost:8080/api/v1/health
 
 ### 2. Database browser
 
-Open [http://localhost:8081](http://localhost:8081) in your browser -- that's Adminer.
+Open [http://localhost:8742](http://localhost:8742) in your browser -- that's Adminer.
 
 Connection details (from your `.env`):
 - **System**: PostgreSQL
@@ -256,9 +256,51 @@ Response envelope -- every endpoint returns:
 |-------|------|--------|
 | 0 | Scaffold: Go, chi, pgx, middleware, health endpoint | Done |
 | 1 | Full DB schema (19 tables, 13 ENUMs), migrations, test infra | Done |
-| 2 | Auth: login, JWT tokens, refresh, logout | Next |
-| 3 | Projects, epics, backlog items API | Planned |
-| 4 | Tasks, comments, team management | Planned |
-| 5 | Tests (ATDD), sprint management | Planned |
-| 6 | Real-time updates via SSE | Planned |
-| 7 | React frontend | Planned |
+| 2 | Auth: login, JWT tokens, refresh, logout | Done |
+| 3 | Projects, epics, backlog items, teams, skills | Done |
+| 4 | Tasks, comments, sprint management, SSE | Done |
+| 5 | React frontend (all core pages) | Done |
+| 6 | Distribution: Docker all-in-one, demo seed | Done |
+| 7 | Analytics, export, project hierarchy | Planned |
+
+---
+
+## Deploying / Distribution
+
+> See [QUICK_START.md](QUICK_START.md) for the full installation guide.
+
+**TL;DR -- three commands from zero to running:**
+
+```bash
+cp .env.dist .env          # fill in DB_PASSWORD, JWT_SECRET, SEED_ADMIN_PASSWORD
+make prod-up               # builds and starts everything in Docker
+# open http://localhost:8042
+```
+
+### Build the distribution images
+
+```bash
+# Full rebuild (no cache)
+make prod-rebuild
+
+# Normal rebuild (uses Docker cache -- only changed layers)
+make prod-up
+```
+
+### Load demo data
+
+```bash
+make prod-seed             # creates sample users, team, project, backlog
+```
+
+All demo users are created with `must_change_password = true` -- they are forced
+to change their password on first login. This includes the bootstrap admin account.
+
+### Makefile distribution targets
+
+| Command | What it does |
+|---------|-------------|
+| `make prod-up` | Build images and start postgres + api + frontend |
+| `make prod-down` | Stop all containers (data is preserved) |
+| `make prod-seed` | Load demo data into a running stack |
+| `make prod-rebuild` | Force full image rebuild (no Docker cache) |

@@ -13,7 +13,7 @@ services:
       - postgres_dev_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "5432:5432"
+      - "5442:5432"    # non-standard: avoids clash with local postgres
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-v42} -d ${DB_NAME:-v42}"]
       interval: 5s
@@ -23,7 +23,7 @@ services:
   adminer:
     image: adminer:latest
     ports:
-      - "8081:8080"
+      - "8742:8080"    # non-standard: db browser at :8742
     depends_on:
       - postgres
 
