@@ -1145,7 +1145,7 @@ export function TeamDetailPage() {
                 <ResponsiveContainer width="100%" height={300}>
                   <RadarChart data={radarData} outerRadius="62%" margin={{ top: 2, right: 4, bottom: 2, left: 4 }}>
                     <PolarGrid stroke="var(--border)" />
-                    <PolarAngleAxis dataKey="skill" tick={{ fill: 'var(--text-3)', fontSize: 10 }} />
+                    <PolarAngleAxis dataKey="skill" tick={{ fill: 'var(--text-3)', fontSize: 10 }} tickFormatter={(v: string) => v.length > 9 ? v.slice(0, 8) + '...' : v} />
                     <PolarRadiusAxis domain={[0, 5]} tickCount={6} tick={false} axisLine={false} />
                     {/* Max envelope -- team ceiling, rendered behind member overlays */}
                     <Radar
