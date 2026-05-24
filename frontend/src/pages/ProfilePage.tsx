@@ -41,6 +41,12 @@ const INTERESTS: { value: InterestLevel; label: string; icon: string }[] = [
   { value: 'high', label: 'High', icon: '++' },
 ];
 
+// Interest level -> radar axis rank (same 0-5 scale as level_rank)
+const INTEREST_RANK: Record<InterestLevel, number> = { low: 1, medium: 3, high: 5 };
+
+// Accent color for the interest overlay layer
+const INTEREST_COLOR = '#f59e0b';
+
 // ------------------------------------------------------------------
 // Helpers
 // ------------------------------------------------------------------
@@ -409,6 +415,8 @@ export function ProfilePage() {
   }
 
   const [editing, setEditing] = useState<null | 'new' | MemberSkill>(null);
+  const [skillsOpen, setSkillsOpen] = useState(false);
+  const [radarHovered, setRadarHovered] = useState(false);
 
   const { data: skills, isLoading: skillsLoading } = useQuery({
     queryKey: ['user-skills', userId],
@@ -664,12 +672,89 @@ export function ProfilePage() {
           </div>
         </section>}
 
-        {/* Skills */}
+        {/* Skill Radar -- two layers: proficiency (always) + interest (on hover) */}
+        {personalRadar && personalRadar.length > 0 && (() => {
+          const radarData = personalRadar.map((s) => ({
+            skill: s.skill_name.length > 9 ? s.skill_name.slice(0, 8) + '...' : s.skill_name,
+            level: s.level_rank,
+            interest: INTEREST_RANK[s.interest],
+          }));
+          return (
+            <section className="mb-8">
+              <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
+                Skill Radar
+              </h2>
+              <div
+                className="rounded-xl p-1.5"
+                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+                onMouseEnter={() => setRadarHovered(true)}
+                onMouseLeave={() => setRadarHovered(false)}
+              >
+                <ResponsiveContainer width="100%" height={300}>
+                  <RadarChart data={radarData} outerRadius="62%" margin={{ top: 2, right: 4, bottom: 2, left: 4 }}>
+                    <PolarGrid stroke="var(--border)" />
+                    <PolarAngleAxis
+                      dataKey="skill"
+                      tick={{ fill: 'var(--text-3)', fontSize: 10 }}
+                    />
+                    <PolarRadiusAxis domain={[0, 5]} tickCount={6} tick={false} axisLine={false} />
+                    {/* Proficiency layer -- always visible */}
+                    <Radar
+                      name="Proficiency"
+                      dataKey="level"
+                      stroke="var(--accent)"
+                      strokeWidth={1.5}
+                      fill="var(--accent)"
+                      fillOpacity={radarHovered ? 0.2 : 0.28}
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                    {/* Interest overlay -- appears on hover */}
+                    <Radar
+                      name="Interest"
+                      dataKey="interest"
+                      stroke={INTEREST_COLOR}
+                      strokeWidth={radarHovered ? 1.5 : 0}
+                      strokeOpacity={radarHovered ? 0.8 : 0}
+                      fill={INTEREST_COLOR}
+                      fillOpacity={radarHovered ? 0.22 : 0}
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+                {/* Legend */}
+                <div className="flex items-center justify-center gap-5 mt-1" style={{ fontSize: '0.7rem', color: 'var(--text-3)' }}>
+                  <span className="flex items-center gap-1.5">
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--accent)', opacity: 0.7, display: 'inline-block' }} />
+                    Proficiency
+                  </span>
+                  <span className="flex items-center gap-1.5" style={{ opacity: radarHovered ? 1 : 0.45, transition: 'opacity 0.2s' }}>
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: INTEREST_COLOR, opacity: 0.8, display: 'inline-block' }} />
+                    Interest {!radarHovered && <span style={{ fontStyle: 'italic' }}>(hover)</span>}
+                  </span>
+                </div>
+              </div>
+            </section>
+          );
+        })()}
+
+        {/* Skills -- collapsible */}
         <section className="mb-8">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
-              Skills
-            </h2>
+            <button
+              onClick={() => setSkillsOpen((o) => !o)}
+              className="flex items-center gap-2 group"
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+            >
+              <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>Skills</h2>
+              {skills && skills.length > 0 && (
+                <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-elevated)', color: 'var(--text-3)' }}>
+                  {skills.length}
+                </span>
+              )}
+              <span className="text-4xl leading-none" style={{ color: 'var(--text-3)' }}>{skillsOpen ? '▾' : '▸'}</span>
+            </button>
             <button
               onClick={() => setEditing((e) => (e === 'new' ? null : 'new'))}
               className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md transition-colors"
@@ -698,41 +783,43 @@ export function ProfilePage() {
             </div>
           )}
 
-          {skillsLoading ? (
-            <div className="flex flex-col gap-2">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="h-12 rounded-lg animate-pulse" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }} />
-              ))}
-            </div>
-          ) : !skills || skills.length === 0 ? (
-            editing !== 'new' && (
-              <p className="text-sm py-4 text-center" style={{ color: 'var(--text-3)' }}>No skills added yet.</p>
-            )
-          ) : (
-            <div className="flex flex-col gap-2">
-              {skills.map((s) =>
-                typeof editing === 'object' && editing !== null && editing.skill_id === s.skill_id ? (
-                  <div key={s.skill_id} className="mb-1">
-                    <SkillEditor
-                      userId={userId}
-                      catalog={skillCatalog ?? []}
-                      existingSkillIds={existingSkillIds}
-                      initial={s}
-                      onDone={() => setEditing(null)}
-                      onCancel={() => setEditing(null)}
+          {skillsOpen && (
+            skillsLoading ? (
+              <div className="flex flex-col gap-2">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="h-12 rounded-lg animate-pulse" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }} />
+                ))}
+              </div>
+            ) : !skills || skills.length === 0 ? (
+              editing !== 'new' && (
+                <p className="text-sm py-4 text-center" style={{ color: 'var(--text-3)' }}>No skills added yet.</p>
+              )
+            ) : (
+              <div className="flex flex-col gap-2">
+                {skills.map((s) =>
+                  typeof editing === 'object' && editing !== null && editing.skill_id === s.skill_id ? (
+                    <div key={s.skill_id} className="mb-1">
+                      <SkillEditor
+                        userId={userId}
+                        catalog={skillCatalog ?? []}
+                        existingSkillIds={existingSkillIds}
+                        initial={s}
+                        onDone={() => setEditing(null)}
+                        onCancel={() => setEditing(null)}
+                      />
+                    </div>
+                  ) : (
+                    <SkillRow
+                      key={s.skill_id}
+                      s={s}
+                      onEdit={(ms) => setEditing(ms)}
+                      onDelete={(id) => void deleteSkill.mutate(id)}
+                      isDeleting={deleteSkill.isPending && deleteSkill.variables === s.skill_id}
                     />
-                  </div>
-                ) : (
-                  <SkillRow
-                    key={s.skill_id}
-                    s={s}
-                    onEdit={(ms) => setEditing(ms)}
-                    onDelete={(id) => void deleteSkill.mutate(id)}
-                    isDeleting={deleteSkill.isPending && deleteSkill.variables === s.skill_id}
-                  />
-                ),
-              )}
-            </div>
+                  ),
+                )}
+              </div>
+            )
           )}
         </section>
 
@@ -770,24 +857,7 @@ export function ProfilePage() {
           )}
         </section>
 
-        {/* Skill Radar */}
-        {personalRadar && personalRadar.length > 0 && (
-          <section className="mb-8">
-            <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
-              Skill Radar
-            </h2>
-            <div className="rounded-xl p-4" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
-              <ResponsiveContainer width="100%" height={240}>
-                <RadarChart data={personalRadar.map((s) => ({ skill: s.skill_name, level: s.level_rank }))} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
-                  <PolarGrid stroke="var(--border)" />
-                  <PolarAngleAxis dataKey="skill" tick={{ fill: 'var(--text-3)', fontSize: 11 }} />
-                  <PolarRadiusAxis domain={[0, 5]} tickCount={6} tick={false} axisLine={false} />
-                  <Radar name="Me" dataKey="level" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.25} />
-                </RadarChart>
-              </ResponsiveContainer>
-            </div>
-          </section>
-        )}
+
 
         {/* Learning Appetite */}
         {myAppetite && (

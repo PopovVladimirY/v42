@@ -123,6 +123,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 				r.With(middleware.RequireRole("admin")).Patch("/teams/{id}/archive", teamH.Archive)
 				r.With(middleware.RequireRole("admin")).Patch("/teams/{id}/unarchive", teamH.Unarchive)
 					r.With(middleware.RequireRole("admin")).Patch("/teams/{id}/category", teamH.UpdateCategory)
+			r.Get("/users/{id}/skill-radar", capacityH.PersonalRadar)
 			r.Get("/users/{id}/learning-appetite", capacityH.UserLearningAppetite)
 			r.Get("/users/{id}/engagement", capacityH.UserEngagement)
 			r.Get("/teams/{id}/skill-matrix", capacityH.TeamSkillMatrix)
