@@ -1,3 +1,4 @@
+import type React from 'react';
 import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
 import { useRef, useState } from 'react';
 import { useAuthStore } from '@/hooks/useAuth';
@@ -9,7 +10,7 @@ import { SidebarAmbient } from '@/components/SidebarAmbient';
 import { useThemeStore } from '@/stores/useTheme';
 
 // Nav item structure. Icons are inline SVG to avoid extra deps.
-const NAV_ITEMS = [
+const NAV_ITEMS: { to: string; label: string; icon: React.ReactNode; soon?: boolean }[] = [
   {
     to: '/teams',
     label: 'Teams',

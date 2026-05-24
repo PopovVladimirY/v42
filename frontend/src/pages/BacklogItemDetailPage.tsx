@@ -8,22 +8,12 @@ import { sprintsApi } from '@/api/endpoints/sprints';
 import { projectsApi } from '@/api/endpoints/projects';
 import { useAuthStore } from '@/hooks/useAuth';
 import { CLARITY_COLOR, CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
-import type { BacklogItemStatus, ClarityQuadrant, Project, Task, TestType } from '@/types';
+import type { Project, Task, TestType } from '@/types';
 
 // ---------------------------------------------------------------------------
 //  Constants
 // ---------------------------------------------------------------------------
 
-const STATUS_OPTS: BacklogItemStatus[] = [
-  'planned', 'request', 'on_hold', 'open', 'in_progress', 'in_review', 'done', 'cancelled', 'rejected',
-];
-
-const TASK_STATUS_OPTS: { value: Task['status']; label: string }[] = [
-  { value: 'todo',        label: 'Todo'        },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'done',        label: 'Done'        },
-  { value: 'cancelled',   label: 'Cancelled'   },
-];
 
 const TEST_TYPE_OPTS: { value: TestType; label: string }[] = [
   { value: 'acceptance',  label: 'Acceptance'  },
@@ -500,26 +490,26 @@ export function BacklogItemDetailPage() {
   const statusCol = STATUS_COLOR[item.status] ?? { bg: '#6B7280', fg: '#fff' };
 
   function startEditDesc() {
-    setDescDraft(item.description ?? '');
+    setDescDraft(item!.description ?? '');
     setEditDesc(true);
   }
 
   function commitDesc() {
     setEditDesc(false);
-    void updateItem.mutate({ itemId: item.id, description: descDraft });
+    void updateItem.mutate({ itemId: item!.id, description: descDraft });
   }
 
   function startEditAC() {
-    setAcSetupDraft(item.ac_setup ?? '');
-    setAcStepsDraft(item.ac_steps ?? '');
-    setAcExpectedDraft(item.ac_expected ?? '');
+    setAcSetupDraft(item!.ac_setup ?? '');
+    setAcStepsDraft(item!.ac_steps ?? '');
+    setAcExpectedDraft(item!.ac_expected ?? '');
     setEditAC(true);
   }
 
   function commitAC() {
     setEditAC(false);
     void updateItem.mutate({
-      itemId: item.id,
+      itemId: item!.id,
       ac_setup: acSetupDraft,
       ac_steps: acStepsDraft,
       ac_expected: acExpectedDraft,
@@ -527,8 +517,8 @@ export function BacklogItemDetailPage() {
   }
 
   async function handleDelete() {
-    if (!confirm(`Delete "${item.title}"? This cannot be undone.`)) return;
-    await deleteItem.mutateAsync(item.id);
+    if (!confirm(`Delete "${item!.title}"? This cannot be undone.`)) return;
+    await deleteItem.mutateAsync(item!.id);
     navigate(`/projects/${projectId}/backlog`);
   }
 

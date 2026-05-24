@@ -260,7 +260,7 @@ function BacklogItemEditRow({
 
 function DroppableBacklogRow({
   item,
-  isExpanded,
+  isExpanded: _isExpanded,
   children,
   onDoubleClick,
 }: {

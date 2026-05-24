@@ -10,7 +10,7 @@ import { capacityApi } from '@/api/endpoints/capacity';
 import { projectsApi } from '@/api/endpoints/projects';
 import { projectKeys } from '@/hooks/useProjects';
 import { useAuthStore } from '@/hooks/useAuth';
-import type { TeamMember, TeamCategory } from '@/types/teams';
+import type { TeamCategory } from '@/types/teams';
 import type { MatrixEntry, TandemPair, TeamMemberAppetite, Project } from '@/types/index';
 
 const PROJECT_STATUS_BADGE: Record<Project['status'], { label: string; color: string }> = {
@@ -319,7 +319,6 @@ export function TeamDetailPage() {
 
   const rootTeamProjects = teamProjects.filter((p) => p.parent_id === null);
   const teamProjectIds = new Set(teamProjects.map((p) => p.id));
-  const availableToLink = allRootProjects.filter((p) => !teamProjectIds.has(p.id));
   const teamProjectTree = buildProjectTree(teamProjects);
   const allProjectTree = buildProjectTree(allRootProjects);
   const allTreeRoots = allProjectTree.get(null) ?? [];
@@ -905,7 +904,7 @@ export function TeamDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pageRows.map((m, idx) => {
+                  {pageRows.map((m, _idx) => {
                     const label = m.display_name || m.email;
                     const roleColor = ROLE_COLOR[m.role] ?? 'var(--text-3)';
                     const apt = appetiteMap.get(m.user_id);

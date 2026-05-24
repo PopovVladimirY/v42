@@ -105,7 +105,7 @@ export function useCreateItemTest(projectId: string, itemId: string) {
 export function useDeleteItemTest(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ testId, itemId }: { testId: string; itemId: string }) =>
+    mutationFn: ({ testId, itemId: _itemId }: { testId: string; itemId: string }) =>
       itemTestsApi.delete(projectId, testId),
     onSuccess: (_d, { itemId }) =>
       qc.invalidateQueries({ queryKey: itemTestKeys.byItem(projectId, itemId) }),
