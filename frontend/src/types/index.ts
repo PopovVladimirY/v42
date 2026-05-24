@@ -122,11 +122,21 @@ export type ProjectStatus = 'active' | 'on_hold' | 'completed' | 'archived';
 
 export interface Project {
   id: string;
+  node_number: number;
   name: string;
   description: string | null;
   status: ProjectStatus;
   owner_id: string;
+  parent_id: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  order_index: number;
   is_archived: boolean;
+  open_items: number;
+  total_items: number;
+  clarity_score: string;
+  stats_dirty: boolean;
+  stats_updated_at: string | null;
   created_at: string;
   updated_at: string;
 }

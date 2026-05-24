@@ -16,6 +16,7 @@ import (
 // Sprint is the store-level sprint representation.
 type Sprint struct {
 	ID            string    `json:"id"`
+	SprintNumber  int64     `json:"sprint_number"`
 	ProjectID     string    `json:"project_id"`
 	TeamID        *string   `json:"team_id"`
 	Name          string    `json:"name"`
@@ -24,6 +25,7 @@ type Sprint struct {
 	StartDate     *string   `json:"start_date"`
 	EndDate       *string   `json:"end_date"`
 	CapacityHours *int16    `json:"capacity_hours"`
+	OrderIndex    float64   `json:"order_index"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
@@ -56,30 +58,61 @@ func NewSprintStore(q *dbgen.Queries, pool *pgxpool.Pool) *SprintStore {
 	return &SprintStore{q: q, pool: pool}
 }
 
-func sprintFromRow(r dbgen.Sprint) Sprint {
+func buildSprint(
+	id pgtype.UUID, sprintNumber int64, projectID, teamID pgtype.UUID,
+	name string, goal *string, status dbgen.SprintStatus,
+	startDate, endDate pgtype.Date, capacityHours *int16, orderIndex float64,
+	createdAt, updatedAt pgtype.Timestamptz,
+) Sprint {
 	s := Sprint{
-		ID:            uuidToString(r.ID),
-		ProjectID:     uuidToString(r.ProjectID),
-		Name:          r.Name,
-		Goal:          r.Goal,
-		Status:        string(r.Status),
-		CapacityHours: r.CapacityHours,
-		CreatedAt:     r.CreatedAt.Time,
-		UpdatedAt:     r.UpdatedAt.Time,
+		ID:            uuidToString(id),
+		SprintNumber:  sprintNumber,
+		ProjectID:     uuidToString(projectID),
+		Name:          name,
+		Goal:          goal,
+		Status:        string(status),
+		CapacityHours: capacityHours,
+		OrderIndex:    orderIndex,
+		CreatedAt:     createdAt.Time,
+		UpdatedAt:     updatedAt.Time,
 	}
-	if r.TeamID.Valid {
-		v := uuidToString(r.TeamID)
+	if teamID.Valid {
+		v := uuidToString(teamID)
 		s.TeamID = &v
 	}
-	if r.StartDate.Valid {
-		v := r.StartDate.Time.Format("2006-01-02")
+	if startDate.Valid {
+		v := startDate.Time.Format("2006-01-02")
 		s.StartDate = &v
 	}
-	if r.EndDate.Valid {
-		v := r.EndDate.Time.Format("2006-01-02")
+	if endDate.Valid {
+		v := endDate.Time.Format("2006-01-02")
 		s.EndDate = &v
 	}
 	return s
+}
+
+func sprintFromCreateRow(r dbgen.CreateSprintRow) Sprint {
+	return buildSprint(r.ID, r.SprintNumber, r.ProjectID, r.TeamID, r.Name, r.Goal, r.Status,
+		r.StartDate, r.EndDate, r.CapacityHours, r.OrderIndex, r.CreatedAt, r.UpdatedAt)
+}
+func sprintFromGetRow(r dbgen.GetSprintByIDRow) Sprint {
+	return buildSprint(r.ID, r.SprintNumber, r.ProjectID, r.TeamID, r.Name, r.Goal, r.Status,
+		r.StartDate, r.EndDate, r.CapacityHours, r.OrderIndex, r.CreatedAt, r.UpdatedAt)
+}
+func sprintFromListRow(r dbgen.ListSprintsByProjectRow) Sprint {
+	return buildSprint(r.ID, r.SprintNumber, r.ProjectID, r.TeamID, r.Name, r.Goal, r.Status,
+		r.StartDate, r.EndDate, r.CapacityHours, r.OrderIndex, r.CreatedAt, r.UpdatedAt)
+}
+func sprintFromUpdateRow(r dbgen.UpdateSprintRow) Sprint {
+	return buildSprint(r.ID, r.SprintNumber, r.ProjectID, r.TeamID, r.Name, r.Goal, r.Status,
+		r.StartDate, r.EndDate, r.CapacityHours, r.OrderIndex, r.CreatedAt, r.UpdatedAt)
+}
+
+func nullSprintStatus(s *string) dbgen.NullSprintStatus {
+	if s == nil {
+		return dbgen.NullSprintStatus{}
+	}
+	return dbgen.NullSprintStatus{SprintStatus: dbgen.SprintStatus(*s), Valid: true}
 }
 
 // List returns sprints for a project.
@@ -94,7 +127,7 @@ func (s *SprintStore) List(ctx context.Context, projectID string) ([]Sprint, err
 	}
 	out := make([]Sprint, len(rows))
 	for i, r := range rows {
-		out[i] = sprintFromRow(r)
+		out[i] = sprintFromListRow(r)
 	}
 	return out, nil
 }
@@ -112,7 +145,7 @@ func (s *SprintStore) GetByID(ctx context.Context, id string) (*Sprint, error) {
 		}
 		return nil, err
 	}
-	sp := sprintFromRow(r)
+	sp := sprintFromGetRow(r)
 	return &sp, nil
 }
 
@@ -148,11 +181,12 @@ func (s *SprintStore) Create(ctx context.Context, projectID string, teamID *stri
 		StartDate:     sd,
 		EndDate:       ed,
 		CapacityHours: capacityHours,
+		OrderIndex:    0,
 	})
 	if err != nil {
 		return nil, err
 	}
-	sp := sprintFromRow(r)
+	sp := sprintFromCreateRow(r)
 	return &sp, nil
 }
 
@@ -162,10 +196,9 @@ func (s *SprintStore) Update(ctx context.Context, id string, name, goal *string,
 	if err != nil {
 		return nil, domain.ErrNotFound
 	}
-	var st *dbgen.SprintStatus
+	var st dbgen.NullSprintStatus
 	if status != nil {
-		v := dbgen.SprintStatus(*status)
-		st = &v
+		st = dbgen.NullSprintStatus{SprintStatus: dbgen.SprintStatus(*status), Valid: true}
 	}
 	var sd, ed pgtype.Date
 	if startDate != nil {
@@ -193,7 +226,7 @@ func (s *SprintStore) Update(ctx context.Context, id string, name, goal *string,
 		}
 		return nil, err
 	}
-	sp := sprintFromRow(r)
+	sp := sprintFromUpdateRow(r)
 	return &sp, nil
 }
 

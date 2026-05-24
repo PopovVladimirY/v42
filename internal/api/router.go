@@ -105,9 +105,9 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 				r.With(middleware.RequireRole("admin")).Delete("/skills/{id}", skillH.Delete)
 
 				// Teams: read for all authenticated users
-				r.Get("/teams", teamH.List)
-				r.With(middleware.RequireRole("admin")).Get("/teams/archived", teamH.ListArchived)
-				r.Get("/teams/{id}", teamH.Get)
+			r.Get("/teams", teamH.List)
+			r.Get("/teams/mine", teamH.Mine)
+			r.Get("/teams/{id}", teamH.Get)
 
 				// Teams: write for admin/maintainer
 				r.Group(func(r chi.Router) {
@@ -122,9 +122,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 				r.With(middleware.RequireRole("admin")).Delete("/teams/{id}", teamH.Delete)
 				r.With(middleware.RequireRole("admin")).Patch("/teams/{id}/archive", teamH.Archive)
 				r.With(middleware.RequireRole("admin")).Patch("/teams/{id}/unarchive", teamH.Unarchive)
-
-			// Capacity + skill radar (read-only, any authenticated user)
-			r.Get("/users/{id}/skill-radar", capacityH.PersonalRadar)
+					r.With(middleware.RequireRole("admin")).Patch("/teams/{id}/category", teamH.UpdateCategory)
 			r.Get("/users/{id}/learning-appetite", capacityH.UserLearningAppetite)
 			r.Get("/users/{id}/engagement", capacityH.UserEngagement)
 			r.Get("/teams/{id}/skill-matrix", capacityH.TeamSkillMatrix)
@@ -151,7 +149,10 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 				r.With(middleware.RequireRole("admin")).Patch("/archive", projectH.Archive)
 				r.With(middleware.RequireRole("admin")).Patch("/unarchive", projectH.Unarchive)
 
-				// Project teams (M:M)
+                            // Project tree
+                            r.Get("/tree", projectH.GetTree)
+                            r.With(middleware.RequireRole("admin", "maintainer")).Post("/children", projectH.CreateChild)
+                            r.With(middleware.RequireRole("admin", "maintainer")).Patch("/move", projectH.MoveNode)
 				r.Get("/teams", projectH.ListTeams)
 				r.With(middleware.RequireRole("admin", "maintainer")).Post("/teams", projectH.AddTeam)
 				r.With(middleware.RequireRole("admin", "maintainer")).Delete("/teams/{team_id}", projectH.RemoveTeam)

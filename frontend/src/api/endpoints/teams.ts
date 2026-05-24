@@ -1,5 +1,5 @@
 import apiClient from '@/api/client';
-import type { Team, TeamWithMembers } from '@/types/teams';
+import type { Team, TeamCategory, TeamWithMembers } from '@/types/teams';
 
 // Unwraps the {data, meta, error} envelope for teams endpoints.
 function unwrap<T>(res: { data: T }): T {
@@ -9,6 +9,9 @@ function unwrap<T>(res: { data: T }): T {
 export const teamsApi = {
   list: () =>
     apiClient.get<{ data: Team[] }>('/teams').then((r) => unwrap(r.data)),
+
+  mine: () =>
+    apiClient.get<{ data: Team[] }>('/teams/mine').then((r) => unwrap(r.data)),
 
   get: (id: string) =>
     apiClient.get<{ data: TeamWithMembers }>(`/teams/${id}`).then((r) => unwrap(r.data)),
@@ -20,6 +23,9 @@ export const teamsApi = {
 
   update: (id: string, patch: { name?: string; description?: string | null }) =>
     apiClient.patch<{ data: Team }>(`/teams/${id}`, patch).then((r) => unwrap(r.data)),
+
+  updateCategory: (id: string, category: TeamCategory) =>
+    apiClient.patch<{ data: Team }>(`/teams/${id}/category`, { category }).then((r) => unwrap(r.data)),
 
   delete: (id: string) => apiClient.delete(`/teams/${id}`),
 

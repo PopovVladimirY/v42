@@ -7,9 +7,18 @@ import {
 import { teamsApi } from '@/api/endpoints/teams';
 import { usersApi } from '@/api/endpoints/users';
 import { capacityApi } from '@/api/endpoints/capacity';
+import { projectsApi } from '@/api/endpoints/projects';
+import { projectKeys } from '@/hooks/useProjects';
 import { useAuthStore } from '@/hooks/useAuth';
-import type { TeamMember } from '@/types/teams';
-import type { MatrixEntry, TandemPair, TeamMemberAppetite } from '@/types/index';
+import type { TeamMember, TeamCategory } from '@/types/teams';
+import type { MatrixEntry, TandemPair, TeamMemberAppetite, Project } from '@/types/index';
+
+const PROJECT_STATUS_BADGE: Record<Project['status'], { label: string; color: string }> = {
+  active:    { label: 'Active',   color: 'var(--color-success)' },
+  on_hold:   { label: 'On Hold',  color: 'var(--color-warning)' },
+  completed: { label: 'Done',     color: 'var(--text-3)'        },
+  archived:  { label: 'Archived', color: 'var(--text-3)'        },
+};
 
 // Formats "2024-01-15T..." to "Jan 2024"
 function fmtDate(iso: string) {
@@ -134,6 +143,139 @@ function buildMultiRadarData(matrix: MatrixEntry[]) {
   return { rows, memberIds };
 }
 
+// Build parent->children map from flat project list
+function buildProjectTree(projects: Project[]): Map<string | null, Project[]> {
+  const map = new Map<string | null, Project[]>();
+  for (const p of projects) {
+    const key = p.parent_id ?? null;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(p);
+  }
+  for (const ch of map.values()) ch.sort((a, b) => a.order_index - b.order_index || a.node_number - b.node_number);
+  return map;
+}
+
+// Row in the "link project" tree picker -- shows all projects, disabled if already linked
+function PickerRow({
+  node, tree, depth, selectedId, linkedIds, onSelect,
+}: {
+  node: Project;
+  tree: Map<string | null, Project[]>;
+  depth: number;
+  selectedId: string;
+  linkedIds: Set<string>;
+  onSelect: (id: string) => void;
+}) {
+  const children = tree.get(node.id) ?? [];
+  const [open, setOpen] = useState(true);
+  const linked = linkedIds.has(node.id);
+  const selected = selectedId === node.id;
+  const nodeNum = `P-${String(node.node_number).padStart(4, '0')}`;
+
+  return (
+    <div>
+      <div
+        onClick={() => !linked && onSelect(node.id)}
+        className="flex items-center gap-2 py-1 px-2 rounded transition-colors"
+        style={{
+          paddingLeft: `${8 + depth * 18}px`,
+          background: selected ? 'color-mix(in srgb, var(--accent) 15%, transparent)' : undefined,
+          opacity: linked ? 0.4 : 1,
+          cursor: linked ? 'not-allowed' : 'pointer',
+        }}
+      >
+        <button
+          onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+          style={{
+            width: '1rem', fontSize: '0.75rem', flexShrink: 0, background: 'none', border: 'none', padding: 0,
+            color: children.length ? 'var(--text-3)' : 'transparent',
+            cursor: children.length ? 'pointer' : 'default',
+          }}
+          tabIndex={-1}
+        >
+          {open ? '▾' : '▸'}
+        </button>
+        <span className="text-xs font-mono flex-shrink-0" style={{ color: 'var(--text-3)', minWidth: '4.5rem' }}>
+          {nodeNum}
+        </span>
+        <span className="text-sm flex-1 truncate" style={{ color: selected ? 'var(--accent)' : 'var(--text-1)', fontWeight: selected ? 600 : undefined }}>
+          {node.name}
+        </span>
+        {linked && <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-3)' }}>linked</span>}
+      </div>
+      {open && children.map((c) => (
+        <PickerRow key={c.id} node={c} tree={tree} depth={depth + 1} selectedId={selectedId} linkedIds={linkedIds} onSelect={onSelect} />
+      ))}
+    </div>
+  );
+}
+
+// Recursive project row for the team's project tree display
+// Styles match ProjectsPage tree rows; collapsed by default.
+function TeamProjectRow({
+  node, tree, depth, canManage, onRemove,
+}: {
+  node: Project;
+  tree: Map<string | null, Project[]>;
+  depth: number;
+  canManage: boolean;
+  onRemove?: (id: string) => void;
+}) {
+  const children = tree.get(node.id) ?? [];
+  const hasChildren = children.length > 0;
+  const [expanded, setExpanded] = useState(false);
+  const badge = PROJECT_STATUS_BADGE[node.status] ?? PROJECT_STATUS_BADGE.active;
+  const nodeNum = `P-${String(node.node_number).padStart(4, '0')}`;
+
+  return (
+    <div>
+      <div
+        className="flex items-center gap-2 rounded-lg px-3 py-2 group transition-colors hover:bg-[var(--bg-elevated)]"
+        style={{ paddingLeft: `${12 + depth * 20}px` }}
+      >
+        {/* expand/collapse toggle -- same size as ProjectsPage */}
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="flex items-center justify-center flex-shrink-0 text-2xl leading-none select-none"
+          style={{
+            width: '1.5rem',
+            color: hasChildren ? 'var(--text-2)' : 'transparent',
+            cursor: hasChildren ? 'pointer' : 'default',
+            background: 'none', border: 'none', padding: 0,
+          }}
+          tabIndex={hasChildren ? 0 : -1}
+        >
+          {hasChildren ? (expanded ? '▾' : '▸') : ''}
+        </button>
+        {/* node number */}
+        <span className="text-sm font-mono font-medium flex-shrink-0" style={{ color: 'var(--text-2)', minWidth: '5rem' }}>
+          {nodeNum}
+        </span>
+        {/* name link */}
+        <Link to={`/projects/${node.id}`} className="flex-1 text-sm font-medium hover:underline truncate" style={{ color: 'var(--text-1)' }}>
+          {node.name}
+        </Link>
+        {/* status badge */}
+        <span className="text-xs flex-shrink-0" style={{ color: badge.color }}>{badge.label}</span>
+        {/* remove button -- only root-level */}
+        {canManage && depth === 0 && onRemove && (
+          <button
+            onClick={() => onRemove(node.id)}
+            className="opacity-0 group-hover:opacity-100 text-xs px-2 py-0.5 rounded flex-shrink-0 ml-1 transition-opacity"
+            style={{ border: '1px solid var(--border)', color: 'var(--color-danger)' }}
+            title="Remove project from team"
+          >
+            Remove
+          </button>
+        )}
+      </div>
+      {expanded && children.map((c) => (
+        <TeamProjectRow key={c.id} node={c} tree={tree} depth={depth + 1} canManage={canManage} />
+      ))}
+    </div>
+  );
+}
+
 export function TeamDetailPage() {
   const { id } = useParams<{ id: string }>();
   const user = useAuthStore((s) => s.user);
@@ -159,6 +301,60 @@ export function TeamDetailPage() {
 
   const canManage = user?.role === 'admin' || user?.role === 'maintainer';
   const canDelete = user?.role === 'admin';
+
+  // -- Project management state -------------------------------------------
+  const [showLinkProject, setShowLinkProject] = useState(false);
+  const [linkProjectId, setLinkProjectId] = useState('');
+  const [showCreateProject, setShowCreateProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+
+  const { data: teamProjects = [] } = useQuery({
+    queryKey: projectKeys.byTeam(id ?? ''),
+    queryFn: async () => { const { data } = await projectsApi.list(id!); return data.data ?? []; },
+    enabled: !!id,
+  });
+
+  const { data: allRootProjects = [] } = useQuery({
+    queryKey: projectKeys.all,
+    queryFn: async () => { const { data } = await projectsApi.list(); return data.data ?? []; },
+  });
+
+  const rootTeamProjects = teamProjects.filter((p) => p.parent_id === null);
+  const teamProjectIds = new Set(teamProjects.map((p) => p.id));
+  const availableToLink = allRootProjects.filter((p) => !teamProjectIds.has(p.id));
+  const teamProjectTree = buildProjectTree(teamProjects);
+  const allProjectTree = buildProjectTree(allRootProjects);
+  const allTreeRoots = allProjectTree.get(null) ?? [];
+
+  const linkProject = useMutation({
+    mutationFn: (projectId: string) => projectsApi.addTeam(projectId, id!),
+    onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.byTeam(id!) }),
+  });
+
+  const unlinkProject = useMutation({
+    mutationFn: (projectId: string) => projectsApi.removeTeam(projectId, id!),
+    onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.byTeam(id!) }),
+  });
+
+  const createProject = useMutation({
+    mutationFn: (name: string) => projectsApi.create({ name, team_id: id! }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.byTeam(id!) }),
+  });
+
+  async function handleLinkProject() {
+    if (!linkProjectId) return;
+    await linkProject.mutateAsync(linkProjectId);
+    setShowLinkProject(false);
+    setLinkProjectId('');
+  }
+
+  async function handleCreateProject() {
+    if (!newProjectName.trim()) return;
+    await createProject.mutateAsync(newProjectName.trim());
+    setShowCreateProject(false);
+    setNewProjectName('');
+  }
+  // -----------------------------------------------------------------------
 
   const { data: team, isLoading, isError } = useQuery({
     queryKey: ['team', id],
@@ -233,6 +429,11 @@ export function TeamDetailPage() {
       setAddUserId('');
       setAddCapacity(32);
     },
+  });
+
+  const updateCategory = useMutation({
+    mutationFn: (category: TeamCategory) => teamsApi.updateCategory(id!, category),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['team', id] }),
   });
 
   // Radar data: per skill -- per-member levels
@@ -314,6 +515,35 @@ export function TeamDetailPage() {
               <h1 className="text-xl font-semibold" style={{ color: 'var(--text-1)' }}>{team?.name}</h1>
               {team?.description && (
                 <p className="mt-1 text-sm" style={{ color: 'var(--text-2)' }}>{team.description}</p>
+              )}
+              {/* Category badge -- shows org-hierarchy role */}
+              {team && team.category !== 'normal' && (
+                <span
+                  className="mt-1.5 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                  style={{
+                    background: team.category === 'admin_team' ? 'var(--accent-muted, #e0f0ff)' : 'var(--warning-muted, #fff3cd)',
+                    color: team.category === 'admin_team' ? 'var(--accent)' : 'var(--color-warning)',
+                  }}
+                >
+                  {team.category === 'admin_team' ? 'Admin Team' : 'Management (read-only)'}
+                </span>
+              )}
+              {/* Category selector -- admin only */}
+              {canDelete && team && (
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-xs" style={{ color: 'var(--text-3)' }}>Role:</span>
+                  <select
+                    value={team.category}
+                    disabled={updateCategory.isPending}
+                    onChange={(e) => void updateCategory.mutate(e.target.value as TeamCategory)}
+                    className="text-xs rounded px-1.5 py-0.5 outline-none"
+                    style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
+                  >
+                    <option value="normal">Normal team</option>
+                    <option value="admin_team">Admin Team (auto-added to all projects)</option>
+                    <option value="management_team">Management Team (read-only observer)</option>
+                  </select>
+                </div>
               )}
             </div>
             {canManage && team && (
@@ -436,20 +666,138 @@ export function TeamDetailPage() {
         )}
       </div>
 
-      {/* Projects shortcut */}
+      {/* Projects section */}
       {id && (
         <div className="mb-8">
-          <Link
-            to={`/teams/${id}/projects`}
-            data-testid="team-projects-link"
-            className="flex items-center justify-between rounded-xl px-4 py-3 hover:border-[var(--accent)] transition-colors"
+          <div
+            className="rounded-xl p-4"
             style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
           >
-            <span className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>Projects</span>
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </Link>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
+                Projects
+              </p>
+              <div className="flex items-center gap-2">
+                <Link
+                  to={`/teams/${id}/projects`}
+                  data-testid="team-projects-link"
+                  className="text-xs hover:underline"
+                  style={{ color: 'var(--accent)' }}
+                >
+                  View tree →
+                </Link>
+                {canManage && !showCreateProject && !showLinkProject && (
+                  <>
+                    <button
+                      onClick={() => setShowCreateProject(true)}
+                      className="text-xs px-2 py-1 rounded"
+                      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--accent)' }}
+                    >
+                      + New
+                    </button>
+                    {availableToLink.length > 0 && (
+                      <button
+                        onClick={() => setShowLinkProject(true)}
+                        className="text-xs px-2 py-1 rounded"
+                        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
+                      >
+                        + Link
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Create new project form */}
+            {showCreateProject && (
+              <div className="flex gap-2 mb-3">
+                <input
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  placeholder="Project name..."
+                  className="flex-1 text-sm rounded px-2 py-1 outline-none"
+                  style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+                  autoFocus
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleCreateProject(); }}
+                />
+                <button
+                  onClick={handleCreateProject}
+                  disabled={!newProjectName.trim() || createProject.isPending}
+                  className="text-xs px-3 py-1 rounded disabled:opacity-40"
+                  style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
+                >
+                  {createProject.isPending ? '...' : 'Create'}
+                </button>
+                <button
+                  onClick={() => { setShowCreateProject(false); setNewProjectName(''); }}
+                  className="text-xs px-3 py-1 rounded"
+                  style={{ border: '1px solid var(--border)', color: 'var(--text-2)' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {/* Link existing project: tree picker */}
+            {showLinkProject && (
+              <div className="mb-3 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+                <div className="px-3 py-2 text-xs" style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', color: 'var(--text-3)' }}>
+                  Pick a project to link to this team:
+                </div>
+                <div className="overflow-y-auto py-1" style={{ maxHeight: '13rem', background: 'var(--bg-surface)' }}>
+                  {allTreeRoots.length === 0 ? (
+                    <p className="text-xs px-4 py-3" style={{ color: 'var(--text-3)' }}>No projects available.</p>
+                  ) : allTreeRoots.map((root) => (
+                    <PickerRow
+                      key={root.id}
+                      node={root}
+                      tree={allProjectTree}
+                      depth={0}
+                      selectedId={linkProjectId}
+                      linkedIds={teamProjectIds}
+                      onSelect={setLinkProjectId}
+                    />
+                  ))}
+                </div>
+                <div className="flex gap-2 px-3 py-2" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
+                  <button
+                    onClick={handleLinkProject}
+                    disabled={!linkProjectId || linkProject.isPending}
+                    className="text-xs px-3 py-1 rounded disabled:opacity-40"
+                    style={{ background: 'var(--accent)', color: 'var(--accent-fg, #fff)' }}
+                  >
+                    {linkProject.isPending ? '...' : 'Link'}
+                  </button>
+                  <button
+                    onClick={() => { setShowLinkProject(false); setLinkProjectId(''); }}
+                    className="text-xs px-3 py-1 rounded"
+                    style={{ border: '1px solid var(--border)', color: 'var(--text-2)' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Projects tree */}
+            {rootTeamProjects.length === 0 && !showCreateProject && !showLinkProject ? (
+              <p className="text-xs" style={{ color: 'var(--text-3)' }}>No projects yet.</p>
+            ) : (
+              <div className="flex flex-col">
+                {rootTeamProjects.map((p) => (
+                  <TeamProjectRow
+                    key={p.id}
+                    node={p}
+                    tree={teamProjectTree}
+                    depth={0}
+                    canManage={canManage}
+                    onRemove={(pid) => unlinkProject.mutate(pid)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -638,7 +986,10 @@ export function TeamDetailPage() {
                         </td>
                         {show('name') && (
                           <td className="px-3 py-1.5 max-w-0">
-                            <div className="flex items-center gap-2 min-w-0">
+                            <Link
+                              to={`/admin/users/${m.user_id}`}
+                              className="flex items-center gap-2 min-w-0 hover:opacity-75 transition-opacity"
+                            >
                               {m.avatar_url ? (
                                 <img src={m.avatar_url} alt={label} className="w-6 h-6 rounded-full flex-shrink-0 object-cover" />
                               ) : (
@@ -650,7 +1001,7 @@ export function TeamDetailPage() {
                                 </div>
                               )}
                               <span className="truncate text-sm font-medium" style={{ color: 'var(--text-1)' }} title={label}>{label}</span>
-                            </div>
+                            </Link>
                           </td>
                         )}
                         {show('email') && (
@@ -792,7 +1143,7 @@ export function TeamDetailPage() {
                 style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
               >
                 <ResponsiveContainer width="100%" height={300}>
-                  <RadarChart data={radarData} outerRadius="80%" margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+                  <RadarChart data={radarData} outerRadius="62%" margin={{ top: 2, right: 4, bottom: 2, left: 4 }}>
                     <PolarGrid stroke="var(--border)" />
                     <PolarAngleAxis dataKey="skill" tick={{ fill: 'var(--text-3)', fontSize: 10 }} />
                     <PolarRadiusAxis domain={[0, 5]} tickCount={6} tick={false} axisLine={false} />

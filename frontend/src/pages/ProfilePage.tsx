@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer,
@@ -350,11 +350,64 @@ function DisplayPrefsSection() {
 // ------------------------------------------------------------------
 
 export function ProfilePage() {
-  const user = useAuthStore((s) => s.user);
+  const { userId: paramUserId } = useParams<{ userId?: string }>();
+  const authUser = useAuthStore((s) => s.user);
   const { theme: activeTheme, setTheme, ambientDelayMs, setAmbientDelay } = useThemeStore();
   const qc = useQueryClient();
 
-  const userId = user?.id ?? '';
+  // When accessed via /admin/users/:userId, show that user's profile (read: admin view).
+  const isSelf = !paramUserId;
+  const viewingUserId = paramUserId ?? authUser?.id ?? '';
+
+  // Fetch the target user's record when admin is viewing someone else.
+  const { data: targetUser } = useQuery({
+    queryKey: ['user', viewingUserId],
+    queryFn: () => usersApi.get(viewingUserId),
+    enabled: !isSelf && !!viewingUserId,
+  });
+
+  const user = isSelf ? authUser : (targetUser ?? null);
+  const userId = viewingUserId;
+  const isAdmin = authUser?.role === 'admin';
+
+  // Info editing state
+  const [editingInfo, setEditingInfo] = useState(false);
+  const [infoForm, setInfoForm] = useState({ display_name: '', email: '', role: '' });
+
+  const updateInfo = useMutation({
+    mutationFn: (body: { display_name?: string; email?: string; role?: string }) =>
+      usersApi.update(userId, body),
+    onSuccess: () => {
+      if (isSelf) {
+        void useAuthStore.getState().loadMe();
+      } else {
+        void qc.invalidateQueries({ queryKey: ['user', userId] });
+      }
+      setEditingInfo(false);
+    },
+  });
+
+  function startEditInfo() {
+    setInfoForm({
+      display_name: user?.display_name ?? '',
+      email: user?.email ?? '',
+      role: user?.role ?? '',
+    });
+    setEditingInfo(true);
+  }
+
+  function saveInfo() {
+    const patch: { display_name?: string; email?: string; role?: string } = {};
+    const trimName = infoForm.display_name.trim();
+    const trimEmail = infoForm.email.trim().toLowerCase();
+    if (trimName && trimName !== (user?.display_name ?? '')) patch.display_name = trimName;
+    if (trimEmail && trimEmail !== (user?.email ?? '')) patch.email = trimEmail;
+    // Role: admin can change others; cannot change own.
+    if (isAdmin && !isSelf && infoForm.role && infoForm.role !== (user?.role ?? '')) patch.role = infoForm.role;
+    if (Object.keys(patch).length > 0) updateInfo.mutate(patch);
+    else setEditingInfo(false);
+  }
+
   const [editing, setEditing] = useState<null | 'new' | MemberSkill>(null);
 
   const { data: skills, isLoading: skillsLoading } = useQuery({
@@ -421,8 +474,19 @@ export function ProfilePage() {
     <div className="h-full overflow-y-auto">
       <div className="max-w-xl mx-auto px-6 py-8">
 
+        {/* Back link for admin view */}
+        {!isSelf && (
+          <Link
+            to="/admin/users"
+            className="inline-flex items-center gap-1.5 text-xs mb-6"
+            style={{ color: 'var(--text-3)' }}
+          >
+            ← All users
+          </Link>
+        )}
+
         {/* Header */}
-        <div className="flex items-center gap-5 mb-8">
+        <div className="flex items-start gap-5 mb-8">
           {user?.avatar_url ? (
             <img src={user.avatar_url} alt={label} className="w-16 h-16 rounded-full object-cover flex-shrink-0" />
           ) : (
@@ -433,25 +497,95 @@ export function ProfilePage() {
               {userInitials}
             </div>
           )}
-          <div className="min-w-0">
-            <h1 className="text-xl font-semibold truncate" style={{ color: 'var(--text-1)' }}>{label}</h1>
-            <p className="text-sm truncate mt-0.5" style={{ color: 'var(--text-2)' }}>{user?.email}</p>
-            <div className="flex items-center gap-3 mt-2">
-              <span
-                className="text-xs px-2 py-0.5 rounded-full font-medium"
-                style={{ background: 'var(--accent)', color: 'var(--accent-fg)', opacity: 0.9 }}
-              >
-                {ROLE_LABEL[user?.role ?? ''] ?? user?.role}
-              </span>
-              {user?.created_at && (
-                <span className="text-xs" style={{ color: 'var(--text-3)' }}>Since {fmtDate(user.created_at)}</span>
+
+          {editingInfo ? (
+            <div className="flex-1 min-w-0 flex flex-col gap-2">
+              <input
+                type="text"
+                value={infoForm.display_name}
+                onChange={(e) => setInfoForm((f) => ({ ...f, display_name: e.target.value }))}
+                placeholder="Display name"
+                className="text-sm px-2.5 py-1.5 rounded-md w-full"
+                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+                autoFocus
+              />
+              <input
+                type="email"
+                value={infoForm.email}
+                onChange={(e) => setInfoForm((f) => ({ ...f, email: e.target.value }))}
+                placeholder="Email"
+                className="text-sm px-2.5 py-1.5 rounded-md w-full"
+                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+              />
+              {/* Role selector: admin viewing someone else only */}
+              {isAdmin && !isSelf && (
+                <select
+                  value={infoForm.role}
+                  onChange={(e) => setInfoForm((f) => ({ ...f, role: e.target.value }))}
+                  className="text-sm px-2.5 py-1.5 rounded-md w-full"
+                  style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+                >
+                  <option value="admin">Admin</option>
+                  <option value="maintainer">Maintainer</option>
+                  <option value="developer">Developer</option>
+                  <option value="tester">Tester</option>
+                  <option value="observer">Observer</option>
+                </select>
               )}
+              {updateInfo.error && (
+                <p className="text-xs" style={{ color: 'var(--color-error, #ef4444)' }}>
+                  Failed to save. Check email uniqueness.
+                </p>
+              )}
+              <div className="flex gap-2 mt-1">
+                <button
+                  onClick={saveInfo}
+                  disabled={updateInfo.isPending}
+                  className="text-xs px-3 py-1 rounded-md"
+                  style={{ background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', cursor: 'pointer' }}
+                >
+                  {updateInfo.isPending ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={() => setEditingInfo(false)}
+                  className="text-xs px-3 py-1 rounded-md"
+                  style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-2)', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-2">
+                <h1 className="text-xl font-semibold truncate" style={{ color: 'var(--text-1)' }}>{label}</h1>
+                <button
+                  onClick={startEditInfo}
+                  title="Edit profile"
+                  className="flex-shrink-0 text-xs px-2 py-0.5 rounded"
+                  style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-3)', cursor: 'pointer' }}
+                >
+                  Edit
+                </button>
+              </div>
+              <p className="text-sm truncate mt-0.5" style={{ color: 'var(--text-2)' }}>{user?.email}</p>
+              <div className="flex items-center gap-3 mt-2">
+                <span
+                  className="text-xs px-2 py-0.5 rounded-full font-medium"
+                  style={{ background: 'var(--accent)', color: 'var(--accent-fg)', opacity: 0.9 }}
+                >
+                  {ROLE_LABEL[user?.role ?? ''] ?? user?.role}
+                </span>
+                {user?.created_at && (
+                  <span className="text-xs" style={{ color: 'var(--text-3)' }}>Since {fmtDate(user.created_at)}</span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Appearance */}
-        <section className="mb-8">
+        {/* Appearance -- self only */}
+        {isSelf && <section className="mb-8">
           <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
             Appearance
           </h2>
@@ -506,10 +640,10 @@ export function ProfilePage() {
               </select>
             </div>
           </div>
-        </section>
+        </section>}
 
-        {/* Session */}
-        <section className="mb-8">
+        {/* Session -- self only */}
+        {isSelf && <section className="mb-8">
           <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
             Session
           </h2>
@@ -528,9 +662,10 @@ export function ProfilePage() {
               <option value={120}>2 hours</option>
             </select>
           </div>
-        </section>
+        </section>}
 
-        {/* Skills */}        <section className="mb-8">
+        {/* Skills */}
+        <section className="mb-8">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
               Skills
@@ -715,10 +850,11 @@ export function ProfilePage() {
           </section>
         )}
 
-        {/* Display Preferences -- page sizes per category */}
-        <DisplayPrefsSection />
+        {/* Display Preferences -- page sizes per category -- self only */}
+        {isSelf && <DisplayPrefsSection />}
 
-        {/* Account security */}
+        {/* Account security -- self only */}
+        {isSelf && (
         <section>
           <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-2)' }}>Security</h2>
           <Link
@@ -733,6 +869,7 @@ export function ProfilePage() {
             Change password
           </Link>
         </section>
+        )}
 
       </div>
     </div>

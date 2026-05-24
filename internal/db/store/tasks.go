@@ -123,6 +123,35 @@ func taskFromUpdateRow(r dbgen.UpdateTaskRow) Task {
 	return t
 }
 
+
+func taskFromMoveRow(r dbgen.MoveTaskRow) Task {
+	t := Task{
+		ID:            uuidToString(r.ID),
+		BacklogItemID: uuidToString(r.BacklogItemID),
+		Title:         r.Title,
+		Description:   r.Description,
+		Status:        string(r.Status),
+		Estimate:      r.Estimate,
+		OrderIndex:    r.OrderIndex,
+		CreatedBy:     uuidToString(r.CreatedBy),
+		CreatedAt:     r.CreatedAt.Time,
+		UpdatedAt:     r.UpdatedAt.Time,
+	}
+	if r.AssigneeID.Valid {
+		v := uuidToString(r.AssigneeID)
+		t.AssigneeID = &v
+	}
+	if r.SkillRequired.Valid {
+		v := uuidToString(r.SkillRequired)
+		t.SkillRequired = &v
+	}
+	if r.ReviewerID.Valid {
+		v := uuidToString(r.ReviewerID)
+		t.ReviewerID = &v
+	}
+	return t
+}
+
 func taskFromGetRow(r dbgen.GetTaskByIDRow) Task {
 	t := Task{
 		ID:            uuidToString(r.ID),
@@ -241,10 +270,9 @@ func (s *TaskStore) Update(ctx context.Context, id string, title, description *s
 	if err != nil {
 		return nil, domain.ErrNotFound
 	}
-	var st *dbgen.TaskStatus
+	var st dbgen.NullTaskStatus
 	if status != nil {
-		v := dbgen.TaskStatus(*status)
-		st = &v
+		st = dbgen.NullTaskStatus{TaskStatus: dbgen.TaskStatus(*status), Valid: true}
 	}
 	var aid, skr, rid pgtype.UUID
 	if assigneeID != nil {
@@ -312,6 +340,6 @@ func (s *TaskStore) MoveTo(ctx context.Context, taskID, targetItemID string) (*T
 		}
 		return nil, err
 	}
-	t := taskFromUpdateRow(r)
+	t := taskFromMoveRow(r)
 	return &t, nil
 }

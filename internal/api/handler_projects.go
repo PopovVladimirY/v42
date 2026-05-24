@@ -83,10 +83,22 @@ func (h *projectHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid status value")
 		return
 	}
-	p, err := h.projects.Create(r.Context(), req.Name, req.Description, req.Status, claims.UserID, req.TeamID)
+	p, err := h.projects.Create(r.Context(), store.CreateInput{
+		Name:        req.Name,
+		Description: req.Description,
+		Status:      req.Status,
+		OwnerID:     claims.UserID,
+		TeamID:      req.TeamID,
+	})
 	if err != nil {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create project")
 		return
+	}
+	// Auto-link admin/management teams so they can always see new projects.
+	if autoTeams, err := h.teams.GetAutoAddTeams(r.Context()); err == nil {
+		for _, t := range autoTeams {
+			_ = h.teams.AddTeam(r.Context(), p.ID, t.ID)
+		}
 	}
 	respond(w, http.StatusCreated, p)
 }
@@ -119,7 +131,11 @@ func (h *projectHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid status value")
 		return
 	}
-	p, err := h.projects.Update(r.Context(), id, req.Name, req.Description, req.Status)
+	p, err := h.projects.Update(r.Context(), id, store.UpdateInput{
+		Name:        req.Name,
+		Description: req.Description,
+		Status:      req.Status,
+	})
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			respondErr(w, http.StatusNotFound, "NOT_FOUND", "project not found")
@@ -237,4 +253,107 @@ func (h *projectHandlers) Unarchive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond(w, http.StatusOK, p)
+}
+// GetTree handles GET /api/v1/projects/{project_id}/tree
+// Returns the node and all its descendants in depth-first order.
+// Query param: show_archived=true to include archived nodes.
+func (h *projectHandlers) GetTree(w http.ResponseWriter, r *http.Request) {
+        id := chi.URLParam(r, "project_id")
+        showArchived := r.URL.Query().Get("show_archived") == "true"
+        nodes, err := h.projects.GetSubtree(r.Context(), id, showArchived)
+        if err != nil {
+                if errors.Is(err, domain.ErrNotFound) {
+                        respondErr(w, http.StatusNotFound, "NOT_FOUND", "project not found")
+                        return
+                }
+                respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get project tree")
+                return
+        }
+        respond(w, http.StatusOK, nodes)
+}
+
+// CreateChild handles POST /api/v1/projects/{project_id}/children
+// Inserts a child node (stage/phase) under the given project node.
+func (h *projectHandlers) CreateChild(w http.ResponseWriter, r *http.Request) {
+        claims := middleware.ClaimsFromContext(r.Context())
+        parentID := chi.URLParam(r, "project_id")
+        var req struct {
+                Name        string  `json:"name"`
+                Description *string `json:"description"`
+                Status      string  `json:"status"`
+                StartDate   *string `json:"start_date"`
+                EndDate     *string `json:"end_date"`
+                OrderIndex  float64 `json:"order_index"`
+        }
+        r.Body = http.MaxBytesReader(w, r.Body, 4096)
+        if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+                respondErr(w, http.StatusBadRequest, "INVALID_JSON", "request body is not valid JSON")
+                return
+        }
+        req.Name = strings.TrimSpace(req.Name)
+        if req.Name == "" {
+                respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "name is required")
+                return
+        }
+        if len(req.Name) > 200 {
+                respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "name must not exceed 200 characters")
+                return
+        }
+        if req.Status == "" {
+                req.Status = "active"
+        }
+        if !validProjectStatus[req.Status] {
+                respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid status value")
+                return
+        }
+        p, err := h.projects.CreateChild(r.Context(), parentID, store.CreateInput{
+                Name:        req.Name,
+                Description: req.Description,
+                Status:      req.Status,
+                OwnerID:     claims.UserID,
+                StartDate:   req.StartDate,
+                EndDate:     req.EndDate,
+                OrderIndex:  req.OrderIndex,
+        })
+        if err != nil {
+                if errors.Is(err, domain.ErrNotFound) {
+                        respondErr(w, http.StatusNotFound, "NOT_FOUND", "parent project not found")
+                        return
+                }
+                respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create child node")
+                return
+        }
+        // Inherit parent team memberships so the child is visible in team views.
+        parentTeams, err := h.teams.ListTeams(r.Context(), parentID)
+        if err == nil {
+                for _, t := range parentTeams {
+                        _ = h.teams.AddTeam(r.Context(), p.ID, t.ID)
+                }
+        }
+        respond(w, http.StatusCreated, p)
+}
+
+// MoveNode handles PATCH /api/v1/projects/{project_id}/move
+// Relocates a node to a new parent (or root) and sets its order_index.
+func (h *projectHandlers) MoveNode(w http.ResponseWriter, r *http.Request) {
+        id := chi.URLParam(r, "project_id")
+        var req struct {
+                ParentID   *string `json:"parent_id"`
+                OrderIndex float64 `json:"order_index"`
+        }
+        r.Body = http.MaxBytesReader(w, r.Body, 1024)
+        if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+                respondErr(w, http.StatusBadRequest, "INVALID_JSON", "request body is not valid JSON")
+                return
+        }
+        p, err := h.projects.MoveNode(r.Context(), id, req.ParentID, req.OrderIndex)
+        if err != nil {
+                if errors.Is(err, domain.ErrNotFound) {
+                        respondErr(w, http.StatusNotFound, "NOT_FOUND", "project not found")
+                        return
+                }
+                respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to move node")
+                return
+        }
+        respond(w, http.StatusOK, p)
 }

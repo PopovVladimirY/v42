@@ -373,41 +373,55 @@ vec4 effect_classic_light(vec2 uv, float t) {
 
 // ───────────── Gray Scale Light: single incense-stick smoke strand ──────────
 // One narrow tendril rises from a fixed tip near the bottom.
-// Axis drifts with LOW spatial frequency (h*0.6 = <1 oscillation 0→1),
-// so the column curves ONCE gently -- like one stick, not a whole room.
-// Every ~11s a ring puffs out from the same spot and rises.
+// Axis drifts with two-layer noise: a slow primary sway + fast fine wiggles.
+// Every ~11s a tilted-disc ring puffs out and rises (smoke ring from the side).
 vec4 effect_gray_scale_light(vec2 uv, float t) {
   float s = t * 0.45;
   float h = uv.y;  // 0=bottom 1=top
 
-  // ─── Tendril: one gentle curve, not 3 oscillations ───
-  // h*0.6 → less than one full noise period from base to top
-  float fh    = h * 0.60 + s * 0.22;
-  float drift = fbm(vec2(fh, s * 0.12)) * 2.0 - 1.0;
-  float turb  = smoothstep(0.05, 0.80, h);  // straight near base, curls up top
-  float axisX = 0.46 + drift * turb * 0.14; // +-14% of screen width: gentle sway
+  // ─── Tendril: two-layer wiggle ───
+  float fh     = h * 0.60 + s * 0.22;
+  // Slow, wide sway (primary curve)
+  float drift  = fbm(vec2(fh,          s * 0.15)) * 2.0 - 1.0;
+  // Faster, smaller wiggles layered on top
+  float drift2 = fbm(vec2(fh * 2.4 + 4.3, s * 0.38)) * 2.0 - 1.0;
+  float turb   = smoothstep(0.05, 0.80, h);
+  float axisX  = 0.46 + (drift * 0.22 + drift2 * 0.09) * turb;
 
   // Thin strand: ~3px at base, ~9px at top (240px wide sidebar)
-  float spread = 0.014 + h * 0.022;
+  float spread = 0.013 + h * 0.023;
   float ddx    = (uv.x - axisX) / spread;
   float column = exp(-ddx * ddx * 4.0);
 
   // Density: rises from base, fades near top
   float dens = smoothstep(0.0, 0.04, h) * smoothstep(1.0, 0.65, h);
 
-  // Puffs: density varies along the strand, scrolls upward (looks like rising smoke)
-  float puff = 0.60 + 0.40 * vnoise(vec2(h * 3.0 + s * 1.2, 0.5));
+  // Puffs: density varies along the strand, scrolls upward
+  float puff  = 0.60 + 0.40 * vnoise(vec2(h * 3.0 + s * 1.2, 0.5));
   float smoke = column * dens * puff;
 
-  // ─── Ring: every ~11s, rises from tip, expands, dissolves ───
-  float asp   = u_res.x / u_res.y;
+  // ─── Ring: tilted disc (smoke ring viewed from slight angle) ───
+  // Rendered as a horizontal ellipse: wide in X, squished in Y (~70 deg tilt).
   float phi   = fract(s * 0.20);              // 0→1 lifetime
   float ry    = 0.04 + phi * 0.90;            // rises from near-base to near-top
-  float rx    = 0.014 + phi * 0.065;          // expands (in y-normalized units)
+  float rx    = 0.016 + phi * 0.080;          // horizontal expand
+  float tilt  = 0.28;                         // Y/X ratio: flat disc, viewed ~72 deg
   float rfade = smoothstep(0.0, 0.06, phi) * (1.0 - phi);
-  float thick = 0.007 + phi * 0.005;
-  float rdist = abs(length(vec2((uv.x - 0.46) / asp, uv.y - ry)) - rx);
-  float ring  = exp(-(rdist / thick) * (rdist / thick)) * rfade * 0.65;
+  float thick = 0.006 + phi * 0.006;
+
+  // Ring center follows the tendril axis at height ry
+  float rh     = ry * 0.60 + s * 0.22;
+  float rdrift = fbm(vec2(rh,         s * 0.15)) * 2.0 - 1.0;
+  float rdrift2= fbm(vec2(rh * 2.4 + 4.3, s * 0.38)) * 2.0 - 1.0;
+  float rturb  = smoothstep(0.05, 0.80, ry);
+  float ringX  = 0.46 + (rdrift * 0.22 + rdrift2 * 0.09) * rturb;
+
+  // Ellipse distance: unit circle in (ex, ey) space maps to the tilted ring
+  float ex    = (uv.x - ringX) / rx;
+  float ey    = (uv.y - ry)    / (rx * tilt);
+  float er    = sqrt(ex * ex + ey * ey);
+  float rdist = abs(er - 1.0) * rx;
+  float ring  = exp(-(rdist / thick) * (rdist / thick)) * rfade * 0.70;
 
   vec3 col = vec3(0.28, 0.28, 0.34); // cool blue-gray
   return vec4(col, clamp(smoke + ring, 0.0, 1.0) * 0.60);

@@ -304,10 +304,9 @@ func (s *SkillStore) RecordSkillLevelChange(ctx context.Context, userID, skillID
 	if err != nil {
 		return domain.ErrNotFound
 	}
-	var lf *dbgen.SkillLevel
+	var lf dbgen.NullSkillLevel
 	if levelFrom != nil {
-		v := dbgen.SkillLevel(*levelFrom)
-		lf = &v
+		lf = dbgen.NullSkillLevel{SkillLevel: dbgen.SkillLevel(*levelFrom), Valid: true}
 	}
 	_, err = s.q.CreateSkillHistoryEntry(ctx, dbgen.CreateSkillHistoryEntryParams{
 		UserID:    uid,
@@ -332,8 +331,8 @@ func (s *SkillStore) ListSkillHistory(ctx context.Context, userID string) ([]Ski
 	out := make([]SkillHistoryEntry, len(rows))
 	for i, r := range rows {
 		var lf *string
-		if r.LevelFrom != nil {
-			v := string(*r.LevelFrom)
+		if r.LevelFrom.Valid {
+			v := string(r.LevelFrom.SkillLevel)
 			lf = &v
 		}
 		var cby *string

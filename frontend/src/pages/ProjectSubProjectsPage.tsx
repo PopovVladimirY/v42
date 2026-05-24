@@ -1,28 +1,17 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useProjects, useCreateProject, useCreateChild, useUpdateProject } from '@/hooks/useProjects';
+import { useProjectTree, useProjectTeams, useCreateChild, useUpdateProject } from '@/hooks/useProjects';
 import { useAuthStore } from '@/hooks/useAuth';
 import type { Project } from '@/types';
 
 const STATUS_BADGE: Record<Project['status'], { label: string; color: string; bg: string }> = {
-  active:    { label: 'Active',    color: 'var(--color-success)', bg: 'var(--success-muted)' },
-  on_hold:   { label: 'On Hold',   color: 'var(--color-warning)', bg: 'var(--warning-muted)' },
-  completed: { label: 'Done',      color: 'var(--text-3)',        bg: 'var(--bg-elevated)'   },
-  archived:  { label: 'Archived',  color: 'var(--text-3)',        bg: 'var(--bg-elevated)'   },
+  active:    { label: 'Active',   color: 'var(--color-success)', bg: 'var(--success-muted)' },
+  on_hold:   { label: 'On Hold',  color: 'var(--color-warning)', bg: 'var(--warning-muted)' },
+  completed: { label: 'Done',     color: 'var(--text-3)',        bg: 'var(--bg-elevated)'   },
+  archived:  { label: 'Archived', color: 'var(--text-3)',        bg: 'var(--bg-elevated)'   },
 };
 
-function ProjectClarityBadge({ score }: { score: string }) {
-  const pct = Math.round(parseFloat(score) || 0);
-  const bg = pct >= 80 ? '#22c55e' : pct >= 60 ? '#eab308' : pct >= 40 ? '#f97316' : pct > 0 ? '#ef4444' : 'var(--bg-elevated)';
-  const color = pct > 0 ? '#fff' : 'var(--text-3)';
-  return (
-    <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ background: bg, color }}>
-      {pct}%
-    </span>
-  );
-}
-
-// Build a lookup map: parentId -> children[], sorted by order_index
+// Build parentId -> children map, sorted by order_index
 function buildTree(projects: Project[]): Map<string | null, Project[]> {
   const map = new Map<string | null, Project[]>();
   for (const p of projects) {
@@ -36,35 +25,25 @@ function buildTree(projects: Project[]): Map<string | null, Project[]> {
   return map;
 }
 
-function NodeModal({
-  title,
+function SubNodeModal({
   parentId,
   teamId,
   onClose,
 }: {
-  title: string;
-  parentId: string | null;
+  parentId: string;
   teamId: string;
   onClose: () => void;
 }) {
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
-  const createRoot = useCreateProject(teamId);
   const createChild = useCreateChild(teamId);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    if (parentId) {
-      await createChild.mutateAsync({ parentId, name: name.trim(), description: desc.trim() || undefined });
-    } else {
-      await createRoot.mutateAsync({ name: name.trim(), description: desc.trim() || undefined });
-    }
+    await createChild.mutateAsync({ parentId, name: name.trim(), description: desc.trim() || undefined });
     onClose();
   }
-
-  const isPending = createRoot.isPending || createChild.isPending;
-  const isError = createRoot.isError || createChild.isError;
 
   return (
     <div
@@ -76,19 +55,18 @@ function NodeModal({
         className="w-full max-w-md rounded-xl p-6 flex flex-col gap-4"
         style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
       >
-        <h2 className="text-lg font-semibold" style={{ color: 'var(--text-1)' }}>{title}</h2>
+        <h2 className="text-lg font-semibold" style={{ color: 'var(--text-1)' }}>New stage / milestone</h2>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <div>
             <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-2)' }}>
               Name <span style={{ color: 'var(--color-danger)' }}>*</span>
             </label>
             <input
-              data-testid="project-name-input"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={200}
-              placeholder="e.g. Phase 1"
+              placeholder="e.g. Phase 2"
               className="w-full rounded-md px-3 py-2 text-sm outline-none"
               style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
               autoFocus
@@ -98,7 +76,6 @@ function NodeModal({
           <div>
             <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-2)' }}>Description</label>
             <textarea
-              data-testid="project-desc-input"
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
               rows={3}
@@ -108,7 +85,7 @@ function NodeModal({
               style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
             />
           </div>
-          {isError && (
+          {createChild.isError && (
             <p className="text-xs" style={{ color: 'var(--color-danger)' }}>Failed to create. Try again.</p>
           )}
           <div className="flex gap-2 justify-end mt-2">
@@ -118,12 +95,11 @@ function NodeModal({
               style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
             >Cancel</button>
             <button
-              data-testid="create-project-submit"
               type="submit"
-              disabled={!name.trim() || isPending}
+              disabled={!name.trim() || createChild.isPending}
               className="px-4 py-1.5 text-sm font-medium rounded-md disabled:opacity-40"
               style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
-            >{isPending ? 'Creating...' : 'Create'}</button>
+            >{createChild.isPending ? 'Creating...' : 'Create'}</button>
           </div>
         </form>
       </div>
@@ -131,7 +107,7 @@ function NodeModal({
   );
 }
 
-function ProjectTreeNode({
+function SubProjectNode({
   node,
   tree,
   depth,
@@ -146,7 +122,7 @@ function ProjectTreeNode({
 }) {
   const children = tree.get(node.id) ?? [];
   const hasChildren = children.length > 0;
-  const [expanded, setExpanded] = useState(depth === 0);
+  const [expanded, setExpanded] = useState(true);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(node.name);
   const [editStart, setEditStart] = useState(node.start_date ?? '');
@@ -184,13 +160,10 @@ function ProjectTreeNode({
           className="flex items-center gap-2 px-3 py-1.5 border-b"
           style={{ paddingLeft: `${12 + depth * 20}px`, borderColor: 'var(--border)', background: 'var(--bg-elevated)' }}
         >
-          {/* toggle placeholder */}
           <span style={{ width: '1.5rem', flexShrink: 0 }} />
-          {/* ID */}
           <span className="text-sm font-mono font-medium flex-shrink-0" style={{ color: 'var(--text-2)', minWidth: '5rem' }}>
             {nodeNum}
           </span>
-          {/* name */}
           <input
             autoFocus
             value={editName}
@@ -200,7 +173,6 @@ function ProjectTreeNode({
             maxLength={200}
             required
           />
-          {/* start date */}
           <input
             type="date"
             value={editStart}
@@ -216,7 +188,6 @@ function ProjectTreeNode({
             className="text-xs rounded px-1.5 py-0.5 outline-none"
             style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
           />
-          {/* status */}
           <select
             value={editStatus}
             onChange={(e) => setEditStatus(e.target.value as Project['status'])}
@@ -228,49 +199,46 @@ function ProjectTreeNode({
             <option value="completed">Done</option>
             <option value="archived">Archived</option>
           </select>
-          {/* actions */}
           <button
             type="submit"
             disabled={update.isPending}
             className="text-xs px-2 py-0.5 rounded font-medium"
             style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
-          >
-            {update.isPending ? '...' : 'Save'}
-          </button>
+          >{update.isPending ? '...' : 'Save'}</button>
           <button
             type="button"
             onClick={() => setEditing(false)}
             className="text-xs px-2 py-0.5 rounded"
             style={{ border: '1px solid var(--border)', color: 'var(--text-2)' }}
-          >
-            Cancel
-          </button>
+          >Cancel</button>
         </form>
       ) : (
         <div
-          className="flex items-center gap-2 rounded-lg px-3 py-2 group transition-colors hover:bg-[var(--bg-elevated)]"
+          className="flex items-center gap-2 px-3 py-2 group transition-colors hover:bg-[var(--bg-elevated)]"
           style={{ paddingLeft: `${12 + depth * 20}px` }}
         >
-          {/* expand/collapse toggle */}
           <button
             onClick={() => setExpanded((v) => !v)}
-            className="flex items-center justify-center flex-shrink-0 text-2xl leading-none select-none"
+            className="flex items-center justify-center flex-shrink-0"
             style={{
               width: '1.5rem',
+              fontSize: '1.5rem',
+              lineHeight: 1,
               color: hasChildren ? 'var(--text-2)' : 'transparent',
               cursor: hasChildren ? 'pointer' : 'default',
+              background: 'none',
+              border: 'none',
+              padding: 0,
             }}
             tabIndex={hasChildren ? 0 : -1}
           >
-            {hasChildren ? (expanded ? '▾' : '▸') : ''}
+            {hasChildren ? (expanded ? '▾' : '▸') : '▸'}
           </button>
 
-          {/* node number */}
           <span className="text-sm font-mono font-medium flex-shrink-0" style={{ color: 'var(--text-2)', minWidth: '5rem' }}>
             {nodeNum}
           </span>
 
-          {/* name link */}
           <Link
             to={`/projects/${node.id}`}
             className="flex-1 text-sm font-medium truncate hover:underline"
@@ -279,26 +247,18 @@ function ProjectTreeNode({
             {node.name}
           </Link>
 
-          {/* dates */}
           <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-3)', minWidth: '10rem' }}>
             {node.start_date || node.end_date
               ? `${node.start_date ?? '?'} \u2192 ${node.end_date ?? '?'}`
               : <span style={{ opacity: 0.4 }}>—</span>}
           </span>
 
-          {/* clarity */}
-          <span className="flex-shrink-0" style={{ minWidth: '4rem', textAlign: 'right' }}>
-            <ProjectClarityBadge score={node.clarity_score} />
-          </span>
-
-          {/* stats */}
           {node.total_items > 0 && (
             <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-3)' }}>
               {node.open_items}/{node.total_items}
             </span>
           )}
 
-          {/* status badge */}
           <span
             className="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0"
             style={{ color: badge.color, background: badge.bg }}
@@ -306,34 +266,28 @@ function ProjectTreeNode({
             {badge.label}
           </span>
 
-          {/* edit button — visible on hover */}
           {canCreate && (
             <button
               onClick={startEdit}
               className="opacity-0 group-hover:opacity-100 text-xs px-1.5 py-0.5 rounded flex-shrink-0 transition-opacity"
               style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}
               title="Edit"
-            >
-              ✎
-            </button>
+            >✎</button>
           )}
 
-          {/* add child button — visible on hover */}
           {canCreate && (
             <button
               onClick={() => onAddChild(node.id)}
               className="opacity-0 group-hover:opacity-100 text-xs px-1.5 py-0.5 rounded flex-shrink-0 transition-opacity"
               style={{ color: 'var(--accent)', border: '1px solid var(--accent)' }}
-              title="Add child node"
-            >
-              + Stage
-            </button>
+              title="Add child"
+            >+ Stage</button>
           )}
         </div>
       )}
 
       {expanded && children.map((child) => (
-        <ProjectTreeNode
+        <SubProjectNode
           key={child.id}
           node={child}
           tree={tree}
@@ -346,93 +300,82 @@ function ProjectTreeNode({
   );
 }
 
-export function ProjectsPage() {
-  const { id: teamId } = useParams<{ id: string }>();
+export function ProjectSubProjectsPage() {
+  const { projectId } = useParams<{ projectId: string }>();
   const user = useAuthStore((s) => s.user);
-  const [modal, setModal] = useState<{ parentId: string | null } | null>(null);
-  const { data: projects = [], isLoading, isError } = useProjects(teamId ?? '');
+  const [modal, setModal] = useState<{ parentId: string } | null>(null);
+
+  const { data: nodes = [], isLoading, isError } = useProjectTree(projectId ?? '');
+  const { data: projectTeams = [] } = useProjectTeams(projectId ?? '');
 
   const canCreate = user?.role === 'admin' || user?.role === 'maintainer';
+  const teamId = projectTeams[0]?.id ?? '';
 
-  if (!teamId) return null;
+  const tree = buildTree(nodes);
+  // Direct children of the current project (not the project itself)
+  const children = tree.get(projectId ?? null) ?? [];
 
-  const tree = buildTree(projects);
-  const roots = tree.get(null) ?? [];
+  if (!projectId) return null;
 
   return (
-    <div className="px-6 py-8">
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-xs mb-6" style={{ color: 'var(--text-3)' }}>
-        <Link to="/teams" className="hover:underline" style={{ color: 'var(--accent)' }}>Teams</Link>
-        <span>/</span>
-        <Link to={`/teams/${teamId}`} className="hover:underline" style={{ color: 'var(--accent)' }}>Team</Link>
-        <span>/</span>
-        <span>Projects</span>
-      </nav>
-
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold" style={{ color: 'var(--text-1)' }}>Projects</h1>
-        {canCreate && (
-          <button
-            data-testid="new-project-btn"
-            onClick={() => setModal({ parentId: null })}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md"
-            style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
-          >
-            + New project
-          </button>
-        )}
+    <div className="px-6 py-4">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold" style={{ color: 'var(--text-2)' }}>Sub-projects</h2>
+        <div className="flex items-center gap-2">
+          {teamId && (
+            <Link
+              to={`/teams/${teamId}/projects`}
+              className="text-xs hover:underline"
+              style={{ color: 'var(--text-3)' }}
+            >
+              Full tree →
+            </Link>
+          )}
+          {canCreate && teamId && (
+            <button
+              onClick={() => setModal({ parentId: projectId })}
+              className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md font-medium"
+              style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
+            >
+              + Stage
+            </button>
+          )}
+        </div>
       </div>
 
       {isLoading && (
         <p className="text-sm" style={{ color: 'var(--text-3)' }}>Loading...</p>
       )}
       {isError && (
-        <p className="text-sm" style={{ color: 'var(--color-danger)' }}>Failed to load projects.</p>
+        <p className="text-sm" style={{ color: 'var(--color-danger)' }}>Failed to load sub-projects.</p>
       )}
 
-      {!isLoading && !isError && roots.length === 0 && (
+      {!isLoading && !isError && children.length === 0 && (
         <div
-          className="rounded-xl p-10 text-center"
+          className="rounded-xl p-8 text-center"
           style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
         >
-          <p className="text-sm" style={{ color: 'var(--text-3)' }}>No projects yet.</p>
-          {canCreate && (
-            <button
-              data-testid="new-project-btn-empty"
-              onClick={() => setModal({ parentId: null })}
-              className="mt-3 text-sm font-medium"
-              style={{ color: 'var(--accent)' }}
-            >
-              Create the first one &rarr;
-            </button>
+          <p className="text-sm mb-1" style={{ color: 'var(--text-2)' }}>No sub-projects yet</p>
+          {canCreate && teamId && (
+            <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+              Click{' '}
+              <button
+                onClick={() => setModal({ parentId: projectId })}
+                className="hover:underline"
+                style={{ color: 'var(--accent)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+              >+ Stage</button>
+              {' '}to add a sub-project or milestone.
+            </p>
           )}
         </div>
       )}
 
-      {roots.length > 0 && (
-        <div
-          className="rounded-xl overflow-hidden"
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-        >
-          {/* header row */}
-          <div
-            className="flex items-center gap-2 px-3 py-2 text-xs font-medium border-b"
-            style={{ color: 'var(--text-3)', borderColor: 'var(--border)', paddingLeft: '12px' }}
-          >
-            <span className="w-6 flex-shrink-0" />
-            <span style={{ minWidth: '5rem' }}>ID</span>
-            <span className="flex-1">Name</span>
-            <span className="flex-shrink-0" style={{ minWidth: '10rem' }}>Dates</span>
-            <span className="flex-shrink-0" style={{ minWidth: '4rem', textAlign: 'right' }}>Clarity</span>
-            <span className="flex-shrink-0 pr-1">Status</span>
-            {canCreate && <span className="flex-shrink-0 w-16" />}
-          </div>
-
-          {roots.map((root) => (
-            <ProjectTreeNode
-              key={root.id}
-              node={root}
+      {children.length > 0 && (
+        <div className="rounded-xl overflow-hidden" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+          {children.map((child) => (
+            <SubProjectNode
+              key={child.id}
+              node={child}
               tree={tree}
               depth={0}
               canCreate={canCreate}
@@ -442,9 +385,8 @@ export function ProjectsPage() {
         </div>
       )}
 
-      {modal && (
-        <NodeModal
-          title={modal.parentId ? 'New stage / phase' : 'New project'}
+      {modal && teamId && (
+        <SubNodeModal
           parentId={modal.parentId}
           teamId={teamId}
           onClose={() => setModal(null)}

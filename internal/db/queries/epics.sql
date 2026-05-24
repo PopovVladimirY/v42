@@ -1,18 +1,27 @@
 -- name: CreateEpic :one
-INSERT INTO epics (project_id, title, description, status, owner_id, target_date)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, project_id, number, title, description, status, clarity, owner_id, target_date, created_at, updated_at;
+INSERT INTO epics (project_id, title, description, status, owner_id, target_date, order_index)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, seq_number, number, project_id, title, description, status, clarity,
+          owner_id, target_date, order_index, created_at, updated_at;
 
 -- name: GetEpicByID :one
-SELECT id, project_id, number, title, description, status, clarity, owner_id, target_date, created_at, updated_at
+SELECT id, seq_number, number, project_id, title, description, status, clarity,
+       owner_id, target_date, order_index, created_at, updated_at
 FROM epics
 WHERE id = $1;
 
+-- name: GetEpicBySeqNumber :one
+SELECT id, seq_number, number, project_id, title, description, status, clarity,
+       owner_id, target_date, order_index, created_at, updated_at
+FROM epics
+WHERE seq_number = $1;
+
 -- name: ListEpicsByProject :many
-SELECT id, project_id, number, title, description, status, clarity, owner_id, target_date, created_at, updated_at
+SELECT id, seq_number, number, project_id, title, description, status, clarity,
+       owner_id, target_date, order_index, created_at, updated_at
 FROM epics
 WHERE project_id = $1
-ORDER BY number ASC;
+ORDER BY order_index ASC, seq_number ASC;
 
 -- name: UpdateEpic :one
 UPDATE epics
@@ -24,7 +33,11 @@ SET title       = coalesce(sqlc.narg('title'),       title),
     target_date = coalesce(sqlc.narg('target_date'), target_date),
     updated_at  = now()
 WHERE id = $1
-RETURNING id, project_id, number, title, description, status, clarity, owner_id, target_date, created_at, updated_at;
+RETURNING id, seq_number, number, project_id, title, description, status, clarity,
+          owner_id, target_date, order_index, created_at, updated_at;
+
+-- name: ReorderEpic :exec
+UPDATE epics SET order_index = $2, updated_at = now() WHERE id = $1;
 
 -- name: DeleteEpic :exec
 DELETE FROM epics WHERE id = $1;

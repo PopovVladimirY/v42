@@ -10,10 +10,10 @@ export const projectsApi = {
   get: (id: string) =>
     client.get<ApiResponse<Project>>(`/projects/${id}`),
 
-  create: (data: { name: string; description?: string; team_id?: string }) =>
+  create: (data: { name: string; description?: string; team_id?: string; order_index?: number }) =>
     client.post<ApiResponse<Project>>('/projects', data),
 
-  update: (id: string, data: { name?: string; description?: string; status?: ProjectStatus }) =>
+  update: (id: string, data: { name?: string; description?: string; status?: ProjectStatus; start_date?: string | null; end_date?: string | null }) =>
     client.patch<ApiResponse<Project>>(`/projects/${id}`, data),
 
   delete: (id: string) =>
@@ -27,6 +27,18 @@ export const projectsApi = {
 
   listArchived: () =>
     client.get<ApiResponse<Project[]>>('/projects/archived'),
+
+  // Tree
+  getTree: (id: string, showArchived = false) =>
+    client.get<ApiResponse<Project[]>>(`/projects/${id}/tree`, {
+      params: showArchived ? { show_archived: 'true' } : {},
+    }),
+
+  createChild: (parentId: string, data: { name: string; description?: string; order_index?: number }) =>
+    client.post<ApiResponse<Project>>(`/projects/${parentId}/children`, { ...data, status: 'active' }),
+
+  moveNode: (id: string, data: { parent_id: string | null; order_index: number }) =>
+    client.patch<ApiResponse<Project>>(`/projects/${id}/move`, data),
 
   // Team associations (M:M)
   listTeams: (projectId: string) =>

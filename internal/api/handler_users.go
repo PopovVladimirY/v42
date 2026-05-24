@@ -89,6 +89,7 @@ func (h *userHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		AvatarURL   *string `json:"avatar_url"`
 		Role        *string `json:"role"`
 		IsActive    *bool   `json:"is_active"`
+		Email       *string `json:"email"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -156,6 +157,18 @@ func (h *userHandlers) Update(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		current.AvatarURL = req.AvatarURL
+	}
+	if req.Email != nil {
+		trimmedEmail := strings.ToLower(strings.TrimSpace(*req.Email))
+		if trimmedEmail == "" {
+			respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "email cannot be empty")
+			return
+		}
+		if len(trimmedEmail) > 254 {
+			respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "email must not exceed 254 characters")
+			return
+		}
+		current.Email = trimmedEmail
 	}
 	if req.Role != nil {
 		current.Role = *req.Role

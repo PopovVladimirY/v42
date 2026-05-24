@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/vpo/v42/internal/api/middleware"
 	"github.com/vpo/v42/internal/db/store"
 	"github.com/vpo/v42/internal/domain"
 )
@@ -18,6 +19,17 @@ type teamHandlers struct {
 // List handles GET /api/v1/teams
 func (h *teamHandlers) List(w http.ResponseWriter, r *http.Request) {
 	teams, err := h.teams.List(r.Context())
+	if err != nil {
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to list teams")
+		return
+	}
+	respond(w, http.StatusOK, teams)
+}
+
+// Mine handles GET /api/v1/teams/mine -- returns only teams the caller belongs to.
+func (h *teamHandlers) Mine(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFromContext(r.Context())
+	teams, err := h.teams.GetMyTeams(r.Context(), claims.UserID)
 	if err != nil {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to list teams")
 		return
@@ -243,4 +255,39 @@ func (h *teamHandlers) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond(w, http.StatusNoContent, nil)
+}
+
+// validTeamCategory is the set of accepted team_category enum values.
+var validTeamCategory = map[string]bool{
+	"normal":          true,
+	"admin_team":      true,
+	"management_team": true,
+}
+
+// UpdateCategory handles PATCH /api/v1/teams/{id}/category (admin only).
+// Sets the org-hierarchy role: admin_team gets full access, management_team is read-only observer.
+func (h *teamHandlers) UpdateCategory(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req struct {
+		Category string `json:"category"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 256)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondErr(w, http.StatusBadRequest, "INVALID_JSON", "request body is not valid JSON")
+		return
+	}
+	if !validTeamCategory[req.Category] {
+		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "category must be one of: normal, admin_team, management_team")
+		return
+	}
+	team, err := h.teams.UpdateCategory(r.Context(), id, req.Category)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "team not found")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update team category")
+		return
+	}
+	respond(w, http.StatusOK, team)
 }

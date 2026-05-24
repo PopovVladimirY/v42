@@ -1196,10 +1196,10 @@ export function BacklogPage() {
                             <button
                               onClick={() => toggleExpand(item.id)}
                               title={isExpanded ? 'Collapse' : 'Expand tasks & tests'}
-                              className="text-xs w-5 h-5 flex items-center justify-center rounded transition-colors hover:bg-[var(--bg-elevated)]"
-                              style={{ color: 'var(--text-3)', fontFamily: 'monospace', lineHeight: 1 }}
+                              className="flex items-center justify-center select-none transition-colors hover:bg-[var(--bg-elevated)] rounded"
+                              style={{ color: 'var(--text-2)', fontSize: '1.5rem', lineHeight: 1, width: '1.5rem' }}
                             >
-                              {isExpanded ? '-' : '+'}
+                              {isExpanded ? '▾' : '▸'}
                             </button>
                           </td>
                           <td className="px-3 py-1 align-middle" style={{ width: '4rem' }}>

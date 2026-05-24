@@ -1,10 +1,13 @@
 // Team shapes mirror backend store.Team and store.TeamWithMembers.
 
+export type TeamCategory = 'normal' | 'admin_team' | 'management_team';
+
 export interface Team {
   id: string;
   name: string;
   description: string | null;
   is_archived: boolean;
+  category: TeamCategory;
   created_at: string;
   updated_at: string;
 }

@@ -90,3 +90,28 @@ func (s *ProjectTeamStore) UserCanAccess(ctx context.Context, projectID, userID 
 	}
 	return s.q.UserCanAccessProject(ctx, dbgen.UserCanAccessProjectParams{ProjectID: pid, UserID: uid})
 }
+
+// AutoAddEntry is a minimal team descriptor returned by GetAutoAddTeams.
+type AutoAddEntry struct {
+	ID       string
+	Name     string
+	Category string
+}
+
+// GetAutoAddTeams returns all teams marked as admin_team or management_team.
+// These are auto-linked to every new root project at creation time.
+func (s *ProjectTeamStore) GetAutoAddTeams(ctx context.Context) ([]AutoAddEntry, error) {
+	rows, err := s.q.GetAutoAddTeams(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]AutoAddEntry, len(rows))
+	for i, r := range rows {
+		out[i] = AutoAddEntry{
+			ID:       uuidToString(r.ID),
+			Name:     r.Name,
+			Category: string(r.Category),
+		}
+	}
+	return out, nil
+}

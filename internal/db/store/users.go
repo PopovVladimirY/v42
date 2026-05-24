@@ -74,6 +74,7 @@ func (s *UserStore) Update(ctx context.Context, u *domain.User) (*domain.User, e
 		AvatarUrl:   u.AvatarURL,
 		Role:        dbgen.UserRole(u.Role),
 		IsActive:    u.IsActive,
+		Email:       u.Email,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

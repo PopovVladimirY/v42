@@ -1,4 +1,5 @@
 import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
+import { useRef, useState } from 'react';
 import { useAuthStore } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { useIdleTimeout } from '@/hooks/useIdleTimeout';
@@ -52,7 +53,32 @@ export function AppShell() {
 
   useIdleTimeout();
   const ambientDelayMs = useThemeStore((s) => s.ambientDelayMs);
+  const sidebarPinned = useThemeStore((s) => s.sidebarPinned);
+  const setSidebarPinned = useThemeStore((s) => s.setSidebarPinned);
   const isIdle = useIdleDetect(ambientDelayMs);
+
+  // ── Sidebar collapse state ─────────────────────────────────────────────────
+  // overlayOpen: sidebar is floating over content (not pinned, not collapsed)
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  const isExpanded = sidebarPinned || overlayOpen;
+  const sidebarRef = useRef<HTMLDivElement>(null);
+
+  // Close overlay when mouse leaves the sidebar panel
+  function handleSidebarMouseLeave() {
+    if (overlayOpen) setOverlayOpen(false);
+  }
+
+  function handleCollapseClick() {
+    if (sidebarPinned) {
+      // pinned → collapsed
+      setSidebarPinned(false);
+      setOverlayOpen(false);
+    } else {
+      // overlay → pinned
+      setSidebarPinned(true);
+      setOverlayOpen(false);
+    }
+  }
 
   // Reactive: updates sidebar immediately when user visits a project
   const recentProjects = useRecentProjects(user?.id);
@@ -75,29 +101,78 @@ export function AppShell() {
     : (user?.email?.[0] ?? '?').toUpperCase();
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
-      {/* Sidebar */}
-      <aside
-        className="flex flex-col w-52 flex-shrink-0 h-full"
-        style={{
-          position: 'relative',
-          background: 'var(--bg-surface)',
-          borderRight: '1px solid var(--border)',
-        }}
-      >
+    <div className="relative flex h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
+      {/* Narrow strip — 32px column visible when sidebar is not pinned */}
+      {!sidebarPinned && (
+        <div
+          className="flex-shrink-0 flex flex-col items-center pt-3 h-full"
+          style={{ width: 32, background: 'var(--bg-surface)', borderRight: '1px solid var(--border)' }}
+          onMouseEnter={() => setOverlayOpen(true)}
+        >
+          <button
+            onClick={() => setOverlayOpen(true)}
+            title="Expand sidebar"
+            className="p-1 rounded hover:bg-[var(--bg-hover)] transition-colors"
+            style={{ color: 'var(--text-3)' }}
+          >
+            {/* Chevron right */}
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* Sidebar panel — in-flow when pinned, absolute overlay when opened from strip */}
+      {isExpanded && (
+        <aside
+          ref={sidebarRef}
+          onMouseLeave={handleSidebarMouseLeave}
+          className="flex flex-col flex-shrink-0 h-full"
+          style={{
+            width: 208,
+            position: overlayOpen ? 'absolute' : 'relative',
+            left: overlayOpen ? 32 : 'auto',
+            top: 0,
+            bottom: 0,
+            zIndex: overlayOpen ? 50 : undefined,
+            boxShadow: overlayOpen ? '4px 0 20px rgba(0,0,0,0.18)' : 'none',
+            background: 'var(--bg-surface)',
+            borderRight: '1px solid var(--border)',
+          }}
+        >
         {/* Ambient idle animation -- fades in after 30 s of inactivity */}
         <SidebarAmbient isIdle={isIdle} />
-        {/* Logo */}
+        {/* Logo + collapse / pin button */}
         <div
-          className="px-4 py-4 flex items-center gap-2 flex-shrink-0"
+          className="px-4 py-3 flex items-center gap-2 flex-shrink-0"
           style={{ borderBottom: '1px solid var(--border)' }}
         >
           <span
-            className="text-base font-bold tracking-tight"
+            className="text-base font-bold tracking-tight flex-1"
             style={{ color: 'var(--text-1)' }}
           >
             V.42
           </span>
+          <button
+            onClick={handleCollapseClick}
+            title={overlayOpen ? 'Pin sidebar' : 'Collapse sidebar'}
+            className="p-1 rounded hover:bg-[var(--bg-hover)] transition-colors"
+            style={{ color: 'var(--text-3)' }}
+          >
+            {overlayOpen ? (
+              // Thumbtack: click to lock sidebar in place
+              <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
+                <circle cx="6" cy="4" r="2.5" stroke="currentColor" strokeWidth="1.3" />
+                <path d="M6 7v5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+              </svg>
+            ) : (
+              // Chevron left: click to collapse
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M9 3L5 7l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </button>
         </div>
 
         {/* Nav */}
@@ -330,7 +405,8 @@ export function AppShell() {
             </button>
           </div>
         </div>
-      </aside>
+        </aside>
+      )}
 
       {/* Main content */}
       <main className="flex-1 flex flex-col overflow-hidden">

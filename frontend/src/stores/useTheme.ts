@@ -23,6 +23,10 @@ interface ThemeState {
   /** Milliseconds of inactivity before ambient sidebar art fades in. null = never. */
   ambientDelayMs: number | null;
   setAmbientDelay: (ms: number | null) => void;
+  /** When true: sidebar is pinned open and pushes content right.
+   *  When false: sidebar is collapsed to a narrow strip. */
+  sidebarPinned: boolean;
+  setSidebarPinned: (v: boolean) => void;
 }
 
 export const useThemeStore = create<ThemeState>()(
@@ -35,6 +39,8 @@ export const useThemeStore = create<ThemeState>()(
       },
       ambientDelayMs: 30_000,
       setAmbientDelay: (ms) => set({ ambientDelayMs: ms }),
+      sidebarPinned: true,
+      setSidebarPinned: (v) => set({ sidebarPinned: v }),
     }),
     {
       name: 'v42-theme',

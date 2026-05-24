@@ -149,10 +149,9 @@ func (s *BacklogStore) List(ctx context.Context, projectID string, epicID *strin
 			return nil, domain.ErrNotFound
 		}
 	}
-	var st *dbgen.ItemStatus
+	var st dbgen.NullItemStatus
 	if status != nil {
-		v := dbgen.ItemStatus(*status)
-		st = &v
+		st = dbgen.NullItemStatus{ItemStatus: dbgen.ItemStatus(*status), Valid: true}
 	}
 	rows, err := s.q.ListBacklogItems(ctx, dbgen.ListBacklogItemsParams{
 		ProjectID: pid,
@@ -319,15 +318,13 @@ func (s *BacklogStore) Update(ctx context.Context, req UpdateBacklogItemRequest)
 	if clearEstimate {
 		req.Estimate = nil
 	}
-	var tp *dbgen.ItemType
+	var tp dbgen.NullItemType
 	if req.Type != nil {
-		v := dbgen.ItemType(*req.Type)
-		tp = &v
+		tp = dbgen.NullItemType{ItemType: dbgen.ItemType(*req.Type), Valid: true}
 	}
-	var st *dbgen.ItemStatus
+	var st dbgen.NullItemStatus
 	if req.Status != nil {
-		v := dbgen.ItemStatus(*req.Status)
-		st = &v
+		st = dbgen.NullItemStatus{ItemStatus: dbgen.ItemStatus(*req.Status), Valid: true}
 	}
 	var aid, skr, eid, rid, sid pgtype.UUID
 	if req.AssigneeID != nil {

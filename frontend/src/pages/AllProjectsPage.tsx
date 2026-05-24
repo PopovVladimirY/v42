@@ -1,121 +1,64 @@
-import { Link, useNavigate } from 'react-router-dom';
-import { useAllProjects } from '@/hooks/useProjects';
-import type { Project } from '@/types';
+import { useQuery } from '@tanstack/react-query';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { teamsApi } from '@/api/endpoints/teams';
 
-const STATUS_BADGE: Record<Project['status'], { label: string; color: string; bg: string }> = {
-  active:    { label: 'Active',    color: 'var(--color-success)', bg: 'var(--success-muted)' },
-  on_hold:   { label: 'On Hold',   color: 'var(--color-warning)', bg: 'var(--warning-muted)' },
-  completed: { label: 'Done',      color: 'var(--text-3)',        bg: 'var(--bg-elevated)'   },
-  archived:  { label: 'Archived',  color: 'var(--text-3)',        bg: 'var(--bg-elevated)'   },
-};
-
-function ProjectCard({ project }: { project: Project }) {
-  const badge = STATUS_BADGE[project.status];
-  const navigate = useNavigate();
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => navigate(`/projects/${project.id}`)}
-      onKeyDown={(e) => e.key === 'Enter' && navigate(`/projects/${project.id}`)}
-      className="block rounded-xl p-4 transition-colors hover:border-[var(--accent)] cursor-pointer"
-      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-    >
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <h3 className="font-semibold text-sm truncate" style={{ color: 'var(--text-1)' }}>
-          {project.name}
-        </h3>
-        <span
-          className="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0"
-          style={{ color: badge.color, background: badge.bg }}
-        >
-          {badge.label}
-        </span>
-      </div>
-      {project.description && (
-        <p className="text-xs line-clamp-2 mb-3" style={{ color: 'var(--text-3)' }}>
-          {project.description}
-        </p>
-      )}
-      <div className="flex items-center gap-3 mt-auto">
-        <Link
-          to={`/projects/${project.id}/backlog`}
-          onClick={(e) => e.stopPropagation()}
-          className="flex items-center gap-1 text-xs transition-colors hover:underline"
-          style={{ color: 'var(--text-3)' }}
-        >
-          <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-            <rect x="1" y="1" width="10" height="2" rx="1" stroke="currentColor" strokeWidth="1.2" />
-            <rect x="1" y="5" width="7" height="2" rx="1" stroke="currentColor" strokeWidth="1.2" />
-            <rect x="1" y="9" width="5" height="2" rx="1" stroke="currentColor" strokeWidth="1.2" />
-          </svg>
-          Backlog
-        </Link>
-        <Link
-          to={`/projects/${project.id}/sprints`}
-          onClick={(e) => e.stopPropagation()}
-          className="flex items-center gap-1 text-xs transition-colors hover:underline"
-          style={{ color: 'var(--text-3)' }}
-        >
-          <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-            <path d="M2 10 C2 6 4 2 10 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-            <path d="M8 1l2 1-1 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          Sprints
-        </Link>
-      </div>
-    </div>
-  );
-}
-
+// Sidebar "Projects" link -- routes to the full project tree for the user's team(s).
+// Single team: redirect straight to /teams/:id/projects.
+// Multiple teams: show a team picker; each card navigates to that team's project tree.
 export function AllProjectsPage() {
-  const { data: projects = [], isLoading, isError } = useAllProjects();
+  const navigate = useNavigate();
+  const { data: myTeams = [], isLoading } = useQuery({
+    queryKey: ['teams', 'mine'],
+    queryFn: teamsApi.mine,
+  });
 
-  const active = projects.filter((p) => p.status === 'active');
-  const rest = projects.filter((p) => p.status !== 'active');
+  // Redirect immediately when there's exactly one team
+  if (!isLoading && myTeams.length === 1) {
+    return <Navigate to={`/teams/${myTeams[0].id}/projects`} replace />;
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
-      <h1 className="text-xl font-semibold mb-6" style={{ color: 'var(--text-1)' }}>
-        Projects
-      </h1>
+      <h1 className="text-xl font-semibold mb-2" style={{ color: 'var(--text-1)' }}>Projects</h1>
+      {!isLoading && myTeams.length > 1 && (
+        <p className="text-sm mb-6" style={{ color: 'var(--text-3)' }}>Select a team to view its project tree.</p>
+      )}
 
       {isLoading && (
         <p className="text-sm" style={{ color: 'var(--text-3)' }}>Loading...</p>
       )}
-      {isError && (
-        <p className="text-sm" style={{ color: 'var(--color-danger)' }}>Failed to load projects.</p>
-      )}
 
-      {!isLoading && !isError && projects.length === 0 && (
-        <div
-          className="rounded-xl p-10 text-center"
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-        >
-          <p className="text-sm" style={{ color: 'var(--text-3)' }}>No projects yet.</p>
+      {!isLoading && myTeams.length === 0 && (
+        <div className="rounded-xl p-10 text-center mt-4" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+          <p className="text-sm" style={{ color: 'var(--text-3)' }}>You are not a member of any team yet.</p>
         </div>
       )}
 
-      {active.length > 0 && (
-        <section className="mb-6">
-          <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
-            Active
-          </p>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {active.map((p) => <ProjectCard key={p.id} project={p} />)}
-          </div>
-        </section>
-      )}
-
-      {rest.length > 0 && (
-        <section>
-          <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
-            Other
-          </p>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {rest.map((p) => <ProjectCard key={p.id} project={p} />)}
-          </div>
-        </section>
+      {!isLoading && myTeams.length > 1 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {myTeams.map((team) => (
+            <button
+              key={team.id}
+              onClick={() => navigate(`/teams/${team.id}/projects`)}
+              className="rounded-xl p-5 text-left transition-all hover:shadow-md"
+              style={{
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border)',
+                cursor: 'pointer',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+              onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+            >
+              <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-1)' }}>{team.name}</p>
+              {team.description && (
+                <p className="text-xs mt-1 truncate" style={{ color: 'var(--text-3)' }}>{team.description}</p>
+              )}
+              <p className="text-xs mt-3 font-medium" style={{ color: 'var(--accent)' }}>
+                Open project tree →
+              </p>
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );

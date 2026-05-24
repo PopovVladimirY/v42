@@ -10,6 +10,7 @@ export const projectKeys = {
   all: ['projects'] as const,
   byTeam: (teamId: string) => ['projects', 'team', teamId] as const,
   detail: (id: string) => ['projects', id] as const,
+  tree: (id: string) => ['projects', id, 'tree'] as const,
   teams: (id: string) => ['projects', id, 'teams'] as const,
 };
 
@@ -84,7 +85,7 @@ export function useCreateProject(teamId: string) {
 export function useUpdateProject(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name?: string; description?: string; status?: ProjectStatus }) =>
+    mutationFn: (data: { name?: string; description?: string; status?: ProjectStatus; start_date?: string | null; end_date?: string | null }) =>
       projectsApi.update(projectId, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
@@ -213,5 +214,41 @@ export function useReorderBacklog(projectId: string) {
     mutationFn: (items: { id: string; order_index: number }[]) =>
       backlogApi.reorder(projectId, items),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['backlog', projectId] }),
+  });
+}
+
+// -- Project tree ------------------------------------------------------------
+
+export function useProjectTree(projectId: string, showArchived = false) {
+  return useQuery({
+    queryKey: projectKeys.tree(projectId),
+    queryFn: async () => {
+      const { data } = await projectsApi.getTree(projectId, showArchived);
+      return data.data ?? [];
+    },
+    enabled: !!projectId,
+  });
+}
+
+export function useCreateChild(teamId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ parentId, name, description }: { parentId: string; name: string; description?: string }) =>
+      projectsApi.createChild(parentId, { name, description }),
+    onSuccess: (_res, { parentId }) => {
+      qc.invalidateQueries({ queryKey: projectKeys.tree(parentId) });
+      qc.invalidateQueries({ queryKey: projectKeys.byTeam(teamId) });
+    },
+  });
+}
+
+export function useMoveNode(teamId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, parentId, orderIndex }: { id: string; parentId: string | null; orderIndex: number }) =>
+      projectsApi.moveNode(id, { parent_id: parentId, order_index: orderIndex }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.byTeam(teamId) });
+    },
   });
 }

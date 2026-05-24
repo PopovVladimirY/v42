@@ -18,6 +18,7 @@ type Team struct {
 	Name        string    `json:"name"`
 	Description *string   `json:"description"`
 	IsArchived  bool      `json:"is_archived"`
+	Category    string    `json:"category"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -58,7 +59,32 @@ func (s *TeamStore) List(ctx context.Context) ([]Team, error) {
 	}
 	out := make([]Team, len(rows))
 	for i, r := range rows {
-		out[i] = rowToTeam(r)
+		out[i] = teamFromListRow(r)
+	}
+	return out, nil
+}
+
+// GetMyTeams returns teams the given user is a member of.
+func (s *TeamStore) GetMyTeams(ctx context.Context, userID string) ([]Team, error) {
+	uid, err := parseUUID(userID)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	rows, err := s.q.ListTeamsByMember(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Team, len(rows))
+	for i, r := range rows {
+		out[i] = Team{
+			ID:          uuidToString(r.ID),
+			Name:        r.Name,
+			Description: r.Description,
+			IsArchived:  r.IsArchived,
+			Category:    string(r.Category),
+			CreatedAt:   r.CreatedAt.Time,
+			UpdatedAt:   r.UpdatedAt.Time,
+		}
 	}
 	return out, nil
 }
@@ -69,7 +95,7 @@ func (s *TeamStore) Create(ctx context.Context, name string, description *string
 	if err != nil {
 		return nil, err
 	}
-	t := rowToTeam(r)
+	t := teamFromCreateRow(r)
 	return &t, nil
 }
 
@@ -87,7 +113,7 @@ func (s *TeamStore) Get(ctx context.Context, id string) (*Team, error) {
 		}
 		return nil, err
 	}
-	t := rowToTeam(row)
+	t := teamFromGetRow(row)
 	return &t, nil
 }
 
@@ -108,7 +134,7 @@ func (s *TeamStore) GetWithMembers(ctx context.Context, id string) (*TeamWithMem
 	if err != nil {
 		return nil, err
 	}
-	t := rowToTeam(row)
+	t := teamFromGetRow(row)
 	ms := make([]TeamMember, len(members))
 	for i, m := range members {
 		ms[i] = TeamMember{
@@ -138,7 +164,7 @@ func (s *TeamStore) Update(ctx context.Context, id, name string, description *st
 		}
 		return nil, err
 	}
-	t := rowToTeam(r)
+	t := teamFromUpdateRow(r)
 	return &t, nil
 }
 
@@ -164,7 +190,7 @@ func (s *TeamStore) Archive(ctx context.Context, id string) (*Team, error) {
 		}
 		return nil, err
 	}
-	t := rowToTeam(r)
+	t := teamFromArchiveRow(r)
 	return &t, nil
 }
 
@@ -176,7 +202,7 @@ func (s *TeamStore) ListArchived(ctx context.Context) ([]Team, error) {
 	}
 	out := make([]Team, len(rows))
 	for i, r := range rows {
-		out[i] = rowToTeam(r)
+		out[i] = teamFromArchivedRow(r)
 	}
 	return out, nil
 }
@@ -194,7 +220,7 @@ func (s *TeamStore) Unarchive(ctx context.Context, id string) (*Team, error) {
 		}
 		return nil, err
 	}
-	t := rowToTeam(r)
+	t := teamFromUnarchiveRow(r)
 	return &t, nil
 }
 
@@ -251,6 +277,34 @@ func (s *TeamStore) RemoveMember(ctx context.Context, teamID, userID string) err
 	return s.q.RemoveTeamMember(ctx, dbgen.RemoveTeamMemberParams{TeamID: tid, UserID: uid})
 }
 
+// UpdateCategory sets the org-hierarchy category (normal/admin_team/management_team) for a team.
+func (s *TeamStore) UpdateCategory(ctx context.Context, id, category string) (*Team, error) {
+	uid, err := parseUUID(id)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	r, err := s.q.UpdateTeamCategory(ctx, dbgen.UpdateTeamCategoryParams{
+		ID:       uid,
+		Category: dbgen.TeamCategory(category),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	t := Team{
+		ID:          uuidToString(r.ID),
+		Name:        r.Name,
+		Description: r.Description,
+		IsArchived:  r.IsArchived,
+		Category:    string(r.Category),
+		CreatedAt:   r.CreatedAt.Time,
+		UpdatedAt:   r.UpdatedAt.Time,
+	}
+	return &t, nil
+}
+
 // rowToTeam converts a sqlc Team row to store.Team.
 // Works for both dbgen.Team and UpdateTeam/CreateTeam return values since they share the same fields.
 func rowToTeam(r dbgen.Team) Team {
@@ -259,7 +313,29 @@ func rowToTeam(r dbgen.Team) Team {
 		Name:        r.Name,
 		Description: r.Description,
 		IsArchived:  r.IsArchived,
+		Category:    string(r.Category),
 		CreatedAt:   r.CreatedAt.Time,
 		UpdatedAt:   r.UpdatedAt.Time,
 	}
+}
+func teamFromListRow(r dbgen.ListTeamsRow) Team {
+	return Team{ID: uuidToString(r.ID), Name: r.Name, Description: r.Description, IsArchived: r.IsArchived, Category: string(r.Category), CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time}
+}
+func teamFromCreateRow(r dbgen.CreateTeamRow) Team {
+	return Team{ID: uuidToString(r.ID), Name: r.Name, Description: r.Description, IsArchived: r.IsArchived, Category: string(r.Category), CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time}
+}
+func teamFromGetRow(r dbgen.GetTeamByIDRow) Team {
+	return Team{ID: uuidToString(r.ID), Name: r.Name, Description: r.Description, IsArchived: r.IsArchived, Category: string(r.Category), CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time}
+}
+func teamFromUpdateRow(r dbgen.UpdateTeamRow) Team {
+	return Team{ID: uuidToString(r.ID), Name: r.Name, Description: r.Description, IsArchived: r.IsArchived, Category: string(r.Category), CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time}
+}
+func teamFromArchiveRow(r dbgen.ArchiveTeamRow) Team {
+	return Team{ID: uuidToString(r.ID), Name: r.Name, Description: r.Description, IsArchived: r.IsArchived, Category: string(r.Category), CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time}
+}
+func teamFromArchivedRow(r dbgen.ListArchivedTeamsRow) Team {
+	return Team{ID: uuidToString(r.ID), Name: r.Name, Description: r.Description, IsArchived: r.IsArchived, Category: string(r.Category), CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time}
+}
+func teamFromUnarchiveRow(r dbgen.UnarchiveTeamRow) Team {
+	return Team{ID: uuidToString(r.ID), Name: r.Name, Description: r.Description, IsArchived: r.IsArchived, Category: string(r.Category), CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time}
 }

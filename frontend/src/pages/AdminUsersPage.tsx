@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi } from '@/api/endpoints/users';
 import type { User, UserRole } from '@/types/index';
@@ -285,6 +286,23 @@ function UserRow({ user, onToggleActive, isToggling, onResetPassword }: UserRowP
       >
         Reset pwd
       </button>
+
+      {/* Edit profile */}
+      <Link
+        to={`/admin/users/${user.id}`}
+        style={{
+          background: 'transparent',
+          border: '1px solid var(--border)',
+          borderRadius: 5,
+          color: 'var(--accent)',
+          padding: '3px 8px',
+          fontSize: 11,
+          textDecoration: 'none',
+          flexShrink: 0,
+        }}
+      >
+        Profile
+      </Link>
     </div>
   );
 }

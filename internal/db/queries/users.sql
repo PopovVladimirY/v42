@@ -36,6 +36,7 @@ SET
     avatar_url   = $3,
     role         = $4,
     is_active    = $5,
+    email        = $6,
     updated_at   = now()
 WHERE id = $1
 RETURNING id, email, display_name, role, is_active, must_change_password, avatar_url, theme, idle_timeout_minutes, created_at, updated_at;

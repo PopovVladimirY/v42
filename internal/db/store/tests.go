@@ -213,8 +213,7 @@ func (s *TestStore) UpdateTest(ctx context.Context, projectID, id string,
 		ExpectedResults: expectedResults,
 	}
 	if testType != nil {
-		t := dbgen.TestType(*testType)
-		arg.Type = &t
+		arg.Type = dbgen.NullTestType{TestType: dbgen.TestType(*testType), Valid: true}
 	}
 
 	row, err := s.q.UpdateTest(ctx, arg)
@@ -343,8 +342,8 @@ func (s *SprintTestStore) ListResults(ctx context.Context, sprintID string) ([]S
 			row.ExecutedAt = &t
 		}
 		row.TestTitle = r.TestTitle
-		if r.TestType != nil {
-			v := string(*r.TestType)
+		if r.TestType.Valid {
+			v := string(r.TestType.TestType)
 			row.TestType = &v
 		}
 		row.ItemTitle = r.ItemTitle
@@ -378,8 +377,7 @@ func (s *SprintTestStore) UpdateResult(ctx context.Context, sprintID, resultID, 
 		Notes:      notes,
 	}
 	if status != "" {
-		st := dbgen.TestRunStatus(status)
-		arg.Status = &st
+		arg.Status = dbgen.NullTestRunStatus{TestRunStatus: dbgen.TestRunStatus(status), Valid: true}
 	}
 	if executedBy != nil {
 		uid, err := parseUUID(*executedBy)

@@ -143,10 +143,9 @@ func (s *EpicStore) Update(ctx context.Context, id string, title, description *s
 	if err != nil {
 		return nil, domain.ErrNotFound
 	}
-	var st *dbgen.EpicStatus
+	var st dbgen.NullEpicStatus
 	if status != nil {
-		v := dbgen.EpicStatus(*status)
-		st = &v
+		st = dbgen.NullEpicStatus{EpicStatus: dbgen.EpicStatus(*status), Valid: true}
 	}
 	var oid pgtype.UUID
 	if ownerID != nil {

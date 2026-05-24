@@ -12,6 +12,7 @@ import { AdminArchivePage } from '@/pages/AdminArchivePage';
 import { ChangePasswordPage } from '@/pages/ChangePasswordPage';
 import { ProjectsPage } from '@/pages/ProjectsPage';
 import { ProjectShell, ProjectOverviewPage } from '@/pages/ProjectShell';
+import { ProjectSubProjectsPage } from '@/pages/ProjectSubProjectsPage';
 import { BacklogPage } from '@/pages/BacklogPage';
 import { EpicsPage } from '@/pages/EpicsPage';
 import { SprintsPage } from '@/pages/SprintsPage';
@@ -46,6 +47,7 @@ export const router = createBrowserRouter([
           { path: '/admin', element: <Navigate to="/admin/settings" replace /> },
           { path: '/admin/settings', element: <AdminSettingsPage /> },
           { path: '/admin/users', element: <AdminUsersPage /> },
+          { path: '/admin/users/:userId', element: <ProfilePage /> },
           { path: '/admin/skills', element: <AdminSkillsPage /> },
           { path: '/admin/archive', element: <AdminArchivePage /> },
           // Project routes -- nested under ProjectShell (header + tab nav)
@@ -53,12 +55,14 @@ export const router = createBrowserRouter([
             path: '/projects/:projectId',
             element: <ProjectShell />,
             children: [
-              { index: true, element: <ProjectOverviewPage /> },
+              { index: true, element: <Navigate to="backlog" replace /> },
               { path: 'backlog', element: <BacklogPage /> },
               { path: 'backlog/:itemId', element: <BacklogItemDetailPage /> },
               { path: 'epics', element: <EpicsPage /> },
               { path: 'sprints', element: <SprintsPage /> },
               { path: 'sprints/:sprintId', element: <SprintDetailPage /> },
+              { path: 'tree', element: <ProjectSubProjectsPage /> },
+              { path: 'overview', element: <ProjectOverviewPage /> },
             ],
           },
         ],

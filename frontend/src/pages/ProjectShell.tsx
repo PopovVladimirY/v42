@@ -8,10 +8,11 @@ import { teamsApi } from '@/api/endpoints/teams';
 
 // Sub-nav tabs for a project
 const TABS = [
-  { label: 'Overview', to: '' },
+  { label: 'Project', to: 'tree' },
   { label: 'Backlog', to: 'backlog' },
   { label: 'Epics', to: 'epics' },
   { label: 'Sprints', to: 'sprints' },
+  { label: 'Overview', to: 'overview' },
 ];
 
 const STATUS_BADGE = {

@@ -15,7 +15,7 @@ export const usersApi = {
   create: (body: { email: string; password: string; display_name: string; role?: string }) =>
     apiClient.post<{ data: User }>('/users', body).then((r) => unwrap(r.data)),
 
-  update: (id: string, body: { display_name?: string; role?: string; is_active?: boolean }) =>
+  update: (id: string, body: { display_name?: string; email?: string; role?: string; is_active?: boolean }) =>
     apiClient.patch<{ data: User }>(`/users/${id}`, body).then((r) => unwrap(r.data)),
 
   resetPassword: (id: string, password: string) =>
