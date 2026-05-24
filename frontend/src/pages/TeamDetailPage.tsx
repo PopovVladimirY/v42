@@ -305,8 +305,6 @@ export function TeamDetailPage() {
   // -- Project management state -------------------------------------------
   const [showLinkProject, setShowLinkProject] = useState(false);
   const [linkProjectId, setLinkProjectId] = useState('');
-  const [showCreateProject, setShowCreateProject] = useState(false);
-  const [newProjectName, setNewProjectName] = useState('');
 
   const { data: teamProjects = [] } = useQuery({
     queryKey: projectKeys.byTeam(id ?? ''),
@@ -336,11 +334,6 @@ export function TeamDetailPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.byTeam(id!) }),
   });
 
-  const createProject = useMutation({
-    mutationFn: (name: string) => projectsApi.create({ name, team_id: id! }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.byTeam(id!) }),
-  });
-
   async function handleLinkProject() {
     if (!linkProjectId) return;
     await linkProject.mutateAsync(linkProjectId);
@@ -348,12 +341,6 @@ export function TeamDetailPage() {
     setLinkProjectId('');
   }
 
-  async function handleCreateProject() {
-    if (!newProjectName.trim()) return;
-    await createProject.mutateAsync(newProjectName.trim());
-    setShowCreateProject(false);
-    setNewProjectName('');
-  }
   // -----------------------------------------------------------------------
 
   const { data: team, isLoading, isError } = useQuery({
@@ -686,58 +673,17 @@ export function TeamDetailPage() {
                 >
                   View tree →
                 </Link>
-                {canManage && !showCreateProject && !showLinkProject && (
-                  <>
-                    <button
-                      onClick={() => setShowCreateProject(true)}
-                      className="text-xs px-2 py-1 rounded"
-                      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--accent)' }}
-                    >
-                      + New
-                    </button>
-                    {availableToLink.length > 0 && (
-                      <button
-                        onClick={() => setShowLinkProject(true)}
-                        className="text-xs px-2 py-1 rounded"
-                        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
-                      >
-                        + Link
-                      </button>
-                    )}
-                  </>
+                {canManage && !showLinkProject && (
+                  <button
+                    onClick={() => setShowLinkProject(true)}
+                    className="text-xs px-2 py-1 rounded"
+                    style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
+                  >
+                    + Link
+                  </button>
                 )}
               </div>
             </div>
-
-            {/* Create new project form */}
-            {showCreateProject && (
-              <div className="flex gap-2 mb-3">
-                <input
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  placeholder="Project name..."
-                  className="flex-1 text-sm rounded px-2 py-1 outline-none"
-                  style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
-                  autoFocus
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleCreateProject(); }}
-                />
-                <button
-                  onClick={handleCreateProject}
-                  disabled={!newProjectName.trim() || createProject.isPending}
-                  className="text-xs px-3 py-1 rounded disabled:opacity-40"
-                  style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
-                >
-                  {createProject.isPending ? '...' : 'Create'}
-                </button>
-                <button
-                  onClick={() => { setShowCreateProject(false); setNewProjectName(''); }}
-                  className="text-xs px-3 py-1 rounded"
-                  style={{ border: '1px solid var(--border)', color: 'var(--text-2)' }}
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
 
             {/* Link existing project: tree picker */}
             {showLinkProject && (
@@ -781,7 +727,7 @@ export function TeamDetailPage() {
             )}
 
             {/* Projects tree */}
-            {rootTeamProjects.length === 0 && !showCreateProject && !showLinkProject ? (
+            {rootTeamProjects.length === 0 && !showLinkProject ? (
               <p className="text-xs" style={{ color: 'var(--text-3)' }}>No projects yet.</p>
             ) : (
               <div className="flex flex-col">

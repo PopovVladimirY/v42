@@ -267,6 +267,10 @@ export function AppShell() {
                   to: '/admin/skills',
                   label: 'Skills',
                 },
+                {
+                  to: '/admin/projects',
+                  label: 'Projects',
+                },
               ].map((sub) => (
                 <NavLink
                   key={sub.to}
