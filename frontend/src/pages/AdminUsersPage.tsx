@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi } from '@/api/endpoints/users';
@@ -317,6 +317,13 @@ export function AdminUsersPage() {
   const [resetTarget, setResetTarget] = useState<User | null>(null);
   const [resetPassword, setResetPassword] = useState('');
   const [resetError, setResetError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!resetTarget) return;
+    function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') setResetTarget(null); }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [resetTarget]);
 
   const { data: users = [], isLoading, error } = useQuery({
     queryKey: ['users'],

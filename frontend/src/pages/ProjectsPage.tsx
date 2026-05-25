@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useProjects, useCreateProject, useCreateChild, useUpdateProject } from '@/hooks/useProjects';
 import { useAuthStore } from '@/hooks/useAuth';
@@ -51,6 +51,12 @@ function NodeModal({
   const [desc, setDesc] = useState('');
   const createRoot = useCreateProject(teamId);
   const createChild = useCreateChild(teamId);
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

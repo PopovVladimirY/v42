@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   useSprints,
@@ -47,6 +47,12 @@ function CreateSprintModal({
   const [endDate, setEndDate] = useState('');
   const [capacity, setCapacity] = useState('');
   const create = useCreateSprint(projectId);
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
 
   const submit = async () => {
     if (!name.trim()) return;

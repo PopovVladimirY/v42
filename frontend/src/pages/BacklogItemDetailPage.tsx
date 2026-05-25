@@ -1,4 +1,4 @@
-import { useState, useMemo, Fragment } from 'react';
+import { useState, useMemo, Fragment, useEffect } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useBacklogItem, useUpdateBacklogItem, useDeleteBacklogItem, useProjectAncestors, backlogKeys } from '@/hooks/useProjects';
@@ -543,6 +543,13 @@ function SprintPanel({
 export function BacklogItemDetailPage() {
   const { projectId = '', itemId = '' } = useParams<{ projectId: string; itemId: string }>();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') navigate(-1); }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [navigate]);
+
   const user = useAuthStore((s) => s.user);
   const canManage = user?.role === 'admin' || user?.role === 'maintainer';
 
@@ -621,22 +628,32 @@ export function BacklogItemDetailPage() {
   }
 
   return (
-    <div className="px-6 py-4 flex flex-col gap-5">
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto flex justify-center pt-8 pb-16 px-4"
+      style={{ background: 'rgba(0,0,0,0.6)' }}
+      onClick={(e) => { if (e.target === e.currentTarget) navigate(-1); }}
+    >
+      <div
+        className="w-full flex-shrink-0 flex flex-col rounded-2xl h-fit"
+        style={{ maxWidth: '960px', background: 'var(--bg-active)', border: '1px solid var(--border)' }}
+      >
+        {/* Modal header */}
+        <div className="flex items-center gap-1.5 px-6 py-3 text-xs flex-shrink-0 flex-wrap" style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-3)' }}>
+          <Link to="/projects" className="hover:underline">Projects</Link>
+          {projectChain.map((p) => (
+            <Fragment key={p.id}>
+              <span>/</span>
+              <Link to={`/projects/${p.id}`} className="hover:underline">{p.name}</Link>
+            </Fragment>
+          ))}
+          <span>/</span>
+          <Link to={`/projects/${projectId}/backlog`} className="hover:underline">Backlog</Link>
+          <span>/</span>
+          <span style={{ color: 'var(--text-1)' }}>B-{item.number}</span>
+          <button onClick={() => navigate(-1)} className="ml-auto text-sm" style={{ color: 'var(--text-3)' }} title="Close">&#10007;</button>
+        </div>
 
-      {/* ── Breadcrumb ── */}
-      <nav className="flex items-center gap-1.5 text-xs flex-wrap" style={{ color: 'var(--text-3)' }}>
-        <Link to="/projects" className="hover:underline" style={{ color: 'var(--text-3)' }}>Projects</Link>
-        {projectChain.map((p) => (
-          <Fragment key={p.id}>
-            <span>/</span>
-            <Link to={`/projects/${p.id}`} className="hover:underline" style={{ color: 'var(--text-3)' }}>{p.name}</Link>
-          </Fragment>
-        ))}
-        <span>/</span>
-        <Link to={`/projects/${projectId}/backlog`} className="hover:underline" style={{ color: 'var(--text-3)' }}>Backlog</Link>
-        <span>/</span>
-        <span style={{ color: 'var(--text-1)' }}>B-{item.number}</span>
-      </nav>
+      <div className="px-6 py-4 flex flex-col gap-5">
 
       {/* ── Header ── */}
       <div className="flex items-start gap-3 flex-wrap">
@@ -921,6 +938,8 @@ export function BacklogItemDetailPage() {
           onClose={() => setShowBreakdown(false)}
         />
       )}
+      </div>
+      </div>
     </div>
   );
 }

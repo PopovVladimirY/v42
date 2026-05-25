@@ -1,4 +1,4 @@
-import { useState, Fragment } from 'react';
+import { useState, Fragment, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { itemTestsApi } from '@/api/endpoints/item_tests';
@@ -61,6 +61,13 @@ export function TestDetailPage() {
     testId: string;
   }>();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') navigate(-1); }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [navigate]);
+
   const user = useAuthStore((s) => s.user);
   const canEdit = !!user;
 
@@ -120,11 +127,17 @@ export function TestDetailPage() {
   const clarityHex = CLARITY_HEX[backlogItem?.clarity ?? 'unknown'] ?? CLARITY_HEX.unknown;
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-2xl mx-auto px-6 py-8 flex flex-col gap-6">
-
-        {/* Breadcrumb */}
-        <nav className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-3)' }}>
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto flex justify-center pt-8 pb-16 px-4"
+      style={{ background: 'rgba(0,0,0,0.6)' }}
+      onClick={(e) => { if (e.target === e.currentTarget) navigate(-1); }}
+    >
+      <div
+        className="w-full flex-shrink-0 flex flex-col rounded-2xl h-fit"
+        style={{ maxWidth: '720px', background: 'var(--bg-active)', border: '1px solid var(--border)' }}
+      >
+        {/* Modal header */}
+        <div className="flex items-center gap-1.5 px-6 py-3 text-xs flex-shrink-0 flex-wrap" style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-3)' }}>
           <Link to="/projects" className="hover:underline" style={{ color: 'var(--text-3)' }}>Projects</Link>
           {projectChain.map((p) => (
             <Fragment key={p.id}>
@@ -137,14 +150,15 @@ export function TestDetailPage() {
           {test.backlog_item_id && (
             <>
               <span>/</span>
-              <Link to={`/projects/${projectId}/backlog/${test.backlog_item_id}`} className="hover:underline">
-                B-{backlogItem?.number ?? '?'}{backlogItem?.title ? ` — ${backlogItem.title}` : ''}
-              </Link>
+              <Link to={`/projects/${projectId}/backlog/${test.backlog_item_id}`} className="hover:underline">B-{backlogItem?.number ?? '?'}</Link>
             </>
           )}
           <span>/</span>
           <span style={{ color: 'var(--text-1)' }}>Test</span>
-        </nav>
+          <button onClick={() => navigate(-1)} className="ml-auto text-sm" style={{ color: 'var(--text-3)' }} title="Close">&#10007;</button>
+        </div>
+
+        <div className="max-w-2xl mx-auto px-6 py-8 flex flex-col gap-6 w-full">
 
         {/* Title */}
         {editingTitle ? (
@@ -259,6 +273,7 @@ export function TestDetailPage() {
             </button>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

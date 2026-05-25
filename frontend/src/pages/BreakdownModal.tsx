@@ -8,7 +8,7 @@
  *   4. Add each child to the parent's sprint (if any)
  *   5. PATCH /backlog/:id  { status: 'decomposed' } -- archive original
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { backlogApi } from '@/api/endpoints/backlog';
 import { tasksApi } from '@/api/endpoints/tasks';
@@ -219,6 +219,12 @@ export function BreakdownModal({
 
   // Map of itemId -> slotId (null = unassigned / stays on source)
   const [assignments, setAssignments] = useState<Record<string, { slotId: string; kind: 'task' | 'test' }>>({});
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
 
   const addSlot = useCallback(() => setSlots((prev) => [...prev, makeSlot()]), []);
 

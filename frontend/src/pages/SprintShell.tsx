@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, NavLink, Navigate, Outlet, useNavigate, useParams } from 'react-router-dom';
 import {
   useSprint,
@@ -60,6 +60,12 @@ function CloseSprintModal({
   const { data: allSprints = [] } = useSprints(projectId);
   const closeSprint = useCloseSprint(projectId, sprintId);
   const [targetId, setTargetId] = useState('');
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') onCancel(); }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onCancel]);
 
   const targets = allSprints.filter(
     (s: Sprint) => s.id !== sprintId && s.status !== 'completed' && s.status !== 'cancelled'
