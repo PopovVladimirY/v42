@@ -33,9 +33,20 @@ export interface SprintItem {
   added_at: string;
 }
 
+export interface GlobalSprint extends Sprint {
+  sprint_number: number;
+  project_name: string;
+  team_name: string;
+  total_items: number;
+  done_items: number;
+}
+
 export const sprintsApi = {
   list: (projectId: string) =>
     client.get<ApiResponse<Sprint[]>>(`/projects/${projectId}/sprints`),
+
+  listGlobal: (status: SprintStatus = 'active') =>
+    client.get<ApiResponse<GlobalSprint[]>>(`/sprints?status=${status}`),
 
   get: (projectId: string, sprintId: string) =>
     client.get<ApiResponse<Sprint>>(`/projects/${projectId}/sprints/${sprintId}`),

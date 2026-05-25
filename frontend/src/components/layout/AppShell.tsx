@@ -12,6 +12,17 @@ import { useThemeStore } from '@/stores/useTheme';
 // Nav item structure. Icons are inline SVG to avoid extra deps.
 const NAV_ITEMS: { to: string; label: string; icon: React.ReactNode; soon?: boolean }[] = [
   {
+    to: '/sprints',
+    label: 'My Sprints',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M2 3h12M2 8h8M2 13h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="13" cy="11" r="2.5" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M12 11l.8.8 1.7-1.3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+  {
     to: '/teams',
     label: 'Teams',
     icon: (

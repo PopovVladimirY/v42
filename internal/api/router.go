@@ -135,6 +135,9 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 			r.Patch("/comments/{id}", commentH.Update)
 			r.Delete("/comments/{id}", commentH.Delete)
 
+			// Global sprint dashboard: cross-project sprints for the requesting user.
+			r.Get("/sprints", sprintH.ListGlobal)
+
 			// Projects
 			r.Get("/projects", projectH.List)
 			r.With(middleware.RequireRole("admin")).Get("/projects/archived", projectH.ListArchived)

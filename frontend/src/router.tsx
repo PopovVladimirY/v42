@@ -18,6 +18,7 @@ import { BacklogPage } from '@/pages/BacklogPage';
 import { EpicsPage } from '@/pages/EpicsPage';
 import { SprintsPage } from '@/pages/SprintsPage';
 import { SprintDetailPage } from '@/pages/SprintDetailPage';
+import { MySprintsPage } from '@/pages/MySprintsPage';
 
 import { BacklogItemDetailPage } from '@/pages/BacklogItemDetailPage';
 import { AllProjectsPage } from '@/pages/AllProjectsPage';
@@ -39,7 +40,8 @@ export const router = createBrowserRouter([
       {
         element: <AppShell />,
         children: [
-          { index: true, element: <Navigate to="/teams" replace /> },
+          { index: true, element: <Navigate to="/sprints" replace /> },
+          { path: '/sprints', element: <MySprintsPage /> },
           { path: '/teams', element: <TeamsPage /> },
           { path: '/teams/:id', element: <TeamDetailPage /> },
           { path: '/teams/:id/projects', element: <ProjectsPage /> },

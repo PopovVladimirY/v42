@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -132,13 +133,18 @@ func (h *authHandlers) Me(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	// Throttled last-active ping -- fire-and-forget, never blocks the response.
+	go func(userID string) {
+		_ = h.svc.Users.UpdateLastActive(context.Background(), userID)
+	}(claims.UserID)
 	respond(w, http.StatusOK, u)
 }
 
 // patchMeRequest is the body for PATCH /auth/me.
 type patchMeRequest struct {
-	Theme              *string `json:"theme"`
-	IdleTimeoutMinutes *int    `json:"idle_timeout_minutes"`
+	Theme              *string         `json:"theme"`
+	IdleTimeoutMinutes *int            `json:"idle_timeout_minutes"`
+	UiSettings         json.RawMessage `json:"ui_settings"`
 }
 
 // valid themes -- kept in sync with DB CHECK constraint and frontend THEMES const.
@@ -164,7 +170,7 @@ func (h *authHandlers) PatchMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Nothing to update.
-	if body.Theme == nil && body.IdleTimeoutMinutes == nil {
+	if body.Theme == nil && body.IdleTimeoutMinutes == nil && len(body.UiSettings) == 0 {
 		respondErr(w, http.StatusBadRequest, "BAD_REQUEST", "no fields to update")
 		return
 	}
@@ -192,6 +198,15 @@ func (h *authHandlers) PatchMe(w http.ResponseWriter, r *http.Request) {
 		u, err := h.svc.Users.UpdateUserIdleTimeout(r.Context(), claims.UserID, *body.IdleTimeoutMinutes)
 		if err != nil {
 			respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update idle timeout")
+			return
+		}
+		lastUser = u
+	}
+
+	if len(body.UiSettings) > 0 {
+		u, err := h.svc.Users.UpdateSettings(r.Context(), claims.UserID, body.UiSettings)
+		if err != nil {
+			respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update UI settings")
 			return
 		}
 		lastUser = u

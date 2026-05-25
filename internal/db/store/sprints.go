@@ -30,6 +30,15 @@ type Sprint struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
+// GlobalSprint extends Sprint with cross-project fields and item counts.
+type GlobalSprint struct {
+	Sprint
+	ProjectName string `json:"project_name"`
+	TeamName    string `json:"team_name"`
+	TotalItems  int64  `json:"total_items"`
+	DoneItems   int64  `json:"done_items"`
+}
+
 // SprintItem is a backlog item summarised for sprint view.
 type SprintItem struct {
 	ID            string    `json:"id"`
@@ -346,6 +355,64 @@ func (s *SprintStore) ListItems(ctx context.Context, sprintID string) ([]SprintI
 		item.SkillRequired = skillRequired
 		item.AddedAt = addedAt.Time
 		out = append(out, item)
+	}
+	return out, nil
+}
+
+// ListGlobalForUser returns sprints of the given status for all projects the user is a member of.
+func (s *SprintStore) ListGlobalForUser(ctx context.Context, status, userID string) ([]*GlobalSprint, error) {
+	uid, err := parseUUID(userID)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	rows, err := s.q.ListActiveSprintsByUser(ctx, dbgen.ListActiveSprintsByUserParams{
+		Column1: dbgen.SprintStatus(status),
+		UserID:  uid,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return buildGlobalSprints(ctx, s, rows)
+}
+
+// ListGlobalAdmin returns sprints of the given status across all projects (admin view).
+func (s *SprintStore) ListGlobalAdmin(ctx context.Context, status string) ([]*GlobalSprint, error) {
+	rows, err := s.q.ListAllActiveSprints(ctx, dbgen.SprintStatus(status))
+	if err != nil {
+		return nil, err
+	}
+	// Convert to shared row shape
+	mapped := make([]dbgen.ListActiveSprintsByUserRow, len(rows))
+	for i, r := range rows {
+		mapped[i] = dbgen.ListActiveSprintsByUserRow{
+			ID: r.ID, SprintNumber: r.SprintNumber, ProjectID: r.ProjectID,
+			TeamID: r.TeamID, Name: r.Name, Goal: r.Goal, Status: r.Status,
+			StartDate: r.StartDate, EndDate: r.EndDate, CapacityHours: r.CapacityHours,
+			OrderIndex: r.OrderIndex, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+			ProjectName: r.ProjectName, TeamName: r.TeamName,
+		}
+	}
+	return buildGlobalSprints(ctx, s, mapped)
+}
+
+// buildGlobalSprints converts sqlc rows to GlobalSprint slice, fetching item counts per sprint.
+func buildGlobalSprints(ctx context.Context, s *SprintStore, rows []dbgen.ListActiveSprintsByUserRow) ([]*GlobalSprint, error) {
+	out := make([]*GlobalSprint, 0, len(rows))
+	for _, r := range rows {
+		sp := buildSprint(r.ID, r.SprintNumber, r.ProjectID, r.TeamID, r.Name, r.Goal, r.Status,
+			r.StartDate, r.EndDate, r.CapacityHours, r.OrderIndex, r.CreatedAt, r.UpdatedAt)
+		counts, err := s.q.CountSprintItems(ctx, r.ID)
+		if err != nil {
+			counts.TotalItems = 0
+			counts.DoneItems = 0
+		}
+		out = append(out, &GlobalSprint{
+			Sprint:      sp,
+			ProjectName: r.ProjectName,
+			TeamName:    r.TeamName,
+			TotalItems:  counts.TotalItems,
+			DoneItems:   counts.DoneItems,
+		})
 	}
 	return out, nil
 }

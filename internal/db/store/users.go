@@ -4,7 +4,9 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -119,6 +121,11 @@ func (s *UserStore) UpdateTheme(ctx context.Context, userID, theme string) (*dom
 		}
 		return nil, err
 	}
+	var lastActive *time.Time
+	if row.LastActiveAt.Valid {
+		t := row.LastActiveAt.Time
+		lastActive = &t
+	}
 	return &domain.User{
 		ID:                 uuidToString(row.ID),
 		Email:              row.Email,
@@ -129,6 +136,8 @@ func (s *UserStore) UpdateTheme(ctx context.Context, userID, theme string) (*dom
 		AvatarURL:          row.AvatarUrl,
 		Theme:              row.Theme,
 		IdleTimeoutMinutes: int(row.IdleTimeoutMinutes),
+		UiSettings:         json.RawMessage(row.UiSettings),
+		LastActiveAt:       lastActive,
 		CreatedAt:          row.CreatedAt.Time,
 		UpdatedAt:          row.UpdatedAt.Time,
 	}, nil
@@ -182,6 +191,11 @@ func (s *UserStore) UpdateUserIdleTimeout(ctx context.Context, userID string, mi
 		}
 		return nil, err
 	}
+	var lastActive *time.Time
+	if row.LastActiveAt.Valid {
+		t := row.LastActiveAt.Time
+		lastActive = &t
+	}
 	return &domain.User{
 		ID:                 uuidToString(row.ID),
 		Email:              row.Email,
@@ -192,9 +206,58 @@ func (s *UserStore) UpdateUserIdleTimeout(ctx context.Context, userID string, mi
 		AvatarURL:          row.AvatarUrl,
 		Theme:              row.Theme,
 		IdleTimeoutMinutes: int(row.IdleTimeoutMinutes),
+		UiSettings:         json.RawMessage(row.UiSettings),
+		LastActiveAt:       lastActive,
 		CreatedAt:          row.CreatedAt.Time,
 		UpdatedAt:          row.UpdatedAt.Time,
 	}, nil
+}
+
+// UpdateSettings saves the user's ui_settings JSONB blob.
+func (s *UserStore) UpdateSettings(ctx context.Context, userID string, settings json.RawMessage) (*domain.User, error) {
+	uid, err := parseUUID(userID)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	row, err := s.q.UpdateUserSettings(ctx, dbgen.UpdateUserSettingsParams{
+		ID:         uid,
+		UiSettings: []byte(settings),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	var lastActive *time.Time
+	if row.LastActiveAt.Valid {
+		t := row.LastActiveAt.Time
+		lastActive = &t
+	}
+	return &domain.User{
+		ID:                 uuidToString(row.ID),
+		Email:              row.Email,
+		DisplayName:        row.DisplayName,
+		Role:               string(row.Role),
+		IsActive:           row.IsActive,
+		MustChangePassword: row.MustChangePassword,
+		AvatarURL:          row.AvatarUrl,
+		Theme:              row.Theme,
+		IdleTimeoutMinutes: int(row.IdleTimeoutMinutes),
+		UiSettings:         json.RawMessage(row.UiSettings),
+		LastActiveAt:       lastActive,
+		CreatedAt:          row.CreatedAt.Time,
+		UpdatedAt:          row.UpdatedAt.Time,
+	}, nil
+}
+
+// UpdateLastActive bumps last_active_at for a user (throttled: at most once per minute).
+func (s *UserStore) UpdateLastActive(ctx context.Context, userID string) error {
+	uid, err := parseUUID(userID)
+	if err != nil {
+		return nil // ignore malformed ID -- fire-and-forget caller doesn't care
+	}
+	return s.q.UpdateUserLastActive(ctx, uid)
 }
 
 // -- pgtype helpers reused from auth.go

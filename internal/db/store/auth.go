@@ -3,6 +3,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -71,8 +72,16 @@ func (s *UserStore) GetByID(ctx context.Context, id string) (*domain.User, error
 		AvatarURL:          row.AvatarUrl,
 		Theme:              row.Theme,
 		IdleTimeoutMinutes: int(row.IdleTimeoutMinutes),
-		CreatedAt:          row.CreatedAt.Time,
-		UpdatedAt:          row.UpdatedAt.Time,
+		UiSettings:         json.RawMessage(row.UiSettings),
+		LastActiveAt: func() *time.Time {
+			if row.LastActiveAt.Valid {
+				t := row.LastActiveAt.Time
+				return &t
+			}
+			return nil
+		}(),
+		CreatedAt: row.CreatedAt.Time,
+		UpdatedAt: row.UpdatedAt.Time,
 	}, nil
 }
 

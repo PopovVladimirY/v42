@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -39,17 +40,19 @@ var (
 
 // User is the domain user without the password hash (safe to pass to handlers).
 type User struct {
-	ID                  string    `json:"id"`
-	Email               string    `json:"email"`
-	DisplayName         string    `json:"display_name"`
-	Role                string    `json:"role"`
-	IsActive            bool      `json:"is_active"`
-	MustChangePassword  bool      `json:"must_change_password"`
-	AvatarURL           *string   `json:"avatar_url"`
-	Theme               string    `json:"theme"`
-	IdleTimeoutMinutes  int       `json:"idle_timeout_minutes"`
-	CreatedAt           time.Time `json:"created_at"`
-	UpdatedAt           time.Time `json:"updated_at"`
+	ID                  string          `json:"id"`
+	Email               string          `json:"email"`
+	DisplayName         string          `json:"display_name"`
+	Role                string          `json:"role"`
+	IsActive            bool            `json:"is_active"`
+	MustChangePassword  bool            `json:"must_change_password"`
+	AvatarURL           *string         `json:"avatar_url"`
+	Theme               string          `json:"theme"`
+	IdleTimeoutMinutes  int             `json:"idle_timeout_minutes"`
+	UiSettings          json.RawMessage `json:"ui_settings,omitempty"`
+	LastActiveAt        *time.Time      `json:"last_active_at,omitempty"`
+	CreatedAt           time.Time       `json:"created_at"`
+	UpdatedAt           time.Time       `json:"updated_at"`
 }
 
 // StoredUser includes the password hash -- only used inside Login for verification.
@@ -76,6 +79,8 @@ type UserRepo interface {
 	UpdateTheme(ctx context.Context, userID, theme string) (*User, error)
 	UpdateUserIdleTimeout(ctx context.Context, userID string, minutes int) (*User, error)
 	ChangePassword(ctx context.Context, userID, passwordHash string, mustChange bool) (*User, error)
+	UpdateSettings(ctx context.Context, userID string, settings json.RawMessage) (*User, error)
+	UpdateLastActive(ctx context.Context, userID string) error
 }
 
 // TokenRepo is the storage interface for refresh token operations.

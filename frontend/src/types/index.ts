@@ -2,6 +2,14 @@
 
 export type UserRole = 'admin' | 'maintainer' | 'developer' | 'tester' | 'observer';
 
+export interface UiSettings {
+  default_sprint_tab?: 'board' | 'backlog' | 'tests' | 'capacity';
+  sprint_group_by?: 'by_project' | 'by_team' | 'flat';
+  backlog_group_by?: 'epic' | 'type' | 'status';
+  backlog_default_filter?: string;
+  sidebar_collapsed?: boolean;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -13,6 +21,8 @@ export interface User {
   avatar_url?: string;
   theme?: string;
   idle_timeout_minutes: number;
+  ui_settings?: UiSettings;
+  last_active_at?: string;
   created_at: string;
 }
 

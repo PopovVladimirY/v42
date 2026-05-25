@@ -445,3 +445,35 @@ func (h *sprintHandlers) RemoveItem(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// ListGlobal handles GET /api/v1/sprints -- cross-project sprint dashboard.
+// Admins and maintainers see all sprints; regular users see only their teams' sprints.
+func (h *sprintHandlers) ListGlobal(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFromContext(r.Context())
+	if claims == nil {
+		respondErr(w, http.StatusUnauthorized, "UNAUTHORIZED", "not authenticated")
+		return
+	}
+	status := r.URL.Query().Get("status")
+	if status == "" {
+		status = "active"
+	}
+	if !validSprintStatus[status] {
+		respondErr(w, http.StatusBadRequest, "BAD_REQUEST", "invalid status")
+		return
+	}
+	var (
+		sprints []*store.GlobalSprint
+		err     error
+	)
+	if claims.Role == "admin" || claims.Role == "maintainer" {
+		sprints, err = h.sprints.ListGlobalAdmin(r.Context(), status)
+	} else {
+		sprints, err = h.sprints.ListGlobalForUser(r.Context(), status, claims.UserID)
+	}
+	if err != nil {
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to list sprints")
+		return
+	}
+	respond(w, http.StatusOK, sprints)
+}

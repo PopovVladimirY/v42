@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import { authApi } from '@/api/endpoints/auth';
 import { useAuthStore } from '@/hooks/useAuth';
 import { BubbleCanvas } from '@/components/BubbleCanvas';
+import { useNavigationStore } from '@/hooks/useNavigationStore';
 
 const schema = z.object({
   email: z.string().email('Invalid email address'),
@@ -51,8 +52,9 @@ export function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<FormData>({ resolver: zodResolver(schema) });
 
-  // After login, return to the page the user tried to visit
-  const from = (location.state as { from?: Location } | null)?.from?.pathname ?? '/';
+  // After login, return to the page the user tried to visit, then last known route, then /sprints
+  const lastRoute = useNavigationStore.getState().lastRoute;
+  const from = (location.state as { from?: Location } | null)?.from?.pathname ?? lastRoute ?? '/sprints';
 
   async function onSubmit(data: FormData) {
     setServerError(null);
