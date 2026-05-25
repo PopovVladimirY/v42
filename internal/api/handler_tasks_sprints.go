@@ -446,6 +446,41 @@ func (h *sprintHandlers) RemoveItem(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Close handles POST /api/v1/projects/{project_id}/sprints/{id}/close.
+// Body (optional): { "carry_to_sprint_id": "uuid" }
+// Moves unclosed items to the target sprint and marks current sprint as completed.
+func (h *sprintHandlers) Close(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var body struct {
+		CarryToSprintID string `json:"carry_to_sprint_id"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 512)
+	_ = json.NewDecoder(r.Body).Decode(&body) // body is optional
+
+	carried, err := h.sprints.Close(r.Context(), id, body.CarryToSprintID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "sprint or target sprint not found")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to carry over items")
+		return
+	}
+
+	completed := "completed"
+	s, err := h.sprints.Update(r.Context(), id, nil, nil, &completed, nil, nil, nil)
+	if err != nil {
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to mark sprint as completed")
+		return
+	}
+
+	respond(w, http.StatusOK, map[string]any{
+		"sprint":              s,
+		"carried_over":        carried,
+		"carry_to_sprint_id":  body.CarryToSprintID,
+	})
+}
+
 // ListGlobal handles GET /api/v1/sprints -- cross-project sprint dashboard.
 // Admins and maintainers see all sprints; regular users see only their teams' sprints.
 func (h *sprintHandlers) ListGlobal(w http.ResponseWriter, r *http.Request) {

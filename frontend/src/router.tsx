@@ -17,10 +17,17 @@ import { ProjectSubProjectsPage } from '@/pages/ProjectSubProjectsPage';
 import { BacklogPage } from '@/pages/BacklogPage';
 import { EpicsPage } from '@/pages/EpicsPage';
 import { SprintsPage } from '@/pages/SprintsPage';
-import { SprintDetailPage } from '@/pages/SprintDetailPage';
+import { SprintShell, SprintRedirect } from '@/pages/SprintShell';
+import { SprintBoardTab } from '@/pages/SprintBoardTab';
+import { SprintBacklogTab } from '@/pages/SprintBacklogTab';
+import { SprintCapacityTab } from '@/pages/SprintCapacityTab';
+import { SprintRetroTab } from '@/pages/SprintRetroTab';
+import { SprintTestsTab } from '@/pages/SprintTestsTab';
 import { MySprintsPage } from '@/pages/MySprintsPage';
 
 import { BacklogItemDetailPage } from '@/pages/BacklogItemDetailPage';
+import { TaskDetailPage } from '@/pages/TaskDetailPage';
+import { TestDetailPage } from '@/pages/TestDetailPage';
 import { AllProjectsPage } from '@/pages/AllProjectsPage';
 
 export const router = createBrowserRouter([
@@ -62,9 +69,22 @@ export const router = createBrowserRouter([
               { index: true, element: <Navigate to="backlog" replace /> },
               { path: 'backlog', element: <BacklogPage /> },
               { path: 'backlog/:itemId', element: <BacklogItemDetailPage /> },
+              { path: 'backlog/:itemId/tasks/:taskId', element: <TaskDetailPage /> },
+              { path: 'tests/:testId', element: <TestDetailPage /> },
               { path: 'epics', element: <EpicsPage /> },
               { path: 'sprints', element: <SprintsPage /> },
-              { path: 'sprints/:sprintId', element: <SprintDetailPage /> },
+              {
+                path: 'sprints/:sprintId',
+                element: <SprintShell />,
+                children: [
+                  { index: true, element: <SprintRedirect /> },
+                  { path: 'board',     element: <SprintBoardTab /> },
+                  { path: 'backlog',   element: <SprintBacklogTab /> },
+                  { path: 'tests',     element: <SprintTestsTab /> },
+                  { path: 'capacity',  element: <SprintCapacityTab /> },
+                  { path: 'retro',     element: <SprintRetroTab /> },
+                ],
+              },
               { path: 'tree', element: <ProjectSubProjectsPage /> },
               { path: 'overview', element: <ProjectOverviewPage /> },
             ],

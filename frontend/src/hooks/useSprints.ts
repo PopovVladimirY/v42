@@ -118,6 +118,21 @@ export function useRemoveSprintItem(projectId: string, sprintId: string) {
   });
 }
 
+// ---------- Close sprint ----------
+
+export function useCloseSprint(projectId: string, sprintId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (carryToSprintId?: string) =>
+      sprintsApi.close(projectId, sprintId, carryToSprintId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: sprintKeys.all(projectId) });
+      qc.invalidateQueries({ queryKey: sprintKeys.one(projectId, sprintId) });
+      qc.invalidateQueries({ queryKey: sprintKeys.items(projectId, sprintId) });
+    },
+  });
+}
+
 // ---------- Handy: status badge metadata ----------
 
 export const SPRINT_STATUS_LABEL: Record<Sprint['status'], string> = {

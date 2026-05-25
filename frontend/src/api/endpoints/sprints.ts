@@ -30,6 +30,7 @@ export interface SprintItem {
   skill_required?: string;
   ac_steps?: string;
   ac_expected?: string;
+  clarity: string;
   added_at: string;
 }
 
@@ -83,5 +84,11 @@ export const sprintsApi = {
   removeItem: (projectId: string, sprintId: string, backlogItemId: string) =>
     client.delete<ApiResponse<null>>(
       `/projects/${projectId}/sprints/${sprintId}/items/${backlogItemId}`
+    ),
+
+  close: (projectId: string, sprintId: string, carryToSprintId?: string) =>
+    client.post<ApiResponse<{ sprint: Sprint; carried_over: number; carry_to_sprint_id: string }>>(
+      `/projects/${projectId}/sprints/${sprintId}/close`,
+      { carry_to_sprint_id: carryToSprintId ?? '' }
     ),
 };

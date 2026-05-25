@@ -62,6 +62,8 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 	sprintResults := store.NewSprintTestStore(queries)
 	sprintH := &sprintHandlers{sprints: store.NewSprintStore(queries, pool), results: sprintResults}
 	resultH := &sprintResultHandlers{results: sprintResults}
+	sprintCapacityH := &sprintCapacityHandlers{q: queries}
+	retroH := &retroHandlers{q: queries}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", healthHandler(pool))
@@ -196,6 +198,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 				r.With(middleware.RequireRole("admin", "maintainer")).Post("/sprints", sprintH.Create)
 				r.With(middleware.RequireRole("admin", "maintainer")).Patch("/sprints/{id}", sprintH.Update)
 				r.With(middleware.RequireRole("admin", "maintainer")).Delete("/sprints/{id}", sprintH.Delete)
+				r.With(middleware.RequireRole("admin", "maintainer")).Post("/sprints/{id}/close", sprintH.Close)
 				r.Get("/sprints/{id}/items", sprintH.ListItems)
 				r.Post("/sprints/{id}/items", sprintH.AddItem)
 				r.Delete("/sprints/{id}/items/{backlog_item_id}", sprintH.RemoveItem)
@@ -204,6 +207,27 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 				r.Post("/sprints/{id}/test-results/init", resultH.InitResults)
 				r.Get("/sprints/{id}/test-results", resultH.ListResults)
 				r.Patch("/sprints/{id}/test-results/{result_id}", resultH.UpdateResult)
+
+				// Sprint capacity -- sub-router avoids wildcard {user_id} shadowing literal /init
+				r.Route("/sprints/{id}/capacity", func(r chi.Router) {
+					r.Get("/", sprintCapacityH.GetCapacity)
+					r.Put("/", sprintCapacityH.PutCapacity)
+					r.Post("/init", sprintCapacityH.InitCapacity)
+					r.Patch("/{user_id}", sprintCapacityH.PatchCapacity)
+				})
+				r.Get("/velocity", sprintCapacityH.GetVelocity)
+
+				// Sprint retrospective -- sub-router avoids wildcard {retro_id} shadowing literal /close
+				r.Route("/sprints/{id}/retro", func(r chi.Router) {
+					r.Get("/", retroH.List)
+					r.Post("/", retroH.Create)
+					r.Post("/close", retroH.Close)
+					r.Patch("/{retro_id}", retroH.Update)
+					r.Delete("/{retro_id}", retroH.Delete)
+					r.Post("/{retro_id}/vote", retroH.Vote)
+					r.Delete("/{retro_id}/vote", retroH.Unvote)
+					r.Patch("/{retro_id}/resolve", retroH.Resolve)
+				})
 
 				// Test specs: project-level
 				r.Get("/tests", testH.ListProjectTests)

@@ -5,6 +5,9 @@ export const tasksApi = {
   list: (projectId: string, itemId: string) =>
     client.get<ApiResponse<Task[]>>(`/projects/${projectId}/backlog/${itemId}/tasks`),
 
+  get: (projectId: string, itemId: string, taskId: string) =>
+    client.get<ApiResponse<Task>>(`/projects/${projectId}/backlog/${itemId}/tasks/${taskId}`),
+
   create: (projectId: string, itemId: string, data: {
     title: string;
     description?: string;

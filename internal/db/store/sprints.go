@@ -53,6 +53,7 @@ type SprintItem struct {
 	SkillRequired *string   `json:"skill_required"`
 	AcSteps       *string   `json:"ac_steps"`
 	AcExpected    *string   `json:"ac_expected"`
+	Clarity       string    `json:"clarity"`
 	AddedAt       time.Time `json:"added_at"`
 }
 
@@ -324,6 +325,7 @@ func (s *SprintStore) ListItems(ctx context.Context, sprintID string) ([]SprintI
 			bi.priority, bi.estimate, bi.assignee_id::text,
 			u.display_name,
 			bi.skill_required::text, bi.ac_steps, bi.ac_expected,
+			COALESCE(bi.clarity::text, 'unknown'),
 			si.added_at
 		FROM sprint_items si
 		JOIN backlog_items bi ON bi.id = si.backlog_item_id
@@ -346,6 +348,7 @@ func (s *SprintStore) ListItems(ctx context.Context, sprintID string) ([]SprintI
 			&item.Priority, &item.Estimate, &assigneeID,
 			&assigneeName,
 			&skillRequired, &item.AcSteps, &item.AcExpected,
+			&item.Clarity,
 			&addedAt,
 		); err != nil {
 			return nil, err
@@ -357,6 +360,73 @@ func (s *SprintStore) ListItems(ctx context.Context, sprintID string) ([]SprintI
 		out = append(out, item)
 	}
 	return out, nil
+}
+
+// Close moves unclosed sprint items to a target sprint (if provided) and marks the sprint completed.
+// Returns the number of items that were carried over.
+func (s *SprintStore) Close(ctx context.Context, sprintID, targetSprintID string) (int, error) {
+	sid, err := parseUUID(sprintID)
+	if err != nil {
+		return 0, domain.ErrNotFound
+	}
+
+	// Collect unclosed item IDs.
+	const qItems = `
+		SELECT si.backlog_item_id
+		FROM sprint_items si
+		JOIN backlog_items bi ON bi.id = si.backlog_item_id
+		WHERE si.sprint_id = $1
+		  AND bi.status NOT IN ('done', 'cancelled')
+	`
+	rows, err := s.pool.Query(ctx, qItems, sid)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	var itemUUIDs []pgtype.UUID
+	for rows.Next() {
+		var bid pgtype.UUID
+		if err := rows.Scan(&bid); err != nil {
+			return 0, err
+		}
+		itemUUIDs = append(itemUUIDs, bid)
+	}
+	rows.Close()
+
+	if len(itemUUIDs) == 0 || targetSprintID == "" {
+		return len(itemUUIDs), nil
+	}
+
+	tid, err := parseUUID(targetSprintID)
+	if err != nil {
+		return 0, domain.ErrNotFound
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	for _, bid := range itemUUIDs {
+		if _, err := tx.Exec(ctx,
+			`DELETE FROM sprint_items WHERE sprint_id = $1 AND backlog_item_id = $2`,
+			sid, bid,
+		); err != nil {
+			return 0, err
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO sprint_items (sprint_id, backlog_item_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+			tid, bid,
+		); err != nil {
+			return 0, err
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	return len(itemUUIDs), nil
 }
 
 // ListGlobalForUser returns sprints of the given status for all projects the user is a member of.

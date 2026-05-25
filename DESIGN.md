@@ -3190,15 +3190,16 @@ Sprint Review
 
 #### 1. Sprint Page → вкладка "Capacity"
 
-Существует. Сейчас: пустая заглушка или basic view. Наполняем:
+Детальный дизайн всей страницы спринта с вкладками -- в разделе **Sprint Page** ниже.
+Здесь краткая сводка по трём режимам вкладки Capacity:
 
 | Фаза спринта | UI |
 |---|---|
-| `planning` | Таблица участников: имя, planned_hours (editable), скилы. Кнопка "Auto-fill from team defaults". Строка итогов. |
-| `active` | Read-only. Planned hours зафиксированы. |
-| `completed` | Двойная колонка: planned / actual (editable). Diff = actual − planned подсвечен (красный если < 0). Кнопка "Finalize". |
+| `planning` | Таблица участников: имя, planned_hours (editable), скилы. Кнопка "Auto-fill from team defaults". Строка итогов. Warnings panel. |
+| `active` | Read-only. Planned hours зафиксированы. Skill breakdown виден. |
+| `review` | Двойная колонка: planned / actual (editable). Diff = actual − planned подсвечен. Кнопка "Finalize & Close". |
 
-Skill breakdown panel под таблицей: стектовый бар по скилам (planned vs actual).
+Skill breakdown panel под таблицей: горизонтальные полосы по скилам (planned hours).
 
 #### 2. Project Analytics Page (новая страница, Phase 5)
 
@@ -3233,10 +3234,12 @@ ProjectLayout
   ├── Board          (существует)
   ├── Backlog        (существует)
   ├── Sprints        (существует)
-  │     └── Sprint [N]
-  │           ├── Items   (существует)
-  │           ├── Tests   (существует)
-  │           └── Capacity  ← НОВОЕ (наполняем)
+  │     └── Sprint [I-NNN]      /projects/:pid/sprints/:sid/...
+  │           ├── Board         /board       ← канбан (существует, наполняем)
+  │           ├── Backlog       /backlog     ← таблица items спринта
+  │           ├── Tests         /tests       ← acceptance tests (существует)
+  │           ├── Capacity      /capacity    ← загрузка команды (НОВОЕ)
+  │           └── Retrospective /retro       ← ретро (НОВОЕ)
   ├── Tests          (существует)
   └── Analytics      ← НОВАЯ страница (Phase 5)
         ├── Velocity
@@ -3272,6 +3275,268 @@ ProjectLayout
 | 6 | Навигация: добавить `Analytics` в project nav | Просто |
 
 **Общая оценка:** Backend -- 2-3 дня. Frontend -- 3-4 дня.
+
+---
+
+### Capacity и скилы: два параллельных измерения
+
+**Принцип:** capacity -- это просто часы. Без весовых коэффициентов по скилам.
+
+Взвешивание красиво на бумаге, но не работает на практике: разработчик делает
+что нужно, а не только то, что по скилу. Junior закрывает задачу Senior-а (медленнее,
+но закрывает). Взвешенные "эффективные часы" -- это иллюзия точности там, где её нет.
+
+Поэтому два измерения живут параллельно и не смешиваются:
+
+**Capacity (часы):**
+```
+planned_capacity(sprint) = SUM(planned_hours) по всем участникам
+actual_capacity(sprint)  = SUM(actual_hours)  по всем участникам
+velocity_normalized      = completed_items / actual_capacity * 100
+```
+
+Один факт, одна формула, никакой магии. Нормализованная velocity сопоставима
+между спринтами разного размера и состава.
+
+**Skill coverage (скилы -- отдельно):**
+```sql
+-- Сколько часов каждого скила есть в этом спринте (raw, без весов):
+SELECT sk.name, SUM(sc.planned_hours) AS skill_hours
+FROM sprint_capacity sc
+JOIN member_skills ms ON ms.user_id = sc.user_id
+JOIN skills sk        ON sk.id = ms.skill_id
+WHERE sc.sprint_id = $1
+GROUP BY sk.id, sk.name
+ORDER BY skill_hours DESC;
+```
+
+Это показывает структуру команды, а не "эффективность". Например:
+"В этом спринте 120h Go-разработчиков и 40h QA" -- полезная информация при
+планировании эпика. Но в velocity эти числа не участвуют.
+
+**Что показывать в UI:**
+- Основная таблица: участники, planned/actual hours, notes
+- Под таблицей: skill coverage bar -- горизонтальные полосы по скилам (сколько часов)
+- В аналитике: skill coverage меняется от спринта к спринту (StackedBarChart)
+
+Skill coverage отвечает на "кто работал?", а не "насколько эффективно?"
+Эффективность -- это velocity, нормализованная на суммарные часы.
+
+---
+
+### Алгоритм автозаполнения (`POST /capacity/init`)
+
+```
+1. Определить длину спринта в неделях:
+     weeks = CEIL((sprint.end_date - sprint.start_date) / 7)
+
+2. Найти всех участников команды спринта:
+     SELECT tm.user_id, tm.capacity_hours
+     FROM team_members tm
+     WHERE tm.team_id = sprint.team_id
+
+3. Для каждого участника вставить строку:
+     planned_hours = tm.capacity_hours * weeks
+     actual_hours  = NULL  (заполняется на review)
+     notes         = ''
+
+4. Если строка уже есть (re-init) → UPDATE только если planned_hours IS NULL
+   (не перезаписывать ручные правки).
+
+5. Обновить sprints.capacity_hours = SUM(planned_hours) для этого спринта.
+```
+
+Граничный случай: `capacity_hours = 0` у участника → строку создать, но с 0.
+Пользователь сам исправит если нужно (или нет -- значит человек не участвует).
+
+Идемпотентность: повторный POST /init не ломает уже введённые данные.
+
+---
+
+### Предупреждения при планировании
+
+Эвристики для UX-предупреждений на вкладке Capacity во время planning:
+
+| Условие | Уровень | Сообщение |
+|---------|---------|-----------|
+| `SUM(planned_hours) > sprint.capacity_hours * 1.2` | warning | "Sprint overloaded: planned exceeds default by >20%" |
+| `SUM(planned_hours) < sprint.capacity_hours * 0.5` | info | "Sprint underloaded: less than 50% of team capacity planned" |
+| Участник без planned_hours, но в команде | info | "N team members have no planned hours" |
+| `skill_coverage(skill) = 0h` для скила в backlog | info | "No team members with skill [X] assigned to this sprint" |
+| История: последние 3 спринта actual < 0.7 * planned | warning | "Team consistently delivers 30%+ below plan -- consider adjusting defaults" |
+
+Предупреждения вычисляются на frontend из данных `GET /capacity` и
+`GET /velocity` (для исторических). Не хранятся в БД -- это UX-подсказки.
+
+---
+
+### Нормализованный Burndown
+
+Классический burndown: ось Y = оставшийся scope (items/points), ось X = дни.
+Проблема: если в середине спринта выяснилось что 2 человека уйдут раньше --
+идеальная линия burndown не меняется, хотя прогноз изменился.
+
+**Capacity-adjusted ideal line:**
+
+```
+remaining_ideal(day) =
+  total_scope * (1 - SUM(actual_hours up to day) / SUM(planned_hours total))
+```
+
+Как только `actual_hours` начинают отставать от плана (болезнь, отпуск),
+идеальная линия автоматически корректируется вниз.
+
+Реализация: вычисляется on-the-fly в компоненте BurndownChart.
+Данные: `GET /capacity` (для planned и daily actual) + `GET /sprint/items` (scope).
+`actual_hours` заполняются ежедневно или одним числом в Review -- оба варианта рабочие.
+Для ежедневного варианта нужна таблица `sprint_capacity_daily` (следующая фаза).
+
+---
+
+### Исторические тренды
+
+После 3+ завершённых спринтов появляется возможность считать тренды.
+
+**Velocity trend:** линейная регрессия по `velocity_normalized` последних N спринтов.
+Если slope > 0 -- команда ускоряется. Если < 0 -- деградация или сложность растёт.
+N = min(10, число completed спринтов). Хранить не нужно -- вычислять на frontend
+из `GET /velocity` ответа.
+
+**Capacity utilization trend:**
+```
+utilization(sprint) = SUM(actual_hours) / SUM(planned_hours) * 100
+```
+Если utilization стабильно < 80% -- команда overplanning. Если > 100% -- underplanning
+(люди работают больше чем планировали, это тревожный знак). Оба случая сигнализируют
+о необходимости пересмотреть `team_members.capacity_hours`.
+
+**Forecast capacity следующего спринта:**
+```
+forecast = ROUND(AVG(actual_hours) over last 3 sprints)
+```
+Показывать как "Suggested planned hours" при нажатии "Auto-fill" -- вместо
+тупого умножения capacity_hours * weeks. Более реалистично после первых спринтов.
+
+После 3 спринтов: переходить от `capacity_hours * weeks` к исторической средней.
+Параметр: `useHistoricalAverage: bool` (чекбокс в диалоге Auto-fill).
+
+---
+
+### Граничные случаи
+
+| Сценарий | Обработка |
+|----------|-----------|
+| Спринт без команды (`team_id IS NULL`) | `/capacity/init` возвращает 200 с пустым массивом + hint "no team assigned" |
+| `actual_hours > planned_hours * 2` | Разрешено (овертайм). Показывать visual diff красным. |
+| Спринт из 0 backlog items | velocity = 0, capacity отображается нормально |
+| Участник покинул команду после планирования | Строка в `sprint_capacity` остаётся (историческая запись). FK на `users`, не на `team_members`. |
+| Дробные часы | `NUMERIC(5,1)` -- шаг 0.5h. Ввод с шагом 0.5 в UI (input step="0.5"). |
+| Нулевая capacity у всего спринта | `velocity_normalized = NULL` (не 0, не Inf). Отображать как "--" в charts. |
+| Несколько команд в спринте | Текущая схема: `sprint.team_id` -- одна команда. Multi-team sprint -- Phase 6. |
+
+---
+
+### Стратегия тестирования
+
+#### Backend: Go тесты
+
+**Unit тесты** (без БД, мокаем store):
+
+```
+handler_sprint_capacity_test.go
+  - TestGetCapacity_Planning        OK: возвращает planned_hours, actual=null
+  - TestGetCapacity_Completed       OK: возвращает оба значения + diff
+  - TestPutCapacity_BulkUpsert      OK: создаёт/обновляет строки + обновляет sprints.capacity_hours
+  - TestPutCapacity_UnknownUser     400: user не в команде спринта
+  - TestPatchCapacity_NotFound      404: строки нет в таблице
+  - TestPatchCapacity_Forbidden     403: не member и не admin
+  - TestPostCapacityInit_NoTeam     200: пустой список, hint в ответе
+  - TestPostCapacityInit_Idempotent OK: повторный вызов не перезаписывает ручные данные
+  - TestPostCapacityInit_Duration   OK: planned = capacity_hours * ceil(weeks)
+
+store/sprint_capacity_test.go (интеграционные, требуют БД):
+  - TestUpsertAndList               round-trip: upsert → list → verify
+  - TestBulkInit                    корректно считает недели для разных длин спринта
+  - TestActualHoursUpdate           PATCH обновляет только actual, не трогает planned
+  - TestCascadeDelete               удаление спринта → каскад на sprint_capacity
+
+handler_velocity_test.go:
+  - TestGetVelocity_Empty           200: пустой массив для проекта без completed спринтов
+  - TestGetVelocity_Normalized      OK: velocity_normalized = items / actual_hours * 100
+  - TestGetVelocity_ZeroHours       velocity_normalized = null если actual_hours = 0
+```
+
+**Integration test** (сквозной через HTTP):
+```
+TestCapacityWorkflow:
+  1. POST /sprints (create sprint)
+  2. POST /capacity/init
+  3. GET /capacity → проверить planned_hours = capacity_hours * weeks
+  4. PATCH /sprints/:id (status=active)
+  5. GET /capacity → read-only флаг в ответе
+  6. PATCH /capacity/:uid (actual_hours=32)
+  7. PATCH /sprints/:id (status=completed)
+  8. GET /velocity → velocity_normalized присутствует
+```
+
+#### Frontend: Vitest + Testing Library
+
+```
+SprintCapacityPanel.test.tsx
+  - renders planning mode: editable inputs, auto-fill button
+  - renders active mode: inputs disabled, no save button
+  - renders completed mode: actual column editable, planned locked
+  - auto-fill: calls POST /init, refetches capacity
+  - save: PUT /capacity с правильным payload
+  - warning shown when SUM(planned) > capacity_hours * 1.2
+  - skill breakdown bar renders with correct proportions
+
+useSprintCapacity.test.ts
+  - invalidates query on PUT/PATCH
+  - handles 403 (non-member)
+
+ProjectAnalyticsPage.test.tsx
+  - renders VelocityChart with mocked data
+  - renders empty state when < 1 completed sprint
+  - velocity_normalized=null displayed as "--"
+```
+
+#### Что НЕ тестируем сейчас
+- WebGL/canvas (charts): только smoke test что компонент рендерится без падения
+- Реальные формулы регрессии тренда: достаточно snapshot-теста ответа API
+- CSV export (Phase 6)
+
+---
+
+### Миграция существующих спринтов
+
+Текущие спринты в БД имеют `capacity_hours` (одно число на спринт). Данных
+по участникам нет -- они не вводились. Это нормально.
+
+**Стратегия:** не мигрировать исторические данные. `sprint_capacity` остаётся пустой
+для старых спринтов. `GET /velocity` для старых спринтов вернёт `actual_hours = NULL`,
+`velocity_normalized = NULL`. Charts покажут "--" или пропустят точку на графике.
+
+С первого же нового спринта после деплоя -- полные данные.
+
+**Причина отказа от автомиграции:** нет данных кто сколько работал. Создать строки
+с `planned_hours = capacity_hours / team_size` можно, но это ложные данные. Лучше
+честный NULL чем искажённая история.
+
+---
+
+### Статус реализации
+
+| Компонент | Статус |
+|-----------|--------|
+| Migration 000020: `sprint_capacity` | ⬜ Не начато |
+| sqlc queries | ⬜ Не начато |
+| Backend handlers + routes | ⬜ Не начато |
+| Go тесты | ⬜ Не начато |
+| Hook `useSprintCapacity` | ⬜ Не начато |
+| `SprintCapacityPanel` (3 режима) | ⬜ Не начато |
+| `ProjectAnalyticsPage` | ⬜ Не начато |
+| Frontend тесты | ⬜ Не начато |
 
 ---
 
@@ -3395,7 +3660,7 @@ interface RecentSprint {
   sprint_name: string;
   project_id: string;
   project_name: string;
-  last_tab: 'board' | 'backlog' | 'tests' | 'capacity';
+  last_tab: 'board' | 'backlog' | 'tests' | 'capacity' | 'retro';
   visited_at: string; // ISO
 }
 ```
@@ -3565,6 +3830,480 @@ ALTER TABLE users
 | 9 | `useScrollRestore` hook | Просто |
 
 **Общая оценка:** Backend -- 1 день. Frontend -- 2-3 дня.
+
+---
+
+## Sprint Page
+
+### Концепция
+
+Страница спринта -- основное рабочее место команды. Не "управление спринтом",
+а именно "работа в спринте". Всё что нужно в течение дня -- в одном месте,
+без перехода на другие страницы проекта.
+
+Пять вкладок. Каждая -- своя точка зрения на один и тот же спринт.
+Они не дублируют, а дополняют друг друга.
+
+---
+
+### Sprint Header (постоянная шапка)
+
+Шапка отображается на всех вкладках. Не скрывается, не сворачивается.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  I-301  Sprint 14 · Hardening                          [ACTIVE]  ▾  │
+│  Team: Backend  ·  May 19 – Jun 1  ·  9 days left                   │
+│                                                                      │
+│  ████████████████░░░░  18/25 items done   [Board][Backlog][Tests]   │
+│                                           [Capacity][Retrospective]  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+Элементы шапки:
+- `I-NNN` + имя спринта -- кликабельно (копирует ссылку)
+- Статус badge: planning / active / review / completed (цвет из CSS vars)
+- `▾` -- dropdown быстрых действий: начать / перевести в review / закрыть спринт
+- Команда + даты + дней до конца (красный если < 3 дней)
+- Progress bar: закрытые items / всего в спринте (не story points)
+- Таб-навигация: горизонтальные кнопки, активная -- подсвечена через `var(--bg-active)`
+
+Шапка не делает дополнительных запросов -- данные получает из `GET /sprints/:id`
+который рендерит сама спринт-страница.
+
+---
+
+### Вкладка: Board (Канбан)
+
+**URL:** `/projects/:pid/sprints/:sid/board`
+
+Классический канбан. Основной рабочий вид во время активного спринта.
+
+#### Структура доски
+
+Колонки = статусы `backlog_item_status`:
+
+```
+┌─────────────────┬─────────────────┬─────────────────┬─────────────────┐
+│   To Do  (7)    │  In Progress(4) │   In Review (2) │   Done   (12)   │
+├─────────────────┼─────────────────┼─────────────────┼─────────────────┤
+│ ┌─────────────┐ │ ┌─────────────┐ │ ┌─────────────┐ │ ┌─────────────┐ │
+│ │ B-5138      │ │ │ B-5141      │ │ │ B-5129      │ │ │ B-5102      │ │
+│ │ Auth flow   │ │ │ Sprint API  │ │ │ User model  │ │ │ DB schema   │ │
+│ │ @alice  3sp │ │ │ @bob    5sp │ │ │ @carol  2sp │ │ │ @dan    8sp │ │
+│ │ E-1047  ●   │ │ │ E-1047  ●● │ │ │ E-1051  ○   │ │ │ E-1047  ●  │ │
+│ └─────────────┘ │ └─────────────┘ │ └─────────────┘ │ └─────────────┘ │
+│ ┌─────────────┐ │                 │                  │                 │
+│ │ + Add card  │ │                 │                  │                 │
+│ └─────────────┘ │                 │                  │                 │
+└─────────────────┴─────────────────┴─────────────────┴─────────────────┘
+```
+
+Карточка содержит:
+- `B-XXXX` (grey, мелкий) + заголовок
+- Assignee avatar (16px, initials если нет фото)
+- Story points (правый нижний угол, серый)
+- Epic badge (E-XXXX, цветная полоса слева от карточки)
+- Clarity dot: ● clear, ●● tacit, ○ foggy, ◌ chaotic
+
+#### DnD
+
+dnd-kit (уже в стеке). Перетащить карточку → изменить статус item.
+`PATCH /projects/:pid/backlog/:id` с `{status: 'in_progress'}`.
+Optimistic update: карточка перемещается мгновенно, откат при ошибке.
+
+#### Swimlanes
+
+Переключатель справа от заголовка: `Swimlanes: None / By Epic / By User`
+
+Состояние swimlanes живёт в URL: `?swimlanes=epic`
+Предпочтение сохраняется в `ui_settings.sprint_swimlanes`.
+
+При swimlane=epic: строки = эпики, карточки группируются под своим эпиком.
+При swimlane=user: строки = члены команды, карточки = их задачи.
+
+#### Добавление карточки
+
+Кнопка `+ Add card` внизу колонки "To Do":
+- Открывает inline форму: поле Title → Enter → создать + поместить в спринт
+- `POST /projects/:pid/backlog` с `{title, sprint_id}`
+
+Справа от доски -- свёрнутый sidebar "Project Backlog" (открывается кнопкой `≡`):
+- Список не-спринтовых items проекта со статусом `ready`
+- Drag карточки из sidebar → колонку доски → `POST /sprints/:sid/items/{bid}`
+
+#### Фильтры
+
+Строка над доской (компактная):
+`Filter: [Assignee ▾] [Epic ▾] [Clarity ▾]   [Clear filters]`
+
+Фильтры применяются на frontend из кешированных данных -- без нового запроса.
+
+---
+
+### Вкладка: Backlog (Таблица)
+
+**URL:** `/projects/:pid/sprints/:sid/backlog`
+
+Те же items что и на Board, но в табличном виде. Больше метаданных видно сразу.
+Удобно для грумминга, оценки, сортировки.
+
+#### Структура таблицы
+
+| # | ID | Title | Status | Assignee | Epic | Clarity | Points | AC |
+|---|----|-------|--------|----------|------|---------|--------|----|
+| ⠿ | B-5138 | Auth flow | To Do | @alice | E-1047 | ● | 3 | 2/5 |
+
+- `⠿` -- drag handle для ручного переупорядочивания (order_index)
+- ID -- кликабельно, открывает detail panel справа
+- Status -- кликабельный pill → dropdown смена статуса (inline, без modal)
+- AC -- принятые / всего acceptance criteria (мини прогресс)
+- Двойной клик на Title / Points → inline edit
+
+#### Группировка и фильтры
+
+Toolbar:
+```
+[Group by: None ▾]  [Filter: Status ▾  Epic ▾  Assignee ▾]  [+ Add item]
+```
+
+Group by: None / Epic / Assignee / Status / Clarity
+
+Состояние группировки в URL: `?group=epic`
+
+При клике `+ Add item` -- inline строка внизу таблицы (или конкретной группы).
+
+#### Detail Panel
+
+Клик на строку → выезжает right panel (40% ширины экрана):
+- Полное описание item
+- Список tasks
+- Acceptance criteria (чеклист)
+- История изменений
+- Кнопка "Remove from sprint" (только planning)
+
+---
+
+### Вкладка: Tests (Тесты)
+
+**URL:** `/projects/:pid/sprints/:sid/tests`
+
+Acceptance tests для всех items спринта. Одно место для QA.
+
+#### Структура
+
+Группировка по backlog item по умолчанию:
+
+```
+B-5138  Auth flow          [To Do]
+  ├── T-3001  User can log in with valid credentials     [pending]
+  ├── T-3002  Invalid password shows error               [pending]
+  └── T-3003  Session expires after 15 min              [pending]
+
+B-5141  Sprint API         [In Progress]
+  ├── T-3012  GET /sprints returns 200                   [passed] ✓
+  └── T-3013  PUT /capacity validates user membership    [failed] ✗ notes
+```
+
+Статусы теста: `pending` / `running` / `passed` / `failed` / `blocked` / `skipped`
+
+Кнопки: `Run` (pending → running), `Pass` (→ passed), `Fail` (открывает notes поле)
+
+#### Progress
+
+Строка над таблицей:
+```
+Tests: 4/12 passed   2 failed   6 pending      [Run All Pending]
+```
+
+`Run All Pending` -- помечает все pending как running. Не авто-проходит -- только
+сигнал QA что начали прогон. Статус каждого проставляется вручную.
+
+---
+
+### Вкладка: Capacity (Загрузка команды)
+
+**URL:** `/projects/:pid/sprints/:sid/capacity`
+
+Детальный дизайн в разделе **Capacity & Normalization** выше.
+
+Краткий layout страницы:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  Capacity                              [Auto-fill from defaults] │
+│                                                                  │
+│  Member          Planned   Actual    Delta    Skills             │
+│  ─────────────── ──────── ──────── ──────── ──────────────────  │
+│  Alice Ivanova    32.0h    28.5h    -3.5h   Go ●●●  QA ●●      │
+│  Bob Petrov       40.0h      --       --    Go ●●●● DevOps ●●  │
+│  Carol Smirnova   24.0h    24.0h     0.0h   QA ●●●● Py ●●     │
+│  ─────────────── ──────── ──────── ──────── ──────────────────  │
+│  Total            96.0h    52.5h    -43.5h                      │
+│                                                                  │
+│  Skill Breakdown                                                 │
+│  Go         ████████████████████ 72h                            │
+│  QA         ████████ 28h                                        │
+│  DevOps     ████ 16h                                            │
+│  Python     ██ 8h                                               │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+Режимы: planning (editable planned), active (read-only), review (editable actual).
+
+Warnings panel над таблицей при planning: контекстные подсказки (overload, gaps).
+
+---
+
+### Вкладка: Retrospective (Ретроспектива)
+
+**URL:** `/projects/:pid/sprints/:sid/retro`
+
+Доступна при любом статусе спринта, но наполняется в конце (review / completed).
+В фазе planning -- пуста с плейсхолдером "Ретро начнётся в конце спринта."
+
+#### Layout: три колонки + dot voting
+
+```
+┌───────────────────────┬───────────────────────┬───────────────────────┐
+│   Что получилось  (4) │  Что не получилось (3)│    Что улучшить   (2) │
+├───────────────────────┼───────────────────────┼───────────────────────┤
+│ ┌───────────────────┐ │ ┌───────────────────┐ │ ┌───────────────────┐ │
+│ │ Быстро задеплоили │ │ │ Review затянулось │ │ │ Добавить чеклист  │ │
+│ │ @alice    ●● 2    │ │ │ @bob       ● 1    │ │ │ @carol     ●● 2   │ │
+│ └───────────────────┘ │ └───────────────────┘ │ └───────────────────┘ │
+│ ┌───────────────────┐ │ ┌───────────────────┐ │                       │
+│ │ Хорошее покрытие  │ │ │ Не хватало QA     │ │    [+ Add item]       │
+│ │ тестами           │ │ │ мощностей         │ │                       │
+│ │ @carol     ● 1    │ │ │ @alice     ●● 2   │ │                       │
+│ └───────────────────┘ │ └───────────────────┘ │                       │
+│                       │                       │                       │
+│    [+ Add item]       │    [+ Add item]       │                       │
+└───────────────────────┴───────────────────────┴───────────────────────┘
+
+Action Items                                          [+ Create from retro]
+  ☐  Добавить QA в команду с Sprint 15              @alice  [link B-5200]
+  ☐  Автоматизировать review чеклист               @bob
+```
+
+#### Четвёртая колонка: Kudos (опциональная)
+
+Признание и благодарность коллегам. Не голосуется. Просто карточки.
+Переключатель "Show Kudos" -- скрыта по умолчанию, не засоряет основное ретро.
+
+#### Dot voting
+
+Каждый участник команды получает 5 голосов на всё ретро (не per-column).
+Клик на карточку -- `+1` голос. Ещё клик -- снять голос. Не более 1 голоса
+на одну карточку от одного пользователя.
+
+Голоса видны всем в реальном времени (SSE или optimistic + refresh). Сортировка
+по умолчанию: по убыванию голосов (самое важное наверх).
+
+Карточки сортируются по голосам автоматически. Переупорядочивание вручную -- нет.
+
+#### Action Items
+
+Список в нижней части страницы (не в колонках). Создаются двумя способами:
+1. `+ Create from retro` -- прямо из карточки ретро: открывает форму создания
+   backlog item, предзаполненной текстом карточки. Созданный item ссылается на ретро.
+2. `+ Add action` -- просто текст без привязки к backlog item (легковесный).
+
+Action Items имеют чекбокс `resolved`. При закрытии ретро (см. ниже) -- unresolved
+actions подсвечены.
+
+#### Закрытие ретро
+
+Фасилитатор (Scrum Master / Sprint Owner / Admin) нажимает "Close Retrospective":
+- Замораживает карточки (нельзя добавить/удалить/голосовать)
+- Нерешённые action items подсвечиваются
+- Ретро получает статус `closed` -- показывается серым header badge
+
+При статусе `closed` страница read-only. Карточки и голоса видны, но не редактируются.
+Action Items можно отмечать resolved даже после закрытия (работа продолжается).
+
+---
+
+### Схема данных: Retrospective
+
+```sql
+-- Migration 000022 (или следующий доступный номер)
+CREATE TYPE retro_category AS ENUM ('went_well', 'didnt_go_well', 'to_improve', 'kudos');
+
+CREATE TABLE retrospective_items (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    sprint_id   UUID NOT NULL REFERENCES sprints(id) ON DELETE CASCADE,
+    author_id   UUID NOT NULL REFERENCES users(id),
+    category    retro_category NOT NULL,
+    content     TEXT NOT NULL,
+    is_action   BOOLEAN NOT NULL DEFAULT FALSE,  -- action item flag
+    is_resolved BOOLEAN NOT NULL DEFAULT FALSE,  -- for action items
+    backlog_item_id UUID REFERENCES backlog_items(id) ON DELETE SET NULL,
+    is_closed   BOOLEAN NOT NULL DEFAULT FALSE,  -- frozen after retro close
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_retro_sprint ON retrospective_items(sprint_id);
+
+-- Dot voting: один голос от пользователя на карточку
+CREATE TABLE retrospective_votes (
+    retro_item_id UUID NOT NULL REFERENCES retrospective_items(id) ON DELETE CASCADE,
+    user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY (retro_item_id, user_id)
+);
+
+-- Статус ретро хранится в sprints: новое поле
+ALTER TABLE sprints ADD COLUMN retro_closed BOOLEAN NOT NULL DEFAULT FALSE;
+```
+
+Голоса считаются COUNT(*) FROM retrospective_votes GROUP BY retro_item_id.
+Агрегат денормализуем: отдельного кэша нет -- при N участников < 30 человек это
+не нагрузка. Денормализация только если профилирование покажет проблему.
+
+Ограничение: 5 голосов на пользователя на ретро. Проверяется на backend:
+`SELECT COUNT(*) FROM retrospective_votes WHERE user_id = $1 AND retro_item_id IN (SELECT id FROM retrospective_items WHERE sprint_id = $2)`.
+Возвращает 409 если лимит превышен.
+
+---
+
+### API: Retrospective
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| `GET` | `/projects/:pid/sprints/:sid/retro` | Все карточки + агрегированные голоса + статус retro_closed |
+| `POST` | `/projects/:pid/sprints/:sid/retro` | Создать карточку `{category, content, is_action}` |
+| `PATCH` | `/projects/:pid/sprints/:sid/retro/:id` | Изменить content (только автор или admin) |
+| `DELETE` | `/projects/:pid/sprints/:sid/retro/:id` | Удалить (только автор или admin, только если retro не closed) |
+| `POST` | `/projects/:pid/sprints/:sid/retro/:id/vote` | Поставить голос (409 если лимит) |
+| `DELETE` | `/projects/:pid/sprints/:sid/retro/:id/vote` | Снять голос |
+| `PATCH` | `/projects/:pid/sprints/:sid/retro/:id/resolve` | Пометить action item resolved |
+| `POST` | `/projects/:pid/sprints/:sid/retro/close` | Закрыть ретро (facilitator / admin) |
+
+Ответ `GET /retro`:
+```json
+{
+  "data": {
+    "retro_closed": false,
+    "my_votes_remaining": 3,
+    "items": [
+      {
+        "id": "...",
+        "category": "went_well",
+        "content": "Быстро задеплоили",
+        "author": { "id": "...", "name": "Alice" },
+        "votes": 2,
+        "my_vote": true,
+        "is_action": false,
+        "is_resolved": false,
+        "backlog_item_id": null,
+        "created_at": "..."
+      }
+    ]
+  }
+}
+```
+
+---
+
+### URL-структура и маршрутизация
+
+```
+/projects/:pid/sprints/:sid              → redirect → /board
+/projects/:pid/sprints/:sid/board        → Board (Канбан)
+/projects/:pid/sprints/:sid/backlog      → Backlog (Таблица)
+/projects/:pid/sprints/:sid/tests        → Tests
+/projects/:pid/sprints/:sid/capacity     → Capacity
+/projects/:pid/sprints/:sid/retro        → Retrospective
+```
+
+React Router v6: `<Route path="board" element={<SprintBoardTab />} />` и т.д.
+Layout-компонент `SprintLayout` рендерит шапку и таб-навигацию, дочерние роуты --
+контент вкладки. Это позволяет шапке не перерендериться при переключении вкладок.
+
+```
+SprintLayout (шапка + табы)
+  ├── SprintBoardTab
+  ├── SprintBacklogTab
+  ├── SprintTestsTab
+  ├── SprintCapacityTab
+  └── SprintRetroTab
+```
+
+При входе на спринт без явной вкладки: redirect на `last_tab` из `useNavigationStore`
+(или `ui_settings.default_sprint_tab`, или 'board' как fallback).
+
+---
+
+### Переходы статуса спринта и доступность вкладок
+
+| Статус | Board | Backlog | Tests | Capacity | Retro |
+|--------|-------|---------|-------|----------|-------|
+| `planning` | Editable | Editable | Read-only | Editable (planned_hours) | Placeholder |
+| `active` | Editable | Editable | Editable | Read-only | Read-only (записывать нельзя) |
+| `review` | Read-only | Read-only | Editable | Editable (actual_hours) | Editable |
+| `completed` | Read-only | Read-only | Read-only | Read-only | Read-only (если retro_closed) |
+
+Переход статуса: кнопка в `▾` dropdown в шапке. Только SM / admin / project owner.
+Переход `review → completed`: требует non-zero actual_hours хотя бы у одного участника.
+Переход `active → review`: предупреждение если есть open items (не done) -- можно проигнорировать.
+
+---
+
+### Стратегия тестирования (Sprint Page)
+
+#### Backend
+
+```
+handler_retro_test.go
+  TestGetRetro_Empty           200: пустой массив, retro_closed=false
+  TestPostRetro_CreateCard     201: карточка создана с правильной категорией
+  TestVote_HappyPath           201: голос зафиксирован, my_votes_remaining уменьшился
+  TestVote_Limit               409: 6й голос отклонён
+  TestVote_Duplicate           409: повторный голос за ту же карточку
+  TestVote_Retract             204: голос снят, remaining вернулся
+  TestCloseRetro_OnlyAdmin     403: обычный user не может закрыть
+  TestDeleteCard_FrozenRetro   409: нельзя удалить карточку после close
+```
+
+#### Frontend (Vitest + Testing Library)
+
+```
+SprintBoardTab.test.tsx
+  renders columns with correct item counts
+  drag card → optimistic status change → API call
+  filter by assignee hides other cards
+  swimlane=epic groups cards under epic rows
+
+SprintBacklogTab.test.tsx
+  renders all sprint items in table
+  inline status change calls PATCH
+  group by epic renders section headers
+  detail panel opens on row click
+
+SprintRetroTab.test.tsx
+  renders 3 columns + action items section
+  add card → appears in correct column
+  vote → my_vote=true, count increments
+  retract vote → my_vote=false, count decrements
+  vote limit → button disabled after 5 votes
+  closed retro → all inputs disabled
+```
+
+---
+
+### Статус реализации
+
+| Компонент | Статус |
+|-----------|--------|
+| `SprintLayout` + tab routing | ⬜ Не начато |
+| `SprintBoardTab` (канбан с DnD) | ⬜ Не начато |
+| `SprintBacklogTab` (таблица) | ⬜ Не начато |
+| `SprintTestsTab` (тесты) | ⬜ Не начато (заглушка есть) |
+| `SprintCapacityTab` → `SprintCapacityPanel` | ⬜ Не начато |
+| `SprintRetroTab` + retro_items + voting | ⬜ Не начато |
+| Migration: `retrospective_items`, `retrospective_votes`, `sprints.retro_closed` | ⬜ Не начато |
+| Backend handlers: retro CRUD + votes | ⬜ Не начато |
+| Sprint status transitions (review/close) | ⬜ Не начато |
 
 ---
 

@@ -196,7 +196,12 @@ export function useUpdateBacklogItem(projectId: string) {
       ac_steps?: string;
       ac_expected?: string;
     }) => backlogApi.update(projectId, itemId, data),
-    onSuccess: (_data, variables) => {
+    onSuccess: (axiosRes, variables) => {
+      // Set cache immediately from server response so UI updates even if refetch fails (e.g. expired token).
+      const updated = axiosRes.data?.data;
+      if (updated) {
+        qc.setQueryData(backlogKeys.detail(projectId, variables.itemId), updated);
+      }
       qc.invalidateQueries({ queryKey: ['backlog', projectId] });
       qc.invalidateQueries({ queryKey: backlogKeys.detail(projectId, variables.itemId) });
     },

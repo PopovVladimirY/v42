@@ -8,6 +8,8 @@ import type { TaskStatus, TestType } from '@/types';
 export const taskKeys = {
   byItem: (projectId: string, itemId: string) =>
     ['tasks', projectId, itemId] as const,
+  one: (projectId: string, itemId: string, taskId: string) =>
+    ['tasks', projectId, itemId, taskId] as const,
 };
 
 // ---------- Tests query keys ----------
@@ -29,6 +31,17 @@ export function useTasks(projectId: string, itemId: string) {
       return res.data.data ?? [];
     },
     enabled: !!projectId && !!itemId,
+  });
+}
+
+export function useTask(projectId: string, itemId: string, taskId: string) {
+  return useQuery({
+    queryKey: taskKeys.one(projectId, itemId, taskId),
+    queryFn: async () => {
+      const res = await tasksApi.get(projectId, itemId, taskId);
+      return res.data.data;
+    },
+    enabled: !!projectId && !!itemId && !!taskId,
   });
 }
 

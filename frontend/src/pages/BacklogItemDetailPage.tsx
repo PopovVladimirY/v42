@@ -1,14 +1,15 @@
 import { useState, useMemo } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { useBacklogItem, useUpdateBacklogItem, useDeleteBacklogItem, backlogKeys } from '@/hooks/useProjects';
+import { useBacklogItem, useUpdateBacklogItem, useDeleteBacklogItem, useProject, backlogKeys } from '@/hooks/useProjects';
 import { useTasks, useCreateTask, useUpdateTask, useDeleteTask, useItemTests, useCreateItemTest, useDeleteItemTest } from '@/hooks/useItemDetails';
 import { useSprints } from '@/hooks/useSprints';
 import { sprintsApi } from '@/api/endpoints/sprints';
 import { projectsApi } from '@/api/endpoints/projects';
+import { usersApi } from '@/api/endpoints/users';
 import { useAuthStore } from '@/hooks/useAuth';
 import { CLARITY_COLOR, CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
-import type { Project, Task, TestType } from '@/types';
+import type { BacklogItemStatus, Project, Task, TestType } from '@/types';
 
 // ---------------------------------------------------------------------------
 //  Constants
@@ -170,6 +171,16 @@ function TaskRow({
         {task.status.replace('_', ' ')}
       </span>
 
+      {/* Open detail */}
+      <Link
+        to={`/projects/${projectId}/backlog/${itemId}/tasks/${task.id}`}
+        className="opacity-0 group-hover:opacity-100 transition-opacity text-xs px-1 rounded flex-shrink-0"
+        style={{ color: 'var(--accent)' }}
+        title="Open task details"
+      >
+        &rarr;
+      </Link>
+
       {/* Delete */}
       <button
         onClick={() => void deleteTask.mutate(task.id)}
@@ -256,6 +267,18 @@ function CreateTaskForm({
 }
 
 const SP_OPTS = ['1', '3', '8', '20', '50'] as const;
+
+const STATUS_OPTS: { value: BacklogItemStatus; label: string }[] = [
+  { value: 'planned',     label: 'Planned'     },
+  { value: 'request',     label: 'Request'     },
+  { value: 'open',        label: 'To Do'       },
+  { value: 'in_progress', label: 'In Progress' },
+  { value: 'in_review',   label: 'In Review'   },
+  { value: 'on_hold',     label: 'On Hold'     },
+  { value: 'done',        label: 'Done'        },
+  { value: 'cancelled',   label: 'Cancelled'   },
+  { value: 'rejected',    label: 'Rejected'    },
+];
 
 // ---------------------------------------------------------------------------
 //  Stage picker -- project subtree dropdown
@@ -346,6 +369,77 @@ function StagePicker({
               >
                 {depth > 0 && <span style={{ color: 'var(--text-3)', fontSize: 11, flexShrink: 0 }}>{'\u2514'}</span>}
                 {name}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+//  Assignee picker -- dropdown of all active users
+// ---------------------------------------------------------------------------
+
+function AssigneePicker({
+  projectId,
+  itemId,
+  assigneeId,
+}: {
+  projectId: string;
+  itemId: string;
+  assigneeId: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const updateItem = useUpdateBacklogItem(projectId);
+  const { data: users = [] } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => usersApi.list(),
+    staleTime: 5 * 60_000,
+  });
+
+  const current = users.find((u) => u.id === assigneeId);
+  const displayName = current ? (current.display_name || current.full_name) : null;
+
+  function handlePick(uid: string) {
+    setOpen(false);
+    if (uid !== assigneeId) void updateItem.mutate({ itemId, assignee_id: uid });
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="text-xs px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5"
+        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: displayName ? 'var(--text-1)' : 'var(--text-3)' }}
+      >
+        {displayName ?? 'Assignee...'}
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ opacity: 0.5 }}>
+          <path d="M2 4l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div
+            className="absolute left-0 top-full mt-1 rounded-lg overflow-hidden z-30 py-1 min-w-48"
+            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)' }}
+          >
+            {users.filter((u) => u.is_active).map((u) => (
+              <button
+                key={u.id}
+                onClick={() => handlePick(u.id)}
+                className="w-full text-left text-xs px-3 py-2 flex items-center gap-2 hover:bg-[var(--bg-hover)]"
+                style={{ color: u.id === assigneeId ? 'var(--accent)' : 'var(--text-1)' }}
+              >
+                <span
+                  className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
+                  style={{ background: 'var(--bg-surface)', color: 'var(--text-2)', border: '1px solid var(--border)' }}
+                >
+                  {(u.display_name || u.full_name).charAt(0).toUpperCase()}
+                </span>
+                {u.display_name || u.full_name}
               </button>
             ))}
           </div>
@@ -451,6 +545,7 @@ export function BacklogItemDetailPage() {
   const user = useAuthStore((s) => s.user);
   const canManage = user?.role === 'admin' || user?.role === 'maintainer';
 
+  const { data: project } = useProject(projectId);
   const { data: item, isLoading, error } = useBacklogItem(projectId, itemId);
   const { data: tasks = [] } = useTasks(projectId, itemId);
   const { data: tests = [] } = useItemTests(projectId, itemId);
@@ -487,7 +582,8 @@ export function BacklogItemDetailPage() {
     );
   }
 
-  const statusCol = STATUS_COLOR[item.status] ?? { bg: '#6B7280', fg: '#fff' };
+  const tasksDone = tasks.filter((t) => t.status === 'done').length;
+  const testsPassing = tests.length; // no run status at this level, just count
 
   function startEditDesc() {
     setDescDraft(item!.description ?? '');
@@ -522,79 +618,84 @@ export function BacklogItemDetailPage() {
     navigate(`/projects/${projectId}/backlog`);
   }
 
-  const tasksDone = tasks.filter((t) => t.status === 'done').length;
-  const testsPassing = tests.length; // no run status at this level, just count
-
   return (
     <div className="px-6 py-4 flex flex-col gap-5">
 
+      {/* ── Breadcrumb ── */}
+      <nav className="flex items-center gap-1.5 text-xs flex-wrap" style={{ color: 'var(--text-3)' }}>
+        <Link to="/projects" className="hover:underline" style={{ color: 'var(--text-3)' }}>Projects</Link>
+        <span>/</span>
+        <Link to={`/projects/${projectId}`} className="hover:underline" style={{ color: 'var(--text-3)' }}>
+          {project?.name ?? '...'}
+        </Link>
+        <span>/</span>
+        <Link to={`/projects/${projectId}/backlog`} className="hover:underline" style={{ color: 'var(--text-3)' }}>Backlog</Link>
+        <span>/</span>
+        <span style={{ color: 'var(--text-1)' }}>B-{item.number}</span>
+      </nav>
+
       {/* ── Header ── */}
       <div className="flex items-start gap-3 flex-wrap">
-        <Link
-          to={`/projects/${projectId}/backlog`}
-          className="text-xs mt-1 flex-shrink-0 hover:underline"
-          style={{ color: 'var(--text-3)' }}
-        >
-          &larr; Backlog
-        </Link>
         <div className="flex-1 min-w-0">
           <h1 className="text-lg font-semibold leading-snug" style={{ color: 'var(--text-1)' }}>
             {item.title}
           </h1>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <span className="text-xs font-mono uppercase" style={{ color: 'var(--text-3)' }}>{item.type}</span>
-            <span
-              className="text-xs px-2 py-0.5 rounded-full font-medium"
-              style={{ background: statusCol.bg, color: statusCol.fg }}
-            >
-              {STATUS_LABEL[item.status] ?? item.status}
-            </span>
             <span
               className="text-xs px-2 py-0.5 rounded font-medium text-white"
               style={{ background: CLARITY_COLOR[item.clarity] }}
             >
               {CLARITY_LABEL[item.clarity]}
             </span>
-            {item.estimate && (
-              <span className="text-xs font-mono font-semibold" style={{ color: 'var(--accent)' }}>
-                {item.estimate} SP
-              </span>
-            )}
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* SP selector */}
-          <select
-            data-testid="sp-selector"
-            value={item.estimate ?? ''}
-            onChange={(e) => void updateItem.mutate({ itemId: item.id, estimate: e.target.value || '' })}
-            title="Story points"
-            className="text-xs px-2 py-1.5 rounded-lg outline-none"
-            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+        {canManage && (
+          <button
+            onClick={() => void handleDelete()}
+            className="text-xs px-2 py-1.5 rounded flex-shrink-0"
+            style={{ color: 'var(--color-danger)', border: '1px solid var(--border)' }}
           >
-            <option value="">-- SP</option>
-            {SP_OPTS.map((v) => (
-              <option key={v} value={v}>{v} SP</option>
-            ))}
-          </select>
-          {canManage && (
-            <button
-              onClick={() => void handleDelete()}
-              className="text-xs px-2 py-1.5 rounded"
-              style={{ color: 'var(--color-danger)', border: '1px solid var(--border)' }}
-            >
-              Delete
-            </button>
-          )}
-        </div>
+            Delete
+          </button>
+        )}
       </div>
 
-      {/* ── Sprint & Stage ── */}
+      {/* ── Controls: Stage, Sprint, Status, SP, Assignee ── */}
       <section className="flex items-center gap-3 flex-wrap">
-        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)', minWidth: '3rem' }}>Sprint</span>
-        <SprintPanel projectId={projectId} itemId={itemId} sprintId={item.sprint_id ?? null} sprintName={item.sprint_name ?? null} />
-        <span className="text-xs font-semibold uppercase tracking-wider ml-4" style={{ color: 'var(--text-3)', minWidth: '3rem' }}>Stage</span>
+        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>Stage</span>
         <StagePicker projectId={projectId} itemId={itemId} stageId={item.node_id ?? null} />
+        <span className="text-xs font-semibold uppercase tracking-wider ml-3" style={{ color: 'var(--text-3)' }}>Sprint</span>
+        <SprintPanel projectId={projectId} itemId={itemId} sprintId={item.sprint_id ?? null} sprintName={item.sprint_name ?? null} />
+        <span className="text-xs font-semibold uppercase tracking-wider ml-3" style={{ color: 'var(--text-3)' }}>Status</span>
+        <select
+          value={item.status}
+          onChange={(e) => void updateItem.mutate({ itemId: item.id, status: e.target.value as BacklogItemStatus })}
+          className="text-xs px-2 py-1.5 rounded-lg outline-none font-medium"
+          style={{
+            background: STATUS_COLOR[item.status]?.bg ?? 'var(--bg-surface)',
+            color: STATUS_COLOR[item.status]?.fg ?? 'var(--text-1)',
+            border: '1px solid transparent',
+          }}
+        >
+          {STATUS_OPTS.map(({ value, label }) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+        <span className="text-xs font-semibold uppercase tracking-wider ml-3" style={{ color: 'var(--text-3)' }}>SP</span>
+        <select
+          data-testid="sp-selector"
+          value={item.estimate ?? ''}
+          onChange={(e) => void updateItem.mutate({ itemId: item.id, estimate: e.target.value || null })}
+          className="text-xs px-2 py-1.5 rounded-lg outline-none"
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: item.estimate ? 'var(--text-1)' : 'var(--text-3)' }}
+        >
+          <option value="">-- SP</option>
+          {SP_OPTS.map((v) => (
+            <option key={v} value={v}>{v}</option>
+          ))}
+        </select>
+        <span className="text-xs font-semibold uppercase tracking-wider ml-3" style={{ color: 'var(--text-3)' }}>Assignee</span>
+        <AssigneePicker projectId={projectId} itemId={itemId} assigneeId={item.assignee_id ?? null} />
       </section>
 
       {/* ── Description ── */}
@@ -774,6 +875,14 @@ export function BacklogItemDetailPage() {
                 <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-3)' }}>{t.steps}</p>
               )}
             </div>
+            <Link
+              to={`/projects/${projectId}/tests/${t.id}`}
+              className="opacity-0 group-hover:opacity-100 transition-opacity text-xs px-1 rounded flex-shrink-0"
+              style={{ color: 'var(--accent)' }}
+              title="Open test details"
+            >
+              &rarr;
+            </Link>
             <button
               onClick={() => void deleteTest.mutate({ testId: t.id, itemId })}
               className="opacity-0 group-hover:opacity-100 transition-opacity text-xs px-1 rounded flex-shrink-0"
