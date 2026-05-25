@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import { useParams, Link, NavLink, Outlet } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useProject, useProjectTeams, useAddProjectTeam, useRemoveProjectTeam } from '@/hooks/useProjects';
+import { useProject, useProjectAncestors, useProjectTeams, useAddProjectTeam, useRemoveProjectTeam } from '@/hooks/useProjects';
 import { useAuthStore } from '@/hooks/useAuth';
 import { pushRecentProject } from '@/hooks/useLastProject';
 import { teamsApi } from '@/api/endpoints/teams';
@@ -26,6 +26,7 @@ const STATUS_BADGE = {
 export function ProjectShell() {
   const { projectId } = useParams<{ projectId: string }>();
   const { data: project, isLoading } = useProject(projectId ?? '');
+  const ancestors = useProjectAncestors(projectId ?? '');
   const user = useAuthStore((s) => s.user);
 
   // Record last visited project for sidebar quick-nav (scoped by userId)
@@ -56,10 +57,16 @@ export function ProjectShell() {
     <div className="h-full flex flex-col overflow-hidden">
       {/* Compact header: breadcrumb + name + status on one line */}
       <div className="flex-shrink-0 flex items-center gap-2 px-4 border-b" style={{ height: 40, borderColor: 'var(--border)' }}>
-        <Link to="/teams" className="text-xs hover:underline flex-shrink-0" style={{ color: 'var(--accent)' }}>Teams</Link>
+        <Link to="/projects" className="text-xs hover:underline flex-shrink-0" style={{ color: 'var(--text-3)' }}>Projects</Link>
+        {ancestors.slice(0, -1).map((p) => (
+          <Fragment key={p.id}>
+            <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-3)' }}>/</span>
+            <Link to={`/projects/${p.id}`} className="text-xs hover:underline flex-shrink-0 truncate max-w-32" style={{ color: 'var(--text-3)' }}>{p.name}</Link>
+          </Fragment>
+        ))}
         <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-3)' }}>/</span>
         <h1 className="text-sm font-semibold truncate" style={{ color: 'var(--text-1)' }}>
-          {project?.name}
+          {ancestors.at(-1)?.name ?? project?.name}
         </h1>
         {badge && (
           <span className="text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0" style={{ color: badge.color, background: 'var(--bg-elevated)' }}>
@@ -134,7 +141,7 @@ export function ProjectOverviewPage() {
 
       <div className="grid sm:grid-cols-3 gap-4">
         <Link
-          to="backlog"
+          to={`/projects/${projectId}/backlog`}
           className="rounded-xl p-5 hover:border-[var(--accent)] transition-colors"
           style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
         >
@@ -142,7 +149,7 @@ export function ProjectOverviewPage() {
           <p className="text-sm" style={{ color: 'var(--text-2)' }}>View all items</p>
         </Link>
         <Link
-          to="epics"
+          to={`/projects/${projectId}/epics`}
           className="rounded-xl p-5 hover:border-[var(--accent)] transition-colors"
           style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
         >
@@ -150,7 +157,7 @@ export function ProjectOverviewPage() {
           <p className="text-sm" style={{ color: 'var(--text-2)' }}>Group your work</p>
         </Link>
         <Link
-          to="sprints"
+          to={`/projects/${projectId}/sprints`}
           className="rounded-xl p-5 hover:border-[var(--accent)] transition-colors"
           style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
         >

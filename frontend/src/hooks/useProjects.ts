@@ -46,6 +46,15 @@ export function useProject(id: string) {
   });
 }
 
+/** Returns the ancestor chain [root, ..., current] for a project ID. Max 4 levels. */
+export function useProjectAncestors(projectId: string) {
+  const { data: p0 } = useProject(projectId);
+  const { data: p1 } = useProject(p0?.parent_id ?? '');
+  const { data: p2 } = useProject(p1?.parent_id ?? '');
+  const { data: p3 } = useProject(p2?.parent_id ?? '');
+  return [p3, p2, p1, p0].filter(Boolean) as NonNullable<typeof p0>[];
+}
+
 export function useProjectTeams(projectId: string) {
   return useQuery({
     queryKey: projectKeys.teams(projectId),
@@ -222,6 +231,17 @@ export function useReorderBacklog(projectId: string) {
     mutationFn: (items: { id: string; order_index: number }[]) =>
       backlogApi.reorder(projectId, items),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['backlog', projectId] }),
+  });
+}
+
+export function useBacklogChildren(projectId: string, itemId: string) {
+  return useQuery({
+    queryKey: ['backlog', projectId, itemId, 'children'],
+    queryFn: async () => {
+      const { data } = await backlogApi.getChildren(projectId, itemId);
+      return data.data ?? [];
+    },
+    enabled: !!projectId && !!itemId,
   });
 }
 

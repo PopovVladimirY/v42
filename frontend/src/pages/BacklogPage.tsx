@@ -29,6 +29,7 @@ import { CLARITY_COLOR, CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/type
 import type { BacklogItem, BacklogItemStatus, BacklogItemType, ClarityQuadrant, Project, Task, TestSpec } from '@/types';
 import { usePaginationStore } from '@/stores/usePagination';
 import { Paginator } from '@/components/Paginator';
+import { BreakdownModal } from './BreakdownModal';
 
 // -- Stage option (flat list built from project tree) -----------------------
 interface StageOption { id: string; name: string; depth: number; }
@@ -645,6 +646,7 @@ function ExpandedItemPanel({
   const [addingType, setAddingType] = useState<'task' | 'test' | null>(null);
   const [addingTitle, setAddingTitle] = useState('');
   const addInputRef = useRef<HTMLInputElement>(null);
+  const [showBreakdown, setShowBreakdown] = useState(false);
 
   const unified = useMemo<UnifiedRow[]>(() => {
     const rows: UnifiedRow[] = [
@@ -762,7 +764,26 @@ function ExpandedItemPanel({
             >
               + Test
             </button>
+            <button
+              onClick={() => setShowBreakdown(true)}
+              disabled={!!addingType}
+              className="text-xs px-2 py-0.5 rounded disabled:opacity-40 ml-auto"
+              style={{ color: 'var(--accent)', border: '1px solid var(--accent)' }}
+              title="Break this item into child items (Life Tree)"
+            >
+              Break down
+            </button>
           </div>
+
+          {showBreakdown && (
+            <BreakdownModal
+              projectId={projectId}
+              item={item}
+              tasks={tasks}
+              tests={tests}
+              onClose={() => setShowBreakdown(false)}
+            />
+          )}
         </div>
       </td>
     </tr>

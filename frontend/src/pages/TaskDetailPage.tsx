@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTask, useUpdateTask, useDeleteTask } from '@/hooks/useItemDetails';
-import { useBacklogItem, useProject } from '@/hooks/useProjects';
+import { useBacklogItem, useProjectAncestors } from '@/hooks/useProjects';
 import { useAuthStore } from '@/hooks/useAuth';
 import { CLARITY_LABEL, STATUS_LABEL } from '@/types';
 import type { TaskStatus } from '@/types';
@@ -62,7 +62,7 @@ export function TaskDetailPage() {
 
   const { data: task, isLoading: loadingTask } = useTask(projectId, itemId, taskId);
   const { data: backlogItem } = useBacklogItem(projectId, itemId);
-  const { data: project } = useProject(projectId);
+  const projectChain = useProjectAncestors(projectId);
   const { data: skills = [] } = useSkills();
   const updateTask = useUpdateTask(projectId, itemId);
   const deleteTask = useDeleteTask(projectId, itemId);
@@ -118,8 +118,12 @@ export function TaskDetailPage() {
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-3)' }}>
           <Link to="/projects" className="hover:underline" style={{ color: 'var(--text-3)' }}>Projects</Link>
-          <span>/</span>
-          <Link to={`/projects/${projectId}`} className="hover:underline" style={{ color: 'var(--text-3)' }}>{project?.name ?? '...'}</Link>
+          {projectChain.map((p) => (
+            <Fragment key={p.id}>
+              <span>/</span>
+              <Link to={`/projects/${p.id}`} className="hover:underline" style={{ color: 'var(--text-3)' }}>{p.name}</Link>
+            </Fragment>
+          ))}
           <span>/</span>
           <Link to={`/projects/${projectId}/backlog`} className="hover:underline">Backlog</Link>
           <span>/</span>

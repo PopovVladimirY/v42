@@ -23,6 +23,7 @@ export const backlogApi = {
     epic_id?: string;
     estimate?: string;
     assignee_id?: string;
+    parent_item_id?: string | null;
   }) =>
     client.post<ApiResponse<BacklogItem>>(`/projects/${projectId}/backlog`, data),
 
@@ -48,4 +49,7 @@ export const backlogApi = {
 
   reorder: (projectId: string, items: { id: string; order_index: number }[]) =>
     client.post<ApiResponse<null>>(`/projects/${projectId}/backlog/reorder`, { items }),
+
+  getChildren: (projectId: string, itemId: string) =>
+    client.get<ApiResponse<BacklogItem[]>>(`/projects/${projectId}/backlog/${itemId}/children`),
 };

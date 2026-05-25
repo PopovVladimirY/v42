@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { useBacklogItem, useUpdateBacklogItem, useDeleteBacklogItem, useProject, backlogKeys } from '@/hooks/useProjects';
+import { useBacklogItem, useUpdateBacklogItem, useDeleteBacklogItem, useProjectAncestors, backlogKeys } from '@/hooks/useProjects';
 import { useTasks, useCreateTask, useUpdateTask, useDeleteTask, useItemTests, useCreateItemTest, useDeleteItemTest } from '@/hooks/useItemDetails';
 import { useSprints } from '@/hooks/useSprints';
 import { sprintsApi } from '@/api/endpoints/sprints';
@@ -10,6 +10,7 @@ import { usersApi } from '@/api/endpoints/users';
 import { useAuthStore } from '@/hooks/useAuth';
 import { CLARITY_COLOR, CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
 import type { BacklogItemStatus, Project, Task, TestType } from '@/types';
+import { BreakdownModal } from './BreakdownModal';
 
 // ---------------------------------------------------------------------------
 //  Constants
@@ -545,7 +546,7 @@ export function BacklogItemDetailPage() {
   const user = useAuthStore((s) => s.user);
   const canManage = user?.role === 'admin' || user?.role === 'maintainer';
 
-  const { data: project } = useProject(projectId);
+  const projectChain = useProjectAncestors(projectId);
   const { data: item, isLoading, error } = useBacklogItem(projectId, itemId);
   const { data: tasks = [] } = useTasks(projectId, itemId);
   const { data: tests = [] } = useItemTests(projectId, itemId);
@@ -556,6 +557,7 @@ export function BacklogItemDetailPage() {
 
   const [showCreateTask, setShowCreateTask] = useState(false);
   const [showCreateTest, setShowCreateTest] = useState(false);
+  const [showBreakdown, setShowBreakdown] = useState(false);
   const [editDesc, setEditDesc] = useState(false);
   const [descDraft, setDescDraft] = useState('');
   const [editAC, setEditAC] = useState(false);
@@ -624,10 +626,12 @@ export function BacklogItemDetailPage() {
       {/* ── Breadcrumb ── */}
       <nav className="flex items-center gap-1.5 text-xs flex-wrap" style={{ color: 'var(--text-3)' }}>
         <Link to="/projects" className="hover:underline" style={{ color: 'var(--text-3)' }}>Projects</Link>
-        <span>/</span>
-        <Link to={`/projects/${projectId}`} className="hover:underline" style={{ color: 'var(--text-3)' }}>
-          {project?.name ?? '...'}
-        </Link>
+        {projectChain.map((p) => (
+          <Fragment key={p.id}>
+            <span>/</span>
+            <Link to={`/projects/${p.id}`} className="hover:underline" style={{ color: 'var(--text-3)' }}>{p.name}</Link>
+          </Fragment>
+        ))}
         <span>/</span>
         <Link to={`/projects/${projectId}/backlog`} className="hover:underline" style={{ color: 'var(--text-3)' }}>Backlog</Link>
         <span>/</span>
@@ -650,13 +654,23 @@ export function BacklogItemDetailPage() {
           </div>
         </div>
         {canManage && (
-          <button
-            onClick={() => void handleDelete()}
-            className="text-xs px-2 py-1.5 rounded flex-shrink-0"
-            style={{ color: 'var(--color-danger)', border: '1px solid var(--border)' }}
-          >
-            Delete
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => setShowBreakdown(true)}
+              className="text-xs px-2 py-1.5 rounded"
+              style={{ color: 'var(--accent)', border: '1px solid var(--accent)' }}
+              title="Break this item into child items (Life Tree)"
+            >
+              Break down
+            </button>
+            <button
+              onClick={() => void handleDelete()}
+              className="text-xs px-2 py-1.5 rounded"
+              style={{ color: 'var(--color-danger)', border: '1px solid var(--border)' }}
+            >
+              Delete
+            </button>
+          </div>
         )}
       </div>
 
@@ -897,6 +911,16 @@ export function BacklogItemDetailPage() {
 
       {/* Bottom padding for scroll comfort */}
       <div className="h-8" />
+
+      {showBreakdown && (
+        <BreakdownModal
+          projectId={projectId}
+          item={item}
+          tasks={tasks}
+          tests={tests}
+          onClose={() => setShowBreakdown(false)}
+        />
+      )}
     </div>
   );
 }

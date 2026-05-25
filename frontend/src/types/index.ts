@@ -194,7 +194,8 @@ export type BacklogItemStatus =
   | 'in_progress'  // being worked on
   | 'in_review'    // under review (was 'review')
   | 'done'         // complete
-  | 'cancelled';   // cancelled mid-sprint
+  | 'cancelled'    // cancelled mid-sprint
+  | 'decomposed';  // broken down into child items (Life Tree)
 
 export const STATUS_COLOR: Record<BacklogItemStatus, { bg: string; fg: string }> = {
   planned:     { bg: '#6B7280', fg: '#fff' },
@@ -206,6 +207,7 @@ export const STATUS_COLOR: Record<BacklogItemStatus, { bg: string; fg: string }>
   in_review:   { bg: '#EC4899', fg: '#fff' },
   done:        { bg: '#10B981', fg: '#fff' },
   cancelled:   { bg: '#9CA3AF', fg: '#fff' },
+  decomposed:  { bg: '#78716C', fg: '#fff' },
 };
 
 export const STATUS_LABEL: Record<BacklogItemStatus, string> = {
@@ -218,6 +220,7 @@ export const STATUS_LABEL: Record<BacklogItemStatus, string> = {
   in_review:   'In Review',
   done:        'Done',
   cancelled:   'Cancelled',
+  decomposed:  'Decomposed',
 };
 
 export interface BacklogItem {
@@ -239,6 +242,8 @@ export interface BacklogItem {
   // Sprint membership -- null when not assigned.
   sprint_id: string | null;
   sprint_name: string | null;
+  // Life Tree: null for original items, set when this item is a child of a decomposed item.
+  parent_item_id: string | null;
   // ATDD fields
   ac_setup: string | null;
   ac_steps: string | null;

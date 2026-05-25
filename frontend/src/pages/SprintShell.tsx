@@ -8,7 +8,6 @@ import {
   SPRINT_STATUS_LABEL,
   SPRINT_STATUS_COLOR,
 } from '@/hooks/useSprints';
-import { useProject } from '@/hooks/useProjects';
 import { useAuthStore } from '@/hooks/useAuth';
 import type { Sprint, SprintStatus } from '@/api/endpoints/sprints';
 
@@ -135,7 +134,6 @@ function CloseSprintModal({
 export function SprintShell() {
   const { projectId = '', sprintId = '' } = useParams<{ projectId: string; sprintId: string }>();
   const { data: sprint, isLoading } = useSprint(projectId, sprintId);
-  const { data: project } = useProject(projectId);
   const user = useAuthStore((s) => s.user);
   const canManage = user?.role === 'admin' || user?.role === 'maintainer';
   const [closeModalOpen, setCloseModalOpen] = useState(false);
@@ -179,7 +177,7 @@ export function SprintShell() {
           className="text-xs hover:underline flex-shrink-0 flex items-center gap-1"
           style={{ color: 'var(--text-3)' }}
         >
-          {project?.name ?? '...'} / Sprints
+          &larr; Sprints
         </Link>
         <span className="flex-shrink-0" style={{ color: 'var(--border)' }}>|</span>
         <span className="text-sm font-semibold truncate" style={{ color: 'var(--text-1)' }}>

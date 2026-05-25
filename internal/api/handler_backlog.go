@@ -23,6 +23,8 @@ var validBacklogItemStatus = map[string]bool{
 	"done":        true,
 	"cancelled":   true,
 	"rejected":    true,
+	// decomposed means the item was broken down into children; kept for Life Tree history.
+	"decomposed": true,
 }
 
 // validBacklogItemType is the set of accepted item_type enum values.
@@ -104,6 +106,7 @@ func (h *backlogHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		AcSetup       *string  `json:"ac_setup"`
 		AcSteps       *string  `json:"ac_steps"`
 		AcExpected    *string  `json:"ac_expected"`
+		ParentItemID  *string  `json:"parent_item_id"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 16384)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -150,6 +153,7 @@ func (h *backlogHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		AcSteps:       req.AcSteps,
 		AcExpected:    req.AcExpected,
 		CreatedBy:     claims.UserID,
+		ParentItemID:  req.ParentItemID,
 	})
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -300,4 +304,30 @@ func (h *backlogHandlers) Reorder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// GetChildren handles GET /api/v1/projects/{project_id}/backlog/{id}/children
+// Returns the direct children of a decomposed item for Life Tree history.
+func (h *backlogHandlers) GetChildren(w http.ResponseWriter, r *http.Request) {
+	itemID := chi.URLParam(r, "id")
+	// Verify item exists and belongs to the project in the URL.
+	existing, err := h.backlog.GetByID(r.Context(), itemID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "backlog item not found")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get backlog item")
+		return
+	}
+	if existing.ProjectID != chi.URLParam(r, "project_id") {
+		respondErr(w, http.StatusNotFound, "NOT_FOUND", "backlog item not found")
+		return
+	}
+	children, err := h.backlog.ListChildren(r.Context(), itemID)
+	if err != nil {
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get children")
+		return
+	}
+	respond(w, http.StatusOK, children)
 }

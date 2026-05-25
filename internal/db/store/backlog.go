@@ -40,6 +40,8 @@ type BacklogItem struct {
 	// Sprint membership -- nil when not in any sprint.
 	SprintID   *string `json:"sprint_id"`
 	SprintName *string `json:"sprint_name"`
+	// Life Tree: parent item this was broken out of; nil for original items.
+	ParentItemID *string `json:"parent_item_id"`
 }
 
 // ReorderItem is a single priority update in a reorder request.
@@ -62,34 +64,35 @@ func NewBacklogStore(q *dbgen.Queries, pool *pgxpool.Pool) *BacklogStore {
 // buildBacklogItem assembles a store.BacklogItem from fields shared by all
 // sqlc-generated backlog row types.
 func buildBacklogItem(id, projectID pgtype.UUID, number int64, epicID, releaseID, stageID, nodeID pgtype.UUID,
-        title string, description *string, typ dbgen.ItemType, status dbgen.ItemStatus, clarity string,
-        priority float64, estimate *string, assigneeID, skillRequired pgtype.UUID,
-        acSetup, acSteps, acExpected *string, createdBy pgtype.UUID,
-        createdAt, updatedAt pgtype.Timestamptz) BacklogItem {
-        b := BacklogItem{
-                ID:          uuidToString(id),
-                ProjectID:   uuidToString(projectID),
-                Number:      number,
-                Title:       title,
-                Description: description,
-                Type:        string(typ),
-                Status:      string(status),
-                Clarity:     clarity,
-                Priority:    priority,
-                Estimate:    estimate,
-                AcSetup:     acSetup,
-                AcSteps:     acSteps,
-                AcExpected:  acExpected,
-                CreatedBy:   uuidToString(createdBy),
-                CreatedAt:   createdAt.Time,
-                UpdatedAt:   updatedAt.Time,
-        }
-        if epicID.Valid        { v := uuidToString(epicID);        b.EpicID = &v }
-        if releaseID.Valid     { v := uuidToString(releaseID);     b.ReleaseID = &v }
-        if stageID.Valid       { v := uuidToString(stageID);       b.StageID = &v }
-        if nodeID.Valid        { v := uuidToString(nodeID);        b.NodeID = &v }
-        if assigneeID.Valid    { v := uuidToString(assigneeID);    b.AssigneeID = &v }
+	title string, description *string, typ dbgen.ItemType, status dbgen.ItemStatus, clarity string,
+	priority float64, estimate *string, assigneeID, skillRequired pgtype.UUID,
+	acSetup, acSteps, acExpected *string, parentItemID pgtype.UUID, createdBy pgtype.UUID,
+	createdAt, updatedAt pgtype.Timestamptz) BacklogItem {
+	b := BacklogItem{
+		ID:          uuidToString(id),
+		ProjectID:   uuidToString(projectID),
+		Number:      number,
+		Title:       title,
+		Description: description,
+		Type:        string(typ),
+		Status:      string(status),
+		Clarity:     clarity,
+		Priority:    priority,
+		Estimate:    estimate,
+		AcSetup:     acSetup,
+		AcSteps:     acSteps,
+		AcExpected:  acExpected,
+		CreatedBy:   uuidToString(createdBy),
+		CreatedAt:   createdAt.Time,
+		UpdatedAt:   updatedAt.Time,
+	}
+	if epicID.Valid       { v := uuidToString(epicID);        b.EpicID = &v }
+	if releaseID.Valid    { v := uuidToString(releaseID);     b.ReleaseID = &v }
+	if stageID.Valid      { v := uuidToString(stageID);       b.StageID = &v }
+	if nodeID.Valid       { v := uuidToString(nodeID);        b.NodeID = &v }
+	if assigneeID.Valid   { v := uuidToString(assigneeID);    b.AssigneeID = &v }
 	if skillRequired.Valid { v := uuidToString(skillRequired); b.SkillRequired = &v }
+	if parentItemID.Valid { v := uuidToString(parentItemID);  b.ParentItemID = &v }
 	return b
 }
 
@@ -171,7 +174,34 @@ func (s *BacklogStore) List(ctx context.Context, projectID string, epicID *strin
 	sprints := s.loadSprintMemberships(ctx, ids)
 	out := make([]BacklogItem, len(rows))
 	for i, r := range rows {
-		b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.NodeID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
+		b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.NodeID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.ParentItemID, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
+		if m, ok := sprints[b.ID]; ok {
+			b.SprintID = &m.SprintID
+			b.SprintName = &m.SprintName
+		}
+		out[i] = b
+	}
+	return out, nil
+}
+
+// ListChildren returns direct children of a decomposed item (for Life Tree history).
+func (s *BacklogStore) ListChildren(ctx context.Context, parentItemID string) ([]BacklogItem, error) {
+	uid, err := parseUUID(parentItemID)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	rows, err := s.q.ListBacklogItemChildren(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]pgtype.UUID, len(rows))
+	for i, r := range rows {
+		ids[i] = r.ID
+	}
+	sprints := s.loadSprintMemberships(ctx, ids)
+	out := make([]BacklogItem, len(rows))
+	for i, r := range rows {
+		b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.NodeID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.ParentItemID, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
 		if m, ok := sprints[b.ID]; ok {
 			b.SprintID = &m.SprintID
 			b.SprintName = &m.SprintName
@@ -194,7 +224,7 @@ func (s *BacklogStore) GetByID(ctx context.Context, id string) (*BacklogItem, er
 		}
 		return nil, err
 	}
-	b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.NodeID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
+	b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.NodeID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.ParentItemID, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
 	if m := s.loadSprintMemberships(ctx, []pgtype.UUID{uid}); m != nil {
 		if info, ok := m[b.ID]; ok {
 			b.SprintID = &info.SprintID
@@ -204,7 +234,7 @@ func (s *BacklogStore) GetByID(ctx context.Context, id string) (*BacklogItem, er
 	return &b, nil
 }
 
-// CreateRequest holds all fields for creating a backlog item.
+// CreateBacklogItemRequest holds all fields for creating a backlog item.
 type CreateBacklogItemRequest struct {
 	ProjectID     string
 	EpicID        *string
@@ -222,6 +252,8 @@ type CreateBacklogItemRequest struct {
 	AcSteps       *string
 	AcExpected    *string
 	CreatedBy     string
+	// ParentItemID links this item to a decomposed parent for Life Tree history.
+	ParentItemID  *string
 }
 
 // Create inserts a new backlog item.
@@ -234,7 +266,7 @@ func (s *BacklogStore) Create(ctx context.Context, req CreateBacklogItemRequest)
 	if err != nil {
 		return nil, domain.ErrNotFound
 	}
-	var eid, rid, sid, aid, skr pgtype.UUID
+	var eid, rid, sid, aid, skr, pid2 pgtype.UUID
 	if req.EpicID != nil {
 		if eid, err = parseUUID(*req.EpicID); err != nil {
 			return nil, domain.ErrNotFound
@@ -260,33 +292,39 @@ func (s *BacklogStore) Create(ctx context.Context, req CreateBacklogItemRequest)
 			return nil, domain.ErrNotFound
 		}
 	}
+	if req.ParentItemID != nil {
+		if pid2, err = parseUUID(*req.ParentItemID); err != nil {
+			return nil, domain.ErrNotFound
+		}
+	}
 	r, err := s.q.CreateBacklogItem(ctx, dbgen.CreateBacklogItemParams{
-		ProjectID:     pid,
-		EpicID:        eid,
-		ReleaseID:     rid,
-		StageID:       sid,
-		Title:         req.Title,
-		Description:   req.Description,
-		Type:          dbgen.ItemType(req.Type),
-		Status:        dbgen.ItemStatus(req.Status),
-		Priority:      req.Priority,
-		Estimate:      req.Estimate,
-		AssigneeID:    aid,
+		ProjectID:    pid,
+		EpicID:       eid,
+		ReleaseID:    rid,
+		StageID:      sid,
+		Title:        req.Title,
+		Description:  req.Description,
+		Type:         dbgen.ItemType(req.Type),
+		Status:       dbgen.ItemStatus(req.Status),
+		Priority:     req.Priority,
+		Estimate:     req.Estimate,
+		AssigneeID:   aid,
 		SkillRequired: skr,
-		AcSetup:       req.AcSetup,
-		AcSteps:       req.AcSteps,
-		AcExpected:    req.AcExpected,
-		CreatedBy:     cby,
+		AcSetup:      req.AcSetup,
+		AcSteps:      req.AcSteps,
+		AcExpected:   req.AcExpected,
+		CreatedBy:    cby,
+		ParentItemID: pid2,
 	})
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-			// FK violation — project_id (or epic/assignee) does not exist
+			// FK violation -- project or parent item does not exist
 			return nil, domain.ErrNotFound
 		}
 		return nil, err
 	}
-	b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.NodeID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
+	b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.NodeID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.ParentItemID, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
 	return &b, nil
 }
 
@@ -384,7 +422,7 @@ func (s *BacklogStore) Update(ctx context.Context, req UpdateBacklogItemRequest)
 		}
 		return nil, err
 	}
-	b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.NodeID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
+	b := buildBacklogItem(r.ID, r.ProjectID, r.Number, r.EpicID, r.ReleaseID, r.StageID, r.NodeID, r.Title, r.Description, r.Type, r.Status, r.Clarity, r.Priority, r.Estimate, r.AssigneeID, r.SkillRequired, r.AcSetup, r.AcSteps, r.AcExpected, r.ParentItemID, r.CreatedBy, r.CreatedAt, r.UpdatedAt)
 	// Explicitly clear estimate in the DB when empty string was sent.
 	if clearEstimate {
 		_, _ = s.pool.Exec(ctx, `UPDATE backlog_items SET estimate = NULL, updated_at = now() WHERE id = $1`, uid)

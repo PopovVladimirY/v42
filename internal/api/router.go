@@ -171,6 +171,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 				// Backlog
 				r.Get("/backlog", backlogH.List)
 				r.Get("/backlog/{id}", backlogH.Get)
+				r.Get("/backlog/{id}/children", backlogH.GetChildren)
 				r.Post("/backlog", backlogH.Create)
 				r.Patch("/backlog/{id}", backlogH.Update)
 				r.Delete("/backlog/{id}", backlogH.Delete)

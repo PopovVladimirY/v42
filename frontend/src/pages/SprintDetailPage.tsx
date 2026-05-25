@@ -20,7 +20,7 @@ import {
   SPRINT_STATUS_LABEL,
   SPRINT_STATUS_COLOR,
 } from '@/hooks/useSprints';
-import { useUpdateBacklogItem, useBacklog, useProject } from '@/hooks/useProjects';
+import { useUpdateBacklogItem, useBacklog } from '@/hooks/useProjects';
 import { useAuthStore } from '@/hooks/useAuth';
 import type { SprintStatus, SprintItem } from '@/api/endpoints/sprints';
 import type { BacklogItemStatus } from '@/types';
@@ -210,7 +210,6 @@ export function SprintDetailPage() {
   const qc = useQueryClient();
   const { data: sprint, isLoading: sprintLoading } = useSprint(projectId, sprintId);
   const { data: items = [], isLoading: itemsLoading } = useSprintItems(projectId, sprintId);
-  const { data: project } = useProject(projectId);
   const updateItem = useUpdateBacklogItem(projectId);
   const user = useAuthStore((s) => s.user);
   const canManage = user?.role === 'admin' || user?.role === 'maintainer';
@@ -289,7 +288,7 @@ export function SprintDetailPage() {
           className="text-xs hover:underline flex-shrink-0"
           style={{ color: 'var(--text-3)' }}
         >
-          {project?.name ?? '...'} / Sprints
+          &larr; Sprints
         </Link>
         <span className="flex-shrink-0" style={{ color: 'var(--border)' }}>|</span>
         <span className="text-sm font-semibold truncate" style={{ color: 'var(--text-1)' }}>

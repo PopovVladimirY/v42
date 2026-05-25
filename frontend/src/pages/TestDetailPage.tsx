@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { itemTestsApi } from '@/api/endpoints/item_tests';
-import { useBacklogItem, useProject } from '@/hooks/useProjects';
+import { useBacklogItem, useProjectAncestors } from '@/hooks/useProjects';
 import { useAuthStore } from '@/hooks/useAuth';
 import { CLARITY_LABEL } from '@/types';
 import type { TestSpec, TestType } from '@/types';
@@ -69,7 +69,7 @@ export function TestDetailPage() {
     projectId,
     test?.backlog_item_id ?? '',
   );
-  const { data: project } = useProject(projectId);
+  const projectChain = useProjectAncestors(projectId);
   const updateTest = useUpdateTest(projectId, testId);
   const deleteTest = useDeleteTest(projectId, testId);
 
@@ -126,8 +126,12 @@ export function TestDetailPage() {
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-3)' }}>
           <Link to="/projects" className="hover:underline" style={{ color: 'var(--text-3)' }}>Projects</Link>
-          <span>/</span>
-          <Link to={`/projects/${projectId}`} className="hover:underline" style={{ color: 'var(--text-3)' }}>{project?.name ?? '...'}</Link>
+          {projectChain.map((p) => (
+            <Fragment key={p.id}>
+              <span>/</span>
+              <Link to={`/projects/${p.id}`} className="hover:underline" style={{ color: 'var(--text-3)' }}>{p.name}</Link>
+            </Fragment>
+          ))}
           <span>/</span>
           <Link to={`/projects/${projectId}/backlog`} className="hover:underline">Backlog</Link>
           {test.backlog_item_id && (
