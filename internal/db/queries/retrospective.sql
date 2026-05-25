@@ -13,7 +13,7 @@ SELECT
     ri.created_at,
     ri.updated_at,
     COUNT(rv.user_id)::INT                                    AS votes,
-    BOOL_OR(rv.user_id = $2)                                  AS my_vote,
+    COALESCE(BOOL_OR(rv.user_id = $2), false)                 AS my_vote,
     (SELECT COUNT(*) FROM retrospective_votes rv2
      WHERE rv2.user_id = $2
        AND rv2.retro_item_id IN (

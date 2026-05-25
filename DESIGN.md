@@ -50,15 +50,11 @@ v42/
         ratelimit.go       -- rate limiting (auth endpoints)
       router.go            -- chi router setup, all routes registered here
     domain/                -- pure business logic, no HTTP, no SQL
-      project.go
-      epic.go
-      backlog.go
-      sprint.go
-      team.go
-      skill.go
-      capacity.go          -- load planning calculations
-      stats.go             -- statistics normalization
-      testrun.go           -- test result aggregation logic
+      auth.go              -- ONLY FILE THAT EXISTS. All other domain logic lives in
+                           --   handlers + store layer. backlog.go, capacity.go, etc.
+                           --   listed below were NOT built; kept as future intent only.
+      -- (planned, not built): project.go, epic.go, backlog.go, sprint.go, team.go
+      -- (planned, not built): skill.go, capacity.go, stats.go, testrun.go
     db/
       queries/             -- .sql files (sqlc reads these)
         projects.sql
@@ -87,7 +83,7 @@ v42/
     auth/
       jwt.go               -- token generation and validation
       password.go          -- bcrypt helpers
-  migrations/              -- golang-migrate SQL files (000001-000019)
+  migrations/              -- golang-migrate SQL files
     000001_init.{up,down}.sql
     000002_schema.{up,down}.sql
     000003_drop_redundant_token_hash_index.{up,down}.sql
@@ -107,6 +103,11 @@ v42/
     000017_archive_teams_projects.{up,down}.sql -- archive for teams + projects
     000018_project_hierarchy.{up,down}.sql      -- parent/child project nodes
     000019_team_category.{up,down}.sql          -- team category enum
+    -- 000020 MISSING (gap in sequence, intentional or accidental)
+    000021_user_ui_settings.{up,down}.sql       -- per-user UI prefs
+    000022_retrospective.{up,down}.sql          -- sprint retro items + votes
+    000023_sprint_capacity.{up,down}.sql        -- sprint capacity planning
+    000024_backlog_breakdown.{up,down}.sql      -- parent_item_id + decomposed status
   frontend/                -- React app (built to frontend/dist/)
     src/
       api/                 -- typed API client (axios wrappers)
@@ -4295,19 +4296,24 @@ SprintRetroTab.test.tsx
 
 | Компонент | Статус |
 |-----------|--------|
-| `SprintLayout` + tab routing | ⬜ Не начато |
-| `SprintBoardTab` (канбан с DnD) | ⬜ Не начато |
-| `SprintBacklogTab` (таблица) | ⬜ Не начато |
-| `SprintTestsTab` (тесты) | ⬜ Не начато (заглушка есть) |
-| `SprintCapacityTab` → `SprintCapacityPanel` | ⬜ Не начато |
-| `SprintRetroTab` + retro_items + voting | ⬜ Не начато |
-| Migration: `retrospective_items`, `retrospective_votes`, `sprints.retro_closed` | ⬜ Не начато |
-| Backend handlers: retro CRUD + votes | ⬜ Не начато |
-| Sprint status transitions (review/close) | ⬜ Не начато |
+| `SprintLayout` + tab routing | DONE -- SprintShell.tsx + router.tsx |
+| `SprintBoardTab` (канбан с DnD) | DONE -- SprintBoardTab.tsx |
+| `SprintBacklogTab` (таблица) | DONE -- SprintBacklogTab.tsx |
+| `SprintTestsTab` (тесты) | DONE -- SprintTestsTab.tsx |
+| `SprintCapacityTab` → `SprintCapacityPanel` | DONE -- SprintCapacityTab.tsx + handler_sprint_capacity.go |
+| `SprintRetroTab` + retro_items + voting | DONE -- SprintRetroTab.tsx + handler_sprint_retro.go |
+| Migration: `retrospective_items`, `retrospective_votes`, `sprints.retro_closed` | DONE -- 000022 |
+| Backend handlers: retro CRUD + votes | DONE -- handler_sprint_retro.go |
+| Sprint status transitions (review/close) | DONE -- CloseSprintModal in SprintShell.tsx |
 
 ---
 
-## Что дальше
+## Текущая фаза
 
-Фаза 0 -- фундамент. Создаём структуру, поднимаем postgres, пишем healthcheck.
-Первый `make dev` который ничего не делает, но делает это стабильно и с логами.
+**Мы находимся между Phase 4.5 и Phase 5.**
+
+Всё из Phase 0-4.5 плюс три внеплановых экстры (retro, capacity, breakdown)
+-- реализовано и работает. Phase 5 (Releases/Stages), Phase 6 (аналитика),
+Phase 7 (SSE, Goals) -- не начаты.
+
+Подробный аудит: [CODE_REVIEW_1.md](CODE_REVIEW_1.md)

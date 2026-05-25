@@ -4,6 +4,7 @@
         dist \
         test-db-up test-db-down test-migrate-up test-migrate-down test-integration \
         db-dump db-restore \
+        frontend-dev frontend-kill \
         clean
 
 -include .env
@@ -20,6 +21,18 @@ DOCKER_GO  := docker run --rm \
 # Or use: make docker-run
 dev:
 	go run ./cmd/api
+
+# Run Vite dev server detached from terminal (survives WSL session close).
+# Output goes to /tmp/v42-vite.log. PID stored in /tmp/v42-vite.pid.
+# Stop with: make frontend-kill
+frontend-dev:
+	cd frontend && nohup npm run dev > /tmp/v42-vite.log 2>&1 & echo $$! > /tmp/v42-vite.pid
+	@echo "Vite PID=$$(cat /tmp/v42-vite.pid) -- logs: tail -f /tmp/v42-vite.log"
+
+# Kill the detached Vite process
+frontend-kill:
+	@kill $$(cat /tmp/v42-vite.pid 2>/dev/null) 2>/dev/null && echo "Vite stopped" || echo "Vite was not running"
+	@rm -f /tmp/v42-vite.pid
 
 # Build binary to bin/v42 (native, requires Go installed)
 build:

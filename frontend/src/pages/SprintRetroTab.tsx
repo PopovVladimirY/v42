@@ -22,6 +22,7 @@ function RetroCard({
   sprintId,
   callerUserId,
   canClose,
+  canManage,
   facilitatorUserId,
 }: {
   item: RetroItem;
@@ -29,6 +30,7 @@ function RetroCard({
   sprintId: string;
   callerUserId: string;
   canClose: boolean;
+  canManage?: boolean;
   facilitatorUserId?: string;
 }) {
   const qc = useQueryClient();
@@ -36,6 +38,7 @@ function RetroCard({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(item.content);
   const isAuthor = item.author_id === callerUserId;
+  const canEditMeta = isAuthor || canManage;
 
   const vote = useMutation({
     mutationFn: () => retroApi.vote(projectId, sprintId, item.id, facilitatorUserId),
@@ -58,6 +61,10 @@ function RetroCard({
   });
   const resolve = useMutation({
     mutationFn: () => retroApi.resolve(projectId, sprintId, item.id, !item.is_resolved),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: qKey }),
+  });
+  const toggleAction = useMutation({
+    mutationFn: () => retroApi.update(projectId, sprintId, item.id, { is_action: !item.is_action }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: qKey }),
   });
 
@@ -112,74 +119,83 @@ function RetroCard({
         </p>
       )}
 
-      {/* Footer: author + vote + actions */}
-      <div className="flex items-center gap-2 mt-auto pt-1" style={{ borderTop: '1px solid var(--border)' }}>
-        <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>
-          {item.author_name}
-        </span>
-        {item.is_action && (
-          <span
-            className="text-[9px] px-1.5 py-0.5 rounded-full font-medium uppercase"
-            style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
-          >
-            Action
+      {/* Footer: two rows */}
+      <div className="flex flex-col gap-1 mt-auto pt-1" style={{ borderTop: '1px solid var(--border)' }}>
+        {/* Row 1: author + vote + edit/delete */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] truncate" style={{ color: 'var(--text-3)' }}>
+            {item.author_name}
           </span>
-        )}
-        {item.is_action && (
-          <button
-            onClick={() => resolve.mutate()}
-            disabled={resolve.isPending}
-            className="text-[9px] px-1.5 py-0.5 rounded-full font-medium uppercase ml-0"
-            style={{
-              background: item.is_resolved ? 'var(--color-success)' : 'var(--bg-surface)',
-              color: item.is_resolved ? '#fff' : 'var(--text-3)',
-              border: '1px solid var(--border)',
-            }}
-            title={item.is_resolved ? 'Mark unresolved' : 'Mark resolved'}
+          <div className="flex items-center gap-1.5 ml-auto">
+            <button
+              onClick={() => item.my_vote ? unvote.mutate() : vote.mutate()}
+              disabled={vote.isPending || unvote.isPending || voteDisabled}
+              title={voteDisabled ? `${MAX_VOTES} votes used` : item.my_vote ? 'Remove vote' : 'Vote'}
+              className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium transition-colors"
+              style={{
+                background: item.my_vote ? 'var(--accent)' : 'var(--bg-surface)',
+                color: item.my_vote ? 'var(--accent-fg)' : voteDisabled ? 'var(--text-3)' : 'var(--text-2)',
+                border: '1px solid var(--border)',
+                opacity: voteDisabled && !item.my_vote ? 0.5 : 1,
+              }}
+            >
+              <span>{item.my_vote ? '▲' : '△'}</span>
+              <span>{item.votes}</span>
+            </button>
+            {isAuthor && !editing && (
+              <>
+                <button
+                  onClick={() => setEditing(true)}
+                  className="text-[10px] px-1.5 py-0.5 rounded"
+                  style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}
+                  title="Edit"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => remove.mutate()}
+                  disabled={remove.isPending}
+                  className="text-[10px] px-1.5 py-0.5 rounded"
+                  style={{ color: 'var(--color-danger)', border: '1px solid var(--color-danger)' }}
+                  title="Delete"
+                >
+                  &times;
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+        {/* Row 2: action checkbox + resolve */}
+        <div className="flex items-center gap-2">
+          <label
+            className="flex items-center gap-1 text-[9px] select-none"
+            style={{ color: item.is_action ? 'var(--accent)' : 'var(--text-3)', cursor: canEditMeta ? 'pointer' : 'default' }}
+            title={canEditMeta ? (item.is_action ? 'Remove action item' : 'Mark as action item') : undefined}
           >
-            {item.is_resolved ? 'Resolved' : 'Resolve'}
-          </button>
-        )}
-
-        <div className="flex items-center gap-1.5 ml-auto">
-          {/* Vote button */}
-          <button
-            onClick={() => item.my_vote ? unvote.mutate() : vote.mutate()}
-            disabled={vote.isPending || unvote.isPending || voteDisabled}
-            title={voteDisabled ? `${MAX_VOTES} votes used` : item.my_vote ? 'Remove vote' : 'Vote'}
-            className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium transition-colors"
-            style={{
-              background: item.my_vote ? 'var(--accent)' : 'var(--bg-surface)',
-              color: item.my_vote ? 'var(--accent-fg)' : voteDisabled ? 'var(--text-3)' : 'var(--text-2)',
-              border: '1px solid var(--border)',
-              opacity: voteDisabled && !item.my_vote ? 0.5 : 1,
-            }}
-          >
-            <span>{item.my_vote ? '▲' : '△'}</span>
-            <span>{item.votes}</span>
-          </button>
-
-          {/* Edit / delete -- author or admin only */}
-          {isAuthor && !editing && (
-            <>
-              <button
-                onClick={() => setEditing(true)}
-                className="text-[10px] px-1.5 py-0.5 rounded"
-                style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}
-                title="Edit"
-              >
-                Edit
-              </button>
-              <button
-                onClick={() => remove.mutate()}
-                disabled={remove.isPending}
-                className="text-[10px] px-1.5 py-0.5 rounded"
-                style={{ color: 'var(--color-danger)', border: '1px solid var(--color-danger)' }}
-                title="Delete"
-              >
-                &times;
-              </button>
-            </>
+            <input
+              type="checkbox"
+              checked={item.is_action}
+              onChange={() => canEditMeta && toggleAction.mutate()}
+              disabled={!canEditMeta || toggleAction.isPending}
+              className="w-2.5 h-2.5 accent-[var(--accent)]"
+              style={{ cursor: canEditMeta ? 'pointer' : 'default' }}
+            />
+            Action
+          </label>
+          {item.is_action && (
+            <button
+              onClick={() => resolve.mutate()}
+              disabled={resolve.isPending}
+              className="text-[9px] px-1.5 py-0.5 rounded-full font-medium uppercase"
+              style={{
+                background: item.is_resolved ? 'var(--color-success)' : 'var(--bg-surface)',
+                color: item.is_resolved ? '#fff' : 'var(--text-3)',
+                border: '1px solid var(--border)',
+              }}
+              title={item.is_resolved ? 'Mark unresolved' : 'Mark resolved'}
+            >
+              {item.is_resolved ? 'Resolved' : 'Resolve'}
+            </button>
           )}
         </div>
       </div>
@@ -268,6 +284,7 @@ function RetroColumn({
   callerUserId,
   retroClosed,
   accent,
+  canManage,
   facilitatorUserId,
 }: {
   category: RetroCategory;
@@ -277,6 +294,7 @@ function RetroColumn({
   callerUserId: string;
   retroClosed: boolean;
   accent: string;
+  canManage?: boolean;
   facilitatorUserId?: string;
 }) {
   const [adding, setAdding] = useState(false);
@@ -304,6 +322,7 @@ function RetroColumn({
             sprintId={sprintId}
             callerUserId={callerUserId}
             canClose={false}
+            canManage={canManage}
             facilitatorUserId={facilitatorUserId}
           />
         ))}
@@ -343,10 +362,14 @@ export function SprintRetroTab() {
   const [facilitatorMode, setFacilitatorMode] = useState(false);
   const [facilitatorUserId, setFacilitatorUserId] = useState('');
 
+  // When a target member is selected in facilitator mode, fetch the board from their perspective
+  // so my_vote/my_total_votes reflect their state, not the facilitator's.
+  const viewAs = facilitatorMode && facilitatorUserId ? facilitatorUserId : undefined;
+
   const { data: items = [], isLoading } = useQuery({
-    queryKey: ['retro', projectId, sprintId],
+    queryKey: ['retro', projectId, sprintId, viewAs ?? 'self'],
     queryFn: async () => {
-      const res = await retroApi.list(projectId, sprintId);
+      const res = await retroApi.list(projectId, sprintId, viewAs);
       return res.data.data ?? [];
     },
     enabled: !!projectId && !!sprintId,
@@ -454,6 +477,7 @@ export function SprintRetroTab() {
               callerUserId={callerUserId}
               retroClosed={false}
               accent={cat.accent}
+              canManage={canManage}
               facilitatorUserId={facilitatorMode && facilitatorUserId ? facilitatorUserId : undefined}
             />
           ))}

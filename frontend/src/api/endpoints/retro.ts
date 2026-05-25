@@ -31,9 +31,9 @@ export interface CreateRetroItemInput {
 // -- API client --------------------------------------------------------------
 
 export const retroApi = {
-  list: (projectId: string, sprintId: string) =>
+  list: (projectId: string, sprintId: string, viewAs?: string) =>
     client.get<ApiResponse<RetroItem[]>>(
-      `/projects/${projectId}/sprints/${sprintId}/retro`
+      `/projects/${projectId}/sprints/${sprintId}/retro${viewAs ? `?view_as=${encodeURIComponent(viewAs)}` : ''}`
     ),
 
   create: (projectId: string, sprintId: string, input: CreateRetroItemInput) =>

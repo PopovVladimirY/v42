@@ -36,6 +36,8 @@ type retroItemResponse struct {
 }
 
 // List handles GET /sprints/{id}/retro
+// Optional query param: ?view_as=<user_id> (admin/maintainer only) -- returns my_vote/my_total_votes
+// from the perspective of the specified user, used by the facilitator to see a member's vote state.
 func (h *retroHandlers) List(w http.ResponseWriter, r *http.Request) {
 	sprintID := chi.URLParam(r, "id")
 	sid, err := parsePGUUID(sprintID)
@@ -44,15 +46,29 @@ func (h *retroHandlers) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	claims := middleware.ClaimsFromContext(r.Context())
-	uid, err := parsePGUUID(claims.UserID)
+	callerUID, err := parsePGUUID(claims.UserID)
 	if err != nil {
 		respondErr(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid caller id")
 		return
 	}
 
+	// Facilitator mode: allow admin/maintainer to see the board from another user's perspective.
+	voterUID := callerUID
+	if va := r.URL.Query().Get("view_as"); va != "" {
+		if claims.Role != "admin" && claims.Role != "maintainer" {
+			respondErr(w, http.StatusForbidden, "FORBIDDEN", "only admin/maintainer can use view_as")
+			return
+		}
+		voterUID, err = parsePGUUID(va)
+		if err != nil {
+			respondErr(w, http.StatusBadRequest, "BAD_REQUEST", "invalid view_as user id")
+			return
+		}
+	}
+
 	rows, err := h.q.ListRetroItems(r.Context(), dbgen.ListRetroItemsParams{
 		SprintID: sid,
-		UserID:   uid,
+		UserID:   voterUID,
 	})
 	if err != nil {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to list retro items")
