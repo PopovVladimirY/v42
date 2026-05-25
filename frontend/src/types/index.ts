@@ -194,6 +194,7 @@ export type BacklogItemStatus =
   | 'in_progress'  // being worked on
   | 'in_review'    // under review (was 'review')
   | 'done'         // complete
+  | 'closed'       // permanently closed (not rejected, just done with)
   | 'cancelled'    // cancelled mid-sprint
   | 'decomposed';  // broken down into child items (Life Tree)
 
@@ -206,6 +207,7 @@ export const STATUS_COLOR: Record<BacklogItemStatus, { bg: string; fg: string }>
   in_progress: { bg: '#8B5CF6', fg: '#fff' },
   in_review:   { bg: '#EC4899', fg: '#fff' },
   done:        { bg: '#10B981', fg: '#fff' },
+  closed:      { bg: '#64748B', fg: '#fff' },
   cancelled:   { bg: '#9CA3AF', fg: '#fff' },
   decomposed:  { bg: '#78716C', fg: '#fff' },
 };
@@ -219,6 +221,7 @@ export const STATUS_LABEL: Record<BacklogItemStatus, string> = {
   in_progress: 'In Progress',
   in_review:   'In Review',
   done:        'Done',
+  closed:      'Closed',
   cancelled:   'Cancelled',
   decomposed:  'Decomposed',
 };

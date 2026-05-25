@@ -21,6 +21,7 @@ var validBacklogItemStatus = map[string]bool{
 	"in_progress": true,
 	"in_review":   true,
 	"done":        true,
+	"closed":      true,
 	"cancelled":   true,
 	"rejected":    true,
 	// decomposed means the item was broken down into children; kept for Life Tree history.

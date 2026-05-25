@@ -64,7 +64,7 @@ const TYPE_OPTS: { value: BacklogItemType; label: string }[] = [
 ];
 
 const STATUS_OPTS: BacklogItemStatus[] = [
-  'planned', 'request', 'on_hold', 'open', 'in_progress', 'in_review', 'done', 'cancelled', 'rejected',
+  'planned', 'request', 'on_hold', 'open', 'in_progress', 'in_review', 'done', 'closed', 'cancelled', 'rejected',
 ];
 
 const CLARITY_OPTS: { value: ClarityQuadrant; label: string }[] = [
@@ -875,7 +875,7 @@ function CreateItemPanel({
 
 // Persist backlog filters per project in localStorage
 function _filtersKey(projectId: string) { return `v42-backlog-filters-${projectId}`; }
-type SavedFilters = { status: BacklogItemStatus | ''; clarity: ClarityQuadrant | ''; sprintId: string; text: string };
+type SavedFilters = { status: BacklogItemStatus | '' | 'all'; clarity: ClarityQuadrant | ''; sprintId: string; text: string };
 function _loadFilters(projectId: string): SavedFilters | null {
   try {
     const raw = localStorage.getItem(_filtersKey(projectId));
@@ -978,7 +978,7 @@ export function BacklogPage() {
 
   // Filter state -- persisted per project
   const saved = projectId ? _loadFilters(projectId) : null;
-  const [filterStatus,   setFilterStatusRaw]   = useState<BacklogItemStatus | ''>(saved?.status ?? '');
+  const [filterStatus,   setFilterStatusRaw]   = useState<BacklogItemStatus | '' | 'all'>(saved?.status ?? '');
   const [filterClarity,  setFilterClarityRaw]  = useState<ClarityQuadrant | ''>(saved?.clarity ?? '');
   const [filterSprintId, setFilterSprintIdRaw] = useState(saved?.sprintId ?? '');
   const [filterText,     setFilterTextRaw]     = useState(saved?.text ?? '');
@@ -988,7 +988,7 @@ export function BacklogPage() {
   function _save(overrides: Partial<SavedFilters>) {
     if (projectId) _saveFilters(projectId, { status: filterStatus, clarity: filterClarity, sprintId: filterSprintId, text: filterText, ...overrides });
   }
-  function setFilterStatus(v: BacklogItemStatus | '')   { setFilterStatusRaw(v);   setPage(1); _save({ status: v }); }
+  function setFilterStatus(v: BacklogItemStatus | '' | 'all') { setFilterStatusRaw(v);   setPage(1); _save({ status: v }); }
   function setFilterClarity(v: ClarityQuadrant | '')    { setFilterClarityRaw(v);  setPage(1); _save({ clarity: v }); }
   function setFilterSprintId(v: string)                 { setFilterSprintIdRaw(v); setPage(1); _save({ sprintId: v }); }
   function setFilterText(v: string)                     { setFilterTextRaw(v);     setPage(1); _save({ text: v }); }
@@ -1018,14 +1018,20 @@ export function BacklogPage() {
   const stageNameById = useMemo(() => new Map(stageNodes.map(n => [n.id, n.name])), [stageNodes]);
 
   const { data: backlog = [], isLoading, isError } = useBacklog(projectId ?? '', {
-    status: filterStatus || undefined,
+    // For 'active' and 'all' sentinels, fetch everything and filter client-side.
+    status: (filterStatus !== '' && filterStatus !== 'all') ? filterStatus as BacklogItemStatus : undefined,
     clarity: filterClarity || undefined,
   });
   const deleteItem = useDeleteBacklogItem(projectId ?? '');
 
   // Client-side text + sprint filter + sort (server handles status/clarity/epic)
+  const INACTIVE_STATUSES = new Set<BacklogItemStatus>(['closed', 'cancelled', 'rejected']);
   const items = useMemo(() => {
     let list = backlog;
+    // Active Status sentinel: exclude closed/cancelled/rejected
+    if (filterStatus === '') {
+      list = list.filter((it) => !INACTIVE_STATUSES.has(it.status));
+    }
     if (filterText.trim()) {
       const q = filterText.trim().toLowerCase();
       list = list.filter((it) =>
@@ -1094,14 +1100,15 @@ export function BacklogPage() {
         <select
           data-testid="filter-status"
           value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value as BacklogItemStatus | '')}
+          onChange={(e) => setFilterStatus(e.target.value as BacklogItemStatus | '' | 'all')}
           className="rounded-md px-2 py-1.5 text-xs outline-none"
           style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
         >
-          <option value="">All statuses</option>
+          <option value="">Active Status</option>
           {STATUS_OPTS.map((s) => (
             <option key={s} value={s}>{STATUS_LABEL[s]}</option>
           ))}
+          <option value="all">All Statuses</option>
         </select>
 
         <select
