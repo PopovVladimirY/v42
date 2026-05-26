@@ -1,8 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { createPortal } from 'react-dom';
-import { TaskDetailModal } from '@/components/TaskDetailModal';
-import { TestDetailModal } from '@/components/TestDetailModal';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   DndContext,
@@ -159,7 +156,7 @@ function DraggableTaskRow({
   onDelete,
   onUpdate,
   canManage,
-  onTitleClick,
+  detailPath,
 }: {
   task: Task;
   projectId: string;
@@ -169,8 +166,9 @@ function DraggableTaskRow({
   onDelete: () => void;
   onUpdate: (title: string) => void;
   canManage: boolean;
-  onTitleClick: () => void;
+  detailPath: string;
 }) {
+  const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -229,8 +227,8 @@ function DraggableTaskRow({
               textDecoration: (task.status === 'done' || task.status === 'cancelled') ? 'line-through' : undefined,
               opacity: task.status === 'cancelled' ? 0.5 : 1,
             }}
-            title={task.title}
-            onClick={(e) => { e.stopPropagation(); onTitleClick(); }}
+            title={task.description || 'No description details available'}
+            onClick={(e) => { e.stopPropagation(); navigate(detailPath); }}
           >{task.title}</span>
         )}
       </td>
@@ -286,7 +284,7 @@ function DraggableTestRow({
   onDelete,
   onUpdate,
   canManage,
-  onTitleClick,
+  detailPath,
 }: {
   test: TestSpec;
   projectId: string;
@@ -296,8 +294,9 @@ function DraggableTestRow({
   onDelete: () => void;
   onUpdate: (title: string) => void;
   canManage: boolean;
-  onTitleClick: () => void;
+  detailPath: string;
 }) {
+  const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -347,7 +346,7 @@ function DraggableTestRow({
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <span className="block truncate cursor-pointer hover:underline" style={{ color: 'var(--text-1)', fontStyle: 'italic', fontSize: '0.825rem' }} title={test.title} onClick={(e) => { e.stopPropagation(); onTitleClick(); }}>{test.title}</span>
+          <span className="block truncate cursor-pointer hover:underline" style={{ color: 'var(--text-1)', fontStyle: 'italic', fontSize: '0.825rem' }} title={test.description || 'No description details available'} onClick={(e) => { e.stopPropagation(); navigate(detailPath); }}>{test.title}</span>
         )}
       </td>
       <td className="w-28" />
@@ -418,8 +417,6 @@ function ExpandedItemPanel({
   const [addingType, setAddingType] = useState<'task' | 'test' | null>(null);
   const [addingTitle, setAddingTitle] = useState('');
   const addInputRef = useRef<HTMLInputElement>(null);
-  const [modalTask, setModalTask] = useState<{ id: string; itemId: string } | null>(null);
-  const [modalTest, setModalTest] = useState<{ id: string } | null>(null);
 
   const unified = useMemo<UnifiedRow[]>(() => {
     const rows: UnifiedRow[] = [
@@ -471,7 +468,7 @@ function ExpandedItemPanel({
             canManage={canManage}
             onDelete={() => deleteTask.mutate(row.data.id)}
             onUpdate={(title) => updateTask.mutate({ taskId: row.data.id, title })}
-            onTitleClick={() => setModalTask({ id: row.data.id, itemId: item.id })}
+            detailPath={`/projects/${projectId}/backlog/${item.id}/tasks/${row.data.id}`}
           />
         ) : (
           <DraggableTestRow
@@ -484,7 +481,7 @@ function ExpandedItemPanel({
             canManage={canManage}
             onDelete={() => deleteTest.mutate({ testId: row.data.id, itemId: item.id })}
             onUpdate={(title) => updateTest.mutate({ testId: row.data.id, title })}
-            onTitleClick={() => setModalTest({ id: row.data.id })}
+            detailPath={`/projects/${projectId}/tests/${row.data.id}`}
           />
         )
       )}
@@ -524,23 +521,6 @@ function ExpandedItemPanel({
           </div>
         </td>
       </tr>
-      {modalTask && createPortal(
-        <TaskDetailModal
-          projectId={projectId}
-          itemId={modalTask.itemId}
-          taskId={modalTask.id}
-          onClose={() => setModalTask(null)}
-        />,
-        document.body
-      )}
-      {modalTest && createPortal(
-        <TestDetailModal
-          projectId={projectId}
-          testId={modalTest.id}
-          onClose={() => setModalTest(null)}
-        />,
-        document.body
-      )}
     </>
   );
 }
@@ -750,7 +730,8 @@ export function SprintBacklogTab() {
                       <Link
                         to={`/projects/${projectId}/backlog/${item.id}`}
                         className="truncate block hover:underline font-semibold"
-                        style={{ color: 'var(--text-1)', fontSize: '1.006rem' }}
+                        style={{ color: 'color-mix(in srgb, var(--text-1) 80%, transparent)', fontSize: '1.006rem' }}
+                        title={item.description || 'No description details available'}
                         onClick={(e) => e.stopPropagation()}
                         onDoubleClick={(e) => e.stopPropagation()}
                       >
