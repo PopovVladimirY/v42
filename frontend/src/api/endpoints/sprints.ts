@@ -5,6 +5,7 @@ export type SprintStatus = 'planning' | 'active' | 'completed' | 'cancelled';
 
 export interface Sprint {
   id: string;
+  sprint_number: number;
   project_id: string;
   team_id?: string;
   name: string;

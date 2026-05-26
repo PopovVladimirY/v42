@@ -218,6 +218,7 @@ export function SprintsPage() {
             <table className="w-full border-collapse" data-testid="sprints-list">
               <thead style={{ background: 'var(--bg-elevated)' }}>
                 <tr>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '5rem' }}>ID</th>
                   <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '7rem' }}>Status</th>
                   <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)' }}>Name</th>
                   <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)' }}>Goal</th>
@@ -230,7 +231,7 @@ export function SprintsPage() {
               <tbody>
                 {pageItems.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-sm" style={{ color: 'var(--text-3)' }}>
+                    <td colSpan={8} className="px-4 py-10 text-center text-sm" style={{ color: 'var(--text-3)' }}>
                       {total === 0 ? (
                         <>
                           No sprints yet.{' '}
@@ -248,6 +249,14 @@ export function SprintsPage() {
                     data-testid={`sprint-row-${s.id}`}
                     className="group transition-colors"
                   >
+                    <td className="px-3 py-1 align-middle">
+                      <span
+                        className="font-mono text-xs font-medium"
+                        style={{ color: 'var(--accent)' }}
+                      >
+                        S-{s.sprint_number}
+                      </span>
+                    </td>
                     <td className="px-3 py-1 align-middle">
                       <SprintStatusBadge status={s.status} />
                     </td>
@@ -277,7 +286,7 @@ export function SprintsPage() {
                         <span className="text-xs" style={{ color: 'var(--text-3)' }}>{s.capacity_hours}h</span>
                       )}
                     </td>
-                    <td className="px-3 py-1 align-middle">
+                    <td className="px-3 py-1 align-middle" colSpan={1}>
                       {canCreate && (
                         <button
                           data-testid={`delete-sprint-${s.id}`}

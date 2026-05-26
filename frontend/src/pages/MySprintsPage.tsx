@@ -26,7 +26,12 @@ function SprintCard({ sprint }: { sprint: GlobalSprint }) {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground truncate">{sprint.project_name}</p>
-          <h3 className="font-medium text-sm text-foreground truncate mt-0.5">{sprint.name}</h3>
+          <div className="flex items-baseline gap-2 mt-0.5">
+            <span className="font-mono text-xs font-medium shrink-0" style={{ color: 'var(--accent)' }}>
+              S-{sprint.sprint_number}
+            </span>
+            <h3 className="font-medium text-sm text-foreground truncate">{sprint.name}</h3>
+          </div>
           {sprint.team_name && (
             <p className="text-xs text-muted-foreground mt-0.5">{sprint.team_name}</p>
           )}
