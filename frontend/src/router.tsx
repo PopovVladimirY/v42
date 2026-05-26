@@ -69,9 +69,20 @@ export const router = createBrowserRouter([
             element: <ProjectShell />,
             children: [
               { index: true, element: <Navigate to="backlog" replace /> },
-              { path: 'backlog', element: <BacklogPage /> },
-              { path: 'backlog/:itemId', element: <BacklogItemDetailPage /> },
-              { path: 'backlog/:itemId/tasks/:taskId', element: <TaskDetailPage /> },
+              {
+                path: 'backlog',
+                element: <BacklogPage />,
+                children: [
+                  {
+                    path: ':itemId',
+                    element: <BacklogItemDetailPage />,
+                    children: [
+                      { path: 'tasks/:taskId', element: <TaskDetailPage /> },
+                      { path: 'tests/:testId', element: <TestDetailPage /> },
+                    ],
+                  },
+                ],
+              },
               { path: 'tests/:testId', element: <TestDetailPage /> },
               { path: 'epics', element: <EpicsPage /> },
               { path: 'sprints', element: <SprintsPage /> },
@@ -81,7 +92,14 @@ export const router = createBrowserRouter([
                 children: [
                   { index: true, element: <SprintRedirect /> },
                   { path: 'board',     element: <SprintBoardTab /> },
-                  { path: 'backlog',   element: <SprintBacklogTab /> },
+                  {
+                    path: 'backlog',
+                    element: <SprintBacklogTab />,
+                    children: [
+                      { path: 'items/:itemId/tasks/:taskId', element: <TaskDetailPage /> },
+                      { path: 'tests/:testId', element: <TestDetailPage /> },
+                    ],
+                  },
                   { path: 'tests',     element: <SprintTestsTab /> },
                   { path: 'capacity',  element: <SprintCapacityTab /> },
                   { path: 'retro',     element: <SprintRetroTab /> },

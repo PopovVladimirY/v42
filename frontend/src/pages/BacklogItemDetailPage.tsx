@@ -1,8 +1,5 @@
 import { useState, useMemo, Fragment, useEffect } from 'react';
-import { createPortal } from 'react-dom';
-import { TaskDetailModal } from '@/components/TaskDetailModal';
-import { TestDetailModal } from '@/components/TestDetailModal';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useBacklogItem, useUpdateBacklogItem, useDeleteBacklogItem, useProjectAncestors, backlogKeys } from '@/hooks/useProjects';
 import { useTasks, useCreateTask, useUpdateTask, useDeleteTask, useItemTests, useCreateItemTest, useDeleteItemTest } from '@/hooks/useItemDetails';
@@ -91,13 +88,12 @@ function TaskRow({
   task,
   projectId,
   itemId,
-  onOpen,
 }: {
   task: Task;
   projectId: string;
   itemId: string;
-  onOpen: () => void;
 }) {
+  const navigate = useNavigate();
   const updateTask = useUpdateTask(projectId, itemId);
   const deleteTask = useDeleteTask(projectId, itemId);
   const [editingSkill, setEditingSkill] = useState(false);
@@ -139,7 +135,7 @@ function TaskRow({
       <span
         className="flex-1 truncate cursor-pointer hover:underline"
         style={{ color: isDone ? 'var(--text-3)' : 'var(--text-1)', textDecoration: isDone ? 'line-through' : 'none' }}
-        onClick={onOpen}
+        onClick={() => navigate(`/projects/${projectId}/backlog/${itemId}/tasks/${task.id}`)}
         title="Click to open task details"
       >
         {task.title}
@@ -786,12 +782,18 @@ function SprintPanel({
 export function BacklogItemDetailPage() {
   const { projectId = '', itemId = '' } = useParams<{ projectId: string; itemId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
-    function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') navigate(-1); }
+    function handleKey(e: KeyboardEvent) {
+      // Only handle Escape when no child route (task/test detail) is active
+      if (e.key === 'Escape' && !location.pathname.includes('/tasks/') && !location.pathname.includes('/tests/')) {
+        navigate(-1);
+      }
+    }
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
-  }, [navigate]);
+  }, [navigate, location.pathname]);
 
   const user = useAuthStore((s) => s.user);
   const canManage = user?.role === 'admin' || user?.role === 'maintainer';
@@ -808,8 +810,7 @@ export function BacklogItemDetailPage() {
   const [showCreateTask, setShowCreateTask] = useState(false);
   const [showCreateTest, setShowCreateTest] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
-  const [modalTaskId, setModalTaskId] = useState<string | null>(null);
-  const [modalTestId, setModalTestId] = useState<string | null>(null);
+
   const [editDesc, setEditDesc] = useState(false);
   const [descDraft, setDescDraft] = useState('');
   const [editAC, setEditAC] = useState(false);
@@ -1117,7 +1118,7 @@ export function BacklogItemDetailPage() {
           <p className="text-xs" style={{ color: 'var(--text-3)' }}>No tasks yet. Break down the work.</p>
         )}
         {tasks.map((task) => (
-          <TaskRow key={task.id} task={task} projectId={projectId} itemId={itemId} onOpen={() => setModalTaskId(task.id)} />
+          <TaskRow key={task.id} task={task} projectId={projectId} itemId={itemId} />
         ))}
       </section>
 
@@ -1151,7 +1152,7 @@ export function BacklogItemDetailPage() {
             <span className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 mt-0.5" style={{ background: 'var(--bg-elevated)', color: 'var(--color-info)' }}>
               {t.type}
             </span>
-            <div className="flex-1 min-w-0 cursor-pointer hover:underline" onClick={() => setModalTestId(t.id)} title="Click to open test details">
+            <div className="flex-1 min-w-0 cursor-pointer hover:underline" onClick={() => navigate(`/projects/${projectId}/backlog/${itemId}/tests/${t.id}`)} title="Click to open test details">
               <p className="text-xs font-medium truncate" style={{ color: 'var(--text-1)' }}>{t.title}</p>
               {t.steps && (
                 <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-3)' }}>{t.steps}</p>
@@ -1189,23 +1190,7 @@ export function BacklogItemDetailPage() {
           onClose={() => setShowBreakdown(false)}
         />
       )}
-      {modalTaskId && createPortal(
-        <TaskDetailModal
-          projectId={projectId}
-          itemId={itemId}
-          taskId={modalTaskId}
-          onClose={() => setModalTaskId(null)}
-        />,
-        document.body
-      )}
-      {modalTestId && createPortal(
-        <TestDetailModal
-          projectId={projectId}
-          testId={modalTestId}
-          onClose={() => setModalTestId(null)}
-        />,
-        document.body
-      )}
+      <Outlet />
       </div>
       </div>
     </div>

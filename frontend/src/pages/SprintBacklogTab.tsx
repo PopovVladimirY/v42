@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, Outlet } from 'react-router-dom';
+import { createPortal } from 'react-dom';
+import { BreakdownModal } from './BreakdownModal';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   DndContext,
@@ -21,7 +23,7 @@ import {
 import { useUpdateBacklogItem } from '@/hooks/useProjects';
 import { useAuthStore } from '@/hooks/useAuth';
 import type { SprintItem } from '@/api/endpoints/sprints';
-import type { Task, TestSpec, ClarityQuadrant } from '@/types';
+import type { Task, TestSpec, ClarityQuadrant, BacklogItem } from '@/types';
 
 // -- Constants ---------------------------------------------------------------
 
@@ -245,7 +247,7 @@ function DraggableTaskRow({
           {!editing && (
             <div className="flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
               <Link
-                to={`/projects/${projectId}/backlog/${item.id}/tasks/${task.id}`}
+                to={detailPath}
                 style={{ color: 'var(--accent)', fontSize: '0.75rem' }}
                 title="Open details"
                 onClick={(e) => e.stopPropagation()}
@@ -358,7 +360,7 @@ function DraggableTestRow({
           {!editing && (
             <div className="flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
               <Link
-                to={`/projects/${projectId}/tests/${test.id}`}
+                to={detailPath}
                 style={{ color: 'var(--accent)', fontSize: '0.75rem' }}
                 title="Open details"
                 onClick={(e) => e.stopPropagation()}
@@ -392,6 +394,7 @@ type UnifiedRow = { kind: 'task'; data: Task } | { kind: 'test'; data: TestSpec 
 
 function ExpandedItemPanel({
   projectId,
+  sprintId,
   item,
   allItems,
   moveTask,
@@ -399,6 +402,7 @@ function ExpandedItemPanel({
   canManage,
 }: {
   projectId: string;
+  sprintId: string;
   item: SprintItem;
   allItems: SprintItem[];
   moveTask: ReturnType<typeof useMoveTask>;
@@ -417,6 +421,7 @@ function ExpandedItemPanel({
   const [addingType, setAddingType] = useState<'task' | 'test' | null>(null);
   const [addingTitle, setAddingTitle] = useState('');
   const addInputRef = useRef<HTMLInputElement>(null);
+  const [showBreakdown, setShowBreakdown] = useState(false);
 
   const unified = useMemo<UnifiedRow[]>(() => {
     const rows: UnifiedRow[] = [
@@ -468,7 +473,7 @@ function ExpandedItemPanel({
             canManage={canManage}
             onDelete={() => deleteTask.mutate(row.data.id)}
             onUpdate={(title) => updateTask.mutate({ taskId: row.data.id, title })}
-            detailPath={`/projects/${projectId}/backlog/${item.id}/tasks/${row.data.id}`}
+            detailPath={`/projects/${projectId}/sprints/${sprintId}/backlog/items/${item.id}/tasks/${row.data.id}`}
           />
         ) : (
           <DraggableTestRow
@@ -481,7 +486,7 @@ function ExpandedItemPanel({
             canManage={canManage}
             onDelete={() => deleteTest.mutate({ testId: row.data.id, itemId: item.id })}
             onUpdate={(title) => updateTest.mutate({ testId: row.data.id, title })}
-            detailPath={`/projects/${projectId}/tests/${row.data.id}`}
+            detailPath={`/projects/${projectId}/sprints/${sprintId}/backlog/tests/${row.data.id}`}
           />
         )
       )}
@@ -515,12 +520,23 @@ function ExpandedItemPanel({
       )}
       <tr style={{ background: 'var(--bg-elevated)', borderTop: '1px solid var(--border)', borderBottom: '2px solid var(--border)' }}>
         <td colSpan={colSpan} className="px-6 py-2">
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2 w-full">
             <button onClick={() => startAdding('task')} disabled={!!addingType} className="text-xs px-2 py-0.5 rounded disabled:opacity-40" style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}>+ Task</button>
             <button onClick={() => startAdding('test')} disabled={!!addingType} className="text-xs px-2 py-0.5 rounded disabled:opacity-40" style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}>+ Test</button>
+            <button onClick={() => setShowBreakdown(true)} className="text-xs px-2 py-0.5 rounded ml-auto" style={{ color: 'var(--accent)', border: '1px solid var(--accent)' }} title="Split this backlog item into multiple child items">Break Down</button>
           </div>
         </td>
       </tr>
+      {showBreakdown && createPortal(
+        <BreakdownModal
+          projectId={projectId}
+          item={{ ...item, sprint_id: sprintId, epic_id: null } as unknown as BacklogItem}
+          tasks={tasks}
+          tests={tests}
+          onClose={() => setShowBreakdown(false)}
+        />,
+        document.body
+      )}
     </>
   );
 }
@@ -682,6 +698,7 @@ export function SprintBacklogTab() {
   }
 
   return (
+    <>
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="h-full overflow-y-auto">
         <table className="w-full text-xs border-collapse">
@@ -791,6 +808,7 @@ export function SprintBacklogTab() {
                   {isExpanded && (
                     <ExpandedItemPanel
                       projectId={projectId}
+                      sprintId={sprintId}
                       item={item}
                       allItems={items}
                       moveTask={moveTask}
@@ -822,5 +840,7 @@ export function SprintBacklogTab() {
         )}
       </DragOverlay>
     </DndContext>
+    <Outlet />
+    </>
   );
 }

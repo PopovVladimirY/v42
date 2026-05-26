@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, Outlet } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import {
   DndContext,
@@ -142,15 +142,22 @@ function StatusPill({
 
 // -- Clarity badge -----------------------------------------------------------
 
+const CLARITY_HEX: Record<string, string> = {
+  clear:   '#10B981',
+  scoped:  '#FBBF24',
+  tacit:   '#F97316',
+  foggy:   '#EF4444',
+  unknown: '#6B7280',
+};
+
 function ClarityBadge({ clarity }: { clarity: ClarityQuadrant }) {
   return (
     <span
       data-testid={`clarity-badge-${clarity}`}
-      className="text-xs px-2 py-0.5 rounded font-medium"
-      style={{ background: CLARITY_COLOR[clarity], color: '#fff' }}
-    >
-      {CLARITY_LABEL[clarity]}
-    </span>
+      className="inline-block w-5 h-5 rounded flex-shrink-0"
+      style={{ background: CLARITY_HEX[clarity] ?? CLARITY_HEX.unknown }}
+      title={`Clarity: ${CLARITY_LABEL[clarity]}`}
+    />
   );
 }
 
@@ -219,7 +226,7 @@ function BacklogItemEditRow({
           ))}
         </select>
       </td>
-      <td className="px-3 py-1.5" style={{ width: '6rem' }}>
+      <td className="px-3 py-1.5 text-center" style={{ width: '6rem' }}>
         <ClarityBadge clarity={item.clarity} />
       </td>
       <td className="px-3 py-1.5" style={{ width: '8rem' }}>
@@ -1220,7 +1227,7 @@ export function BacklogPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-1 align-middle">
+                        <td className="px-3 py-1 align-middle text-center">
                           <ClarityBadge clarity={item.clarity} />
                         </td>
                         <td className="px-3 py-1 align-middle">
@@ -1286,6 +1293,7 @@ export function BacklogPage() {
           <Paginator page={page} pageSize={pageSize} total={total} onChange={setPage} />
         </DndContext>
       )}
+      <Outlet />
     </div>
   );
 }
