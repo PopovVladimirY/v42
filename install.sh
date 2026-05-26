@@ -93,3 +93,31 @@ else
     echo "    docker compose up -d"
     echo ""
 fi
+
+# ----------------------------------------------------------------
+# MCP Server (AI agent integration)
+# ----------------------------------------------------------------
+echo "-------------------------------------------------------------------"
+echo " MCP Server -- AI Agent integration"
+echo "-------------------------------------------------------------------"
+echo ""
+echo "  bin/v42-mcp lets Claude Desktop (and any MCP-compatible client)"
+echo "  read and write the V42 backlog, tasks, and tests directly."
+echo ""
+echo "  1. Get a V42 API token (log in -> Profile -> API Tokens)."
+echo "  2. Add to your Claude Desktop config (~/.config/claude/claude_desktop_config.json):"
+echo ""
+echo '     {'
+echo '       "mcpServers": {'
+echo '         "v42": {'
+echo '           "command": "'"$SCRIPT_DIR"'/bin/v42-mcp",'
+echo '           "env": {'
+echo '             "V42_API_URL":   "http://<your-host>:8042/api/v1",'
+echo '             "V42_API_TOKEN": "<your-token>"'
+echo '           }'
+echo '         }'
+echo '       }'
+echo '     }'
+echo ""
+echo "-------------------------------------------------------------------"
+echo ""

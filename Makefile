@@ -131,18 +131,20 @@ DIST_NAME := v42-$(VERSION)
 DIST_FILE := $(DIST_DIR)/$(DIST_NAME).tar.gz
 
 dist:
-	@echo "[1/4] Building production Docker images..."
+	@echo "[1/5] Building production Docker images..."
 	docker compose -f docker-compose.prod.yml build
-	@echo "[2/4] Pulling standard base images..."
-	docker pull postgres:16-alpine
-	docker pull migrate/migrate
-	@echo "[3/4] Saving images to tar.gz..."
+	@echo "[2/5] Building MCP server binary (linux/amd64)..."
+	$(DOCKER_GO) go build -ldflags="-s -w" -o bin/v42-mcp ./cmd/mcp
+	@echo "[3/5] Pulling standard base images (using cache if pull fails)..."
+	docker pull postgres:16-alpine || true
+	docker pull migrate/migrate || true
+	@echo "[4/5] Saving images to tar.gz..."
 	@mkdir -p $(DIST_DIR)/_tmp/$(DIST_NAME)/images
 	docker save v42-api:latest     | gzip > $(DIST_DIR)/_tmp/$(DIST_NAME)/images/v42-api.tar.gz
 	docker save v42-frontend:latest | gzip > $(DIST_DIR)/_tmp/$(DIST_NAME)/images/v42-frontend.tar.gz
 	docker save postgres:16-alpine  | gzip > $(DIST_DIR)/_tmp/$(DIST_NAME)/images/postgres.tar.gz
 	docker save migrate/migrate     | gzip > $(DIST_DIR)/_tmp/$(DIST_NAME)/images/migrate.tar.gz
-	@echo "[4/4] Assembling package..."
+	@echo "[5/5] Assembling package..."
 	@cp docker-compose.offline.yml $(DIST_DIR)/_tmp/$(DIST_NAME)/docker-compose.yml
 	@cp .env.dist                  $(DIST_DIR)/_tmp/$(DIST_NAME)/.env.dist
 	@cp install.sh                 $(DIST_DIR)/_tmp/$(DIST_NAME)/install.sh
@@ -150,7 +152,10 @@ dist:
 	@cp -r migrations              $(DIST_DIR)/_tmp/$(DIST_NAME)/migrations
 	@cp -r docker                  $(DIST_DIR)/_tmp/$(DIST_NAME)/docker
 	@cp -r scripts                 $(DIST_DIR)/_tmp/$(DIST_NAME)/scripts
+	@mkdir -p $(DIST_DIR)/_tmp/$(DIST_NAME)/bin
+	@cp bin/v42-mcp                $(DIST_DIR)/_tmp/$(DIST_NAME)/bin/v42-mcp
 	@chmod +x $(DIST_DIR)/_tmp/$(DIST_NAME)/install.sh
+	@chmod +x $(DIST_DIR)/_tmp/$(DIST_NAME)/bin/v42-mcp
 	@mkdir -p $(DIST_DIR)
 	@cd $(DIST_DIR)/_tmp && tar -czf ../$(DIST_NAME).tar.gz $(DIST_NAME)/
 	@rm -rf $(DIST_DIR)/_tmp
