@@ -10,6 +10,7 @@ import { AdminSkillsPage } from '@/pages/AdminSkillsPage';
 import { AdminSettingsPage } from '@/pages/AdminSettingsPage';
 import { AdminArchivePage } from '@/pages/AdminArchivePage';
 import { AdminProjectsPage } from '@/pages/AdminProjectsPage';
+import { AdminAgentTokensPage } from '@/pages/AdminAgentTokensPage';
 import { ChangePasswordPage } from '@/pages/ChangePasswordPage';
 import { ProjectsPage } from '@/pages/ProjectsPage';
 import { ProjectShell, ProjectOverviewPage } from '@/pages/ProjectShell';
@@ -61,6 +62,7 @@ export const router = createBrowserRouter([
           { path: '/admin/skills', element: <AdminSkillsPage /> },
           { path: '/admin/archive', element: <AdminArchivePage /> },
           { path: '/admin/projects', element: <AdminProjectsPage /> },
+          { path: '/admin/agent-tokens', element: <AdminAgentTokensPage /> },
           // Project routes -- nested under ProjectShell (header + tab nav)
           {
             path: '/projects/:projectId',

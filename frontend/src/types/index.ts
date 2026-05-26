@@ -295,6 +295,40 @@ export interface Task {
 
 // -- TestSpec ----------------------------------------------------------------
 
+// -- Agent Tokens ------------------------------------------------------------
+
+export interface AgentToken {
+  id: string;
+  user_id: string;
+  created_by: string;
+  name: string;
+  project_id: string | null;
+  last_used_at: string | null;
+  created_at: string;
+  revoked_at: string | null;
+}
+
+export interface AgentTokenWithRaw extends AgentToken {
+  raw_token: string;
+}
+
+// -- Readiness ---------------------------------------------------------------
+
+export interface ReadinessCheck {
+  name: string;
+  pass: boolean;
+  note: string | null;
+}
+
+export interface ReadinessResult {
+  ready: boolean;
+  score: number;
+  checks: ReadinessCheck[];
+  suggestions: string[];
+}
+
+// -- Tests -------------------------------------------------------------------
+
 export type TestType = 'manual' | 'acceptance' | 'integration' | 'unit';
 
 export interface TestSpec {

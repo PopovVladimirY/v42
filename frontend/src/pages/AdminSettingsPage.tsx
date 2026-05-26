@@ -67,6 +67,20 @@ const SETTINGS_SECTIONS = [
       </svg>
     ),
   },
+  {
+    to: '/admin/agent-tokens',
+    label: 'Agent Tokens',
+    description: 'Create and revoke long-lived tokens for MCP servers, AI agents, and automation scripts. No expiry -- revocable any time.',
+    soon: false,
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <circle cx="8" cy="15" r="4" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M11.83 11.17L19 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M17 6l1 1M19 4l1 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="8" cy="15" r="1.5" fill="currentColor" />
+      </svg>
+    ),
+  },
 ];
 
 export function AdminSettingsPage() {

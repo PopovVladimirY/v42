@@ -66,6 +66,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 	sprintCapacityH := &sprintCapacityHandlers{q: queries}
 	retroH := &retroHandlers{q: queries}
 	agentTokenH := &agentTokenHandlers{tokens: agentTokenStore, users: store.NewUserStore(queries)}
+	readinessH := &readinessHandlers{backlog: store.NewBacklogStore(queries, pool), tests: store.NewTestStore(queries)}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", healthHandler(pool))
@@ -178,6 +179,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 				// Backlog
 				r.Get("/backlog", backlogH.List)
 				r.Get("/backlog/{id}", backlogH.Get)
+				r.Get("/backlog/{id}/readiness", readinessH.Check)
 				r.Get("/backlog/{id}/children", backlogH.GetChildren)
 				r.Post("/backlog", backlogH.Create)
 				r.Patch("/backlog/{id}", backlogH.Update)

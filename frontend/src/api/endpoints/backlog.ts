@@ -1,5 +1,5 @@
 import client from '../client';
-import type { ApiResponse, BacklogItem, BacklogItemStatus, BacklogItemType, ClarityQuadrant } from '@/types';
+import type { ApiResponse, BacklogItem, BacklogItemStatus, BacklogItemType, ClarityQuadrant, ReadinessResult } from '@/types';
 
 export type BacklogFilters = {
   status?: BacklogItemStatus;
@@ -52,4 +52,7 @@ export const backlogApi = {
 
   getChildren: (projectId: string, itemId: string) =>
     client.get<ApiResponse<BacklogItem[]>>(`/projects/${projectId}/backlog/${itemId}/children`),
+
+  readiness: (projectId: string, itemId: string) =>
+    client.get<ApiResponse<ReadinessResult>>(`/projects/${projectId}/backlog/${itemId}/readiness`),
 };

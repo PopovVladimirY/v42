@@ -7,6 +7,7 @@ import { useSprints } from '@/hooks/useSprints';
 import { sprintsApi } from '@/api/endpoints/sprints';
 import { projectsApi } from '@/api/endpoints/projects';
 import { usersApi } from '@/api/endpoints/users';
+import { backlogApi } from '@/api/endpoints/backlog';
 import { useAuthStore } from '@/hooks/useAuth';
 import { CLARITY_COLOR, CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
 import type { BacklogItemStatus, Project, Task, TestType } from '@/types';
@@ -422,6 +423,85 @@ function ExportMenu({
         </>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+//  Readiness badge -- traffic light + expandable checklist
+// ---------------------------------------------------------------------------
+
+function ReadinessBadge({ projectId, itemId }: { projectId: string; itemId: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const { data, isLoading } = useQuery({
+    queryKey: ['readiness', projectId, itemId],
+    queryFn: () => backlogApi.readiness(projectId, itemId).then((r) => r.data.data),
+    staleTime: 30_000,
+  });
+
+  if (isLoading || !data) return null;
+
+  const pct = Math.round(data.score * 100);
+  const color = data.ready
+    ? 'var(--color-success)'
+    : pct >= 50
+    ? 'var(--color-warning)'
+    : 'var(--color-danger)';
+
+  return (
+    <section
+      className="rounded-lg"
+      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+    >
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left"
+      >
+        <span
+          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+          style={{ background: color }}
+        />
+        <span className="text-xs font-semibold" style={{ color: 'var(--text-2)' }}>
+          Agent Readiness
+        </span>
+        <span className="text-xs font-bold" style={{ color }}>{pct}%</span>
+        {data.ready && (
+          <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'rgba(16,185,129,.12)', color: 'var(--color-success)' }}>
+            Ready
+          </span>
+        )}
+        <span className="ml-auto text-xs" style={{ color: 'var(--text-3)' }}>
+          {data.checks.filter((c) => c.pass).length}/{data.checks.length} checks
+        </span>
+        <svg
+          width="12" height="12" viewBox="0 0 12 12" fill="none"
+          style={{ color: 'var(--text-3)', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}
+        >
+          <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </button>
+      {expanded && (
+        <div style={{ borderTop: '1px solid var(--border)', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {data.checks.map((c) => (
+            <div key={c.name} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 12 }}>
+              <span style={{ color: c.pass ? 'var(--color-success)' : 'var(--color-danger)', flexShrink: 0, fontWeight: 700 }}>
+                {c.pass ? '✓' : '✗'}
+              </span>
+              <span style={{ fontFamily: 'monospace', color: 'var(--text-2)', flexShrink: 0 }}>{c.name}</span>
+              {c.note && (
+                <span style={{ color: 'var(--text-3)' }}>{c.note}</span>
+              )}
+            </div>
+          ))}
+          {data.suggestions.length > 0 && (
+            <ul style={{ margin: '4px 0 0 20px', padding: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {data.suggestions.map((s, i) => (
+                <li key={i} style={{ fontSize: 11, color: 'var(--text-3)', listStyle: 'disc' }}>{s}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -887,6 +967,9 @@ export function BacklogItemDetailPage() {
         <span className="text-xs font-semibold uppercase tracking-wider ml-3" style={{ color: 'var(--text-3)' }}>Assignee</span>
         <AssigneePicker projectId={projectId} itemId={itemId} assigneeId={item.assignee_id ?? null} />
       </section>
+
+      {/* ── Agent Readiness ── */}
+      <ReadinessBadge projectId={projectId} itemId={itemId} />
 
       {/* ── Description ── */}
       <section className="flex flex-col gap-2">
