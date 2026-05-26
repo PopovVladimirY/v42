@@ -14,7 +14,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { useSprintItems, useRemoveSprintItem, useSprint, sprintKeys } from '@/hooks/useSprints';
+import { useSprintItems, useSprint, sprintKeys } from '@/hooks/useSprints';
 import {
   useTasks, useItemTests, useMoveTask, useMoveItemTest,
   useCreateTask, useCreateItemTest, useDeleteTask, useDeleteItemTest,
@@ -644,7 +644,6 @@ export function SprintBacklogTab() {
   // Editable in all states except completed and cancelled
   const isEditable = sprint?.status !== 'completed' && sprint?.status !== 'cancelled';
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const removeItem = useRemoveSprintItem(projectId, sprintId);
   const updateItem = useUpdateBacklogItem(projectId);
   const qc = useQueryClient();
 
@@ -852,19 +851,7 @@ export function SprintBacklogTab() {
                         item.estimate ?? '--'
                       )}
                     </td>
-                    {canManage && (
-                      <td className="px-3 py-2 text-right">
-                        <button
-                          onClick={() => removeItem.mutate(item.id)}
-                          disabled={removeItem.isPending}
-                          className="text-xs px-2 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                          style={{ color: 'var(--color-danger)', border: '1px solid var(--color-danger)', opacity: removeItem.isPending ? 0.5 : undefined }}
-                          title="Remove from sprint"
-                        >
-                          &times;
-                        </button>
-                      </td>
-                    )}
+
                   </DroppableItemRow>
                   {isExpanded && (
                     <ExpandedItemPanel
