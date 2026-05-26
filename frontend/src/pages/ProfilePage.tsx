@@ -65,7 +65,9 @@ const ROLE_LABEL: Record<string, string> = {
   admin: 'Admin',
   maintainer: 'Maintainer',
   developer: 'Developer',
+  tester: 'Tester',
   observer: 'Observer',
+  agent: 'Agent',
 };
 
 // 5 steps from "show immediately" to "never" -- stored as ms (null = disabled)
@@ -533,11 +535,13 @@ export function ProfilePage() {
                   className="text-sm px-2.5 py-1.5 rounded-md w-full"
                   style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
                 >
-                  <option value="admin">Admin</option>
-                  <option value="maintainer">Maintainer</option>
+                  {/* Agent users cannot be promoted to admin or maintainer */}
+                  {user?.role !== 'agent' && <option value="admin">Admin</option>}
+                  {user?.role !== 'agent' && <option value="maintainer">Maintainer</option>}
                   <option value="developer">Developer</option>
                   <option value="tester">Tester</option>
                   <option value="observer">Observer</option>
+                  <option value="agent">Agent</option>
                 </select>
               )}
               {updateInfo.error && (

@@ -1,6 +1,6 @@
 // Core domain types -- mirrors the Go backend models
 
-export type UserRole = 'admin' | 'maintainer' | 'developer' | 'tester' | 'observer';
+export type UserRole = 'admin' | 'maintainer' | 'developer' | 'tester' | 'observer' | 'agent';
 
 export interface UiSettings {
   default_sprint_tab?: 'board' | 'backlog' | 'tests' | 'capacity';

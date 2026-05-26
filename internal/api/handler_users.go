@@ -16,7 +16,13 @@ import (
 // validRoles is the set of role values accepted by the API.
 var validRoles = map[string]bool{
 	"admin": true, "maintainer": true, "developer": true,
-	"tester": true, "observer": true,
+	"tester": true, "observer": true, "agent": true,
+}
+
+// agentForbiddenRoles lists roles that an agent user can never be promoted to.
+// Enforced in Update; prevents privilege escalation through the API.
+var agentForbiddenRoles = map[string]bool{
+	"admin": true, "maintainer": true,
 }
 
 type userHandlers struct {
@@ -120,7 +126,7 @@ func (h *userHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		*req.Role = strings.TrimSpace(*req.Role) // normalise accidental whitespace
 	}
 	if req.Role != nil && !validRoles[*req.Role] {
-		respondErr(w, http.StatusBadRequest, "INVALID_ROLE", "role must be one of: admin, maintainer, developer, tester, observer")
+		respondErr(w, http.StatusBadRequest, "INVALID_ROLE", "role must be one of: admin, maintainer, developer, tester, observer, agent")
 		return
 	}
 
@@ -171,6 +177,11 @@ func (h *userHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		current.Email = trimmedEmail
 	}
 	if req.Role != nil {
+		// Agent users cannot be promoted to admin or maintainer -- ever.
+		if current.Role == "agent" && agentForbiddenRoles[*req.Role] {
+			respondErr(w, http.StatusForbidden, "AGENT_CANNOT_ELEVATE", "agent users cannot be assigned admin or maintainer role")
+			return
+		}
 		current.Role = *req.Role
 	}
 	if req.IsActive != nil {
@@ -312,7 +323,7 @@ func (h *userHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		req.Role = "developer"
 	}
 	if !validRoles[req.Role] {
-		respondErr(w, http.StatusBadRequest, "INVALID_ROLE", "role must be one of: admin, maintainer, developer, tester, observer")
+		respondErr(w, http.StatusBadRequest, "INVALID_ROLE", "role must be one of: admin, maintainer, developer, tester, observer, agent")
 		return
 	}
 

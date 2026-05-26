@@ -5,7 +5,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type PageCategory = 'backlog' | 'epics' | 'sprints';
+export type PageCategory = 'backlog' | 'epics' | 'sprints' | 'users';
 
 const DEFAULT_PAGE_SIZE = 25;
 const VALID_SIZES = [10, 25, 50, 100] as const;
@@ -24,6 +24,7 @@ export const usePaginationStore = create<PaginationState>()(
         backlog: DEFAULT_PAGE_SIZE,
         epics:   DEFAULT_PAGE_SIZE,
         sprints: DEFAULT_PAGE_SIZE,
+        users:   DEFAULT_PAGE_SIZE,
       },
       setPageSize: (category, size) =>
         set((s) => ({ pageSizes: { ...s.pageSizes, [category]: size } })),
