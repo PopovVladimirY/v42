@@ -91,6 +91,28 @@ type TokenRepo interface {
 	RevokeAll(ctx context.Context, userID string) error
 }
 
+// AgentToken is a long-lived opaque token for AI agents (MCP server, bots).
+// Unlike JWT access tokens, these have no built-in expiry and are revocable from the admin UI.
+type AgentToken struct {
+	ID          string     `json:"id"`
+	UserID      string     `json:"user_id"`      // acts as this user
+	CreatedBy   string     `json:"created_by"`   // admin who created it
+	Name        string     `json:"name"`
+	ProjectID   *string    `json:"project_id"`   // nil = all projects
+	LastUsedAt  *time.Time `json:"last_used_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+	RevokedAt   *time.Time `json:"revoked_at"`
+}
+
+// AgentTokenRepo is the storage interface for agent token operations.
+type AgentTokenRepo interface {
+	Create(ctx context.Context, userID, createdBy, name, tokenHash string, projectID *string) (*AgentToken, error)
+	GetByHash(ctx context.Context, hash string) (*AgentToken, error)
+	List(ctx context.Context) ([]*AgentToken, error)
+	Revoke(ctx context.Context, id string) error
+	Touch(ctx context.Context, id string) error
+}
+
 // AuthService orchestrates login, token refresh, and logout flows.
 type AuthService struct {
 	Users      UserRepo

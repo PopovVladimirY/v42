@@ -33,7 +33,8 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 
 	// auth endpoints: burst of 10 then 1 per 6s per IP -- brute force protection from day one
 	authLimiter := middleware.NewRateLimiter(rate.Every(6*time.Second), 10)
-	jwtAuth := middleware.JWTAuth(cfg.JWTSecret)
+	agentTokenStore := store.NewAgentTokenStore(queries)
+	bearerAuth := middleware.BearerAuth(cfg.JWTSecret, agentTokenStore)
 
 	auth := &authHandlers{
 		svc:        authSvc,
@@ -64,6 +65,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 	resultH := &sprintResultHandlers{results: sprintResults}
 	sprintCapacityH := &sprintCapacityHandlers{q: queries}
 	retroH := &retroHandlers{q: queries}
+	agentTokenH := &agentTokenHandlers{tokens: agentTokenStore, users: store.NewUserStore(queries)}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", healthHandler(pool))
@@ -75,9 +77,9 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 			r.Post("/auth/refresh", auth.Refresh)
 		})
 
-		// JWT-protected group: all endpoints below require a valid access token.
+		// JWT-protected group: all endpoints below require a valid access token or a valid agent token.
 		r.Group(func(r chi.Router) {
-			r.Use(jwtAuth)
+			r.Use(bearerAuth)
 
 			// Auth routes exempt from RequirePasswordChanged -- change-password must be accessible even when forced.
 			r.Post("/auth/logout", auth.Logout)
@@ -98,6 +100,11 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 				r.Get("/users/{id}/skills", userH.ListSkills)
 				r.Put("/users/{id}/skills/{skill_id}", userH.UpsertSkill)
 				r.Delete("/users/{id}/skills/{skill_id}", userH.DeleteSkill)
+
+				// Agent tokens: admin-only CRUD for long-lived MCP/automation tokens.
+				r.With(middleware.RequireRole("admin")).Post("/agent-tokens", agentTokenH.Create)
+				r.With(middleware.RequireRole("admin")).Get("/agent-tokens", agentTokenH.List)
+				r.With(middleware.RequireRole("admin")).Delete("/agent-tokens/{id}", agentTokenH.Revoke)
 
 				// Skills: read for all, write for admin only
 				r.Get("/skills", skillH.List)

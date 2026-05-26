@@ -38,6 +38,10 @@ frontend-kill:
 build:
 	go build -ldflags="-s -w" -o bin/v42 ./cmd/api
 
+# Build MCP server binary to bin/v42-mcp
+mcp:
+	go build -ldflags="-s -w" -o bin/v42-mcp ./cmd/mcp
+
 # Build via Docker (no local Go required)
 docker-build-go:
 	$(DOCKER_GO) go build -ldflags="-s -w" -o bin/v42 ./cmd/api

@@ -389,7 +389,7 @@ func buildRetroResponse(row dbgen.ListRetroItemsRow) retroItemResponse {
 		CreatedAt:    row.CreatedAt.Time.UTC().Format("2006-01-02T15:04:05Z"),
 		UpdatedAt:    row.UpdatedAt.Time.UTC().Format("2006-01-02T15:04:05Z"),
 		Votes:        row.Votes,
-		MyVote:       row.MyVote,
+		MyVote:       row.MyVote.(bool),
 		MyTotalVotes: row.MyTotalVotes,
 	}
 	if row.BacklogItemID.Valid {

@@ -269,6 +269,162 @@ function CreateTaskForm({
 
 const SP_OPTS = ['1', '3', '8', '20', '50'] as const;
 
+// ---------------------------------------------------------------------------
+//  Markdown builder -- formats all loaded data into a prompt-ready .md block
+// ---------------------------------------------------------------------------
+
+function buildMarkdown(
+  item: import('@/types').BacklogItem,
+  tasks: import('@/types').Task[],
+  tests: import('@/types').TestSpec[],
+): string {
+  const check = (done: boolean) => (done ? '[x]' : '[ ]');
+  const lines: string[] = [];
+
+  lines.push(`# B-${item.number}: ${item.title}`);
+  lines.push('');
+  lines.push(
+    `**Type:** ${item.type} | **Status:** ${STATUS_LABEL[item.status]} | **Clarity:** ${CLARITY_LABEL[item.clarity]} | **Complexity:** ${item.estimate ?? '--'}`,
+  );
+  if (item.sprint_name) lines.push(`**Sprint:** ${item.sprint_name}`);
+  lines.push('');
+
+  if (item.description) {
+    lines.push('## Description');
+    lines.push('');
+    lines.push(item.description);
+    lines.push('');
+  }
+
+  if (item.ac_setup || item.ac_steps || item.ac_expected) {
+    lines.push('## Acceptance Criteria');
+    lines.push('');
+    if (item.ac_setup)    { lines.push('### Given (Setup)');    lines.push(''); lines.push(item.ac_setup);    lines.push(''); }
+    if (item.ac_steps)    { lines.push('### When (Steps)');     lines.push(''); lines.push(item.ac_steps);    lines.push(''); }
+    if (item.ac_expected) { lines.push('### Then (Expected)');  lines.push(''); lines.push(item.ac_expected); lines.push(''); }
+  }
+
+  if (tasks.length > 0) {
+    lines.push('## Tasks');
+    lines.push('');
+    for (const t of tasks) {
+      const skill = t.skill_required ? ` *(${t.skill_required})*` : '';
+      const est   = t.estimate       ? ` [${t.estimate}]`          : '';
+      lines.push(`- ${check(t.status === 'done')} ${t.title}${skill}${est}`);
+    }
+    lines.push('');
+  }
+
+  if (tests.length > 0) {
+    lines.push('## Tests');
+    lines.push('');
+    for (const t of tests) {
+      lines.push(`- [ ] **[${t.type}]** ${t.title}`);
+      if (t.steps)            lines.push(`  - Steps: ${t.steps}`);
+      if (t.expected_results) lines.push(`  - Expected: ${t.expected_results}`);
+    }
+    lines.push('');
+  }
+
+  lines.push('---');
+  lines.push(`*Exported from V42 on ${new Date().toISOString().slice(0, 10)}*`);
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+//  Export menu -- copy to clipboard or download .md file
+// ---------------------------------------------------------------------------
+
+function ExportMenu({
+  item,
+  tasks,
+  tests,
+}: {
+  item: import('@/types').BacklogItem;
+  tasks: import('@/types').Task[];
+  tests: import('@/types').TestSpec[];
+}) {
+  const [open, setOpen]     = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  function getMd() { return buildMarkdown(item, tasks, tests); }
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(getMd());
+    } catch {
+      // fallback for non-secure contexts
+      const el = document.createElement('textarea');
+      el.value = getMd();
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+    }
+    setCopied(true);
+    setOpen(false);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  function handleDownload() {
+    const md   = getMd();
+    const slug = item.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase().slice(0, 60);
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `B-${item.number}-${slug}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setOpen(false);
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="text-xs px-2 py-1.5 rounded flex items-center gap-1.5"
+        style={{
+          color: copied ? 'var(--color-success)' : 'var(--text-2)',
+          border: `1px solid ${copied ? 'var(--color-success)' : 'var(--border)'}`,
+        }}
+        title="Export as Markdown"
+      >
+        {copied ? 'Copied!' : 'MD'}
+        {!copied && (
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ opacity: 0.5 }}>
+            <path d="M2 4l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        )}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div
+            className="absolute right-0 top-full mt-1 rounded-lg overflow-hidden z-30 py-1 min-w-44"
+            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)' }}
+          >
+            <button
+              onClick={() => void handleCopy()}
+              className="w-full text-left text-xs px-3 py-2 hover:bg-[var(--bg-hover)]"
+              style={{ color: 'var(--text-1)' }}
+            >
+              Copy to clipboard
+            </button>
+            <button
+              onClick={handleDownload}
+              className="w-full text-left text-xs px-3 py-2 hover:bg-[var(--bg-hover)]"
+              style={{ color: 'var(--text-1)' }}
+            >
+              Download .md file
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 const STATUS_OPTS: { value: BacklogItemStatus; label: string }[] = [
   { value: 'planned',     label: 'Planned'     },
   { value: 'request',     label: 'Request'     },
@@ -670,25 +826,28 @@ export function BacklogItemDetailPage() {
             </span>
           </div>
         </div>
-        {canManage && (
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              onClick={() => setShowBreakdown(true)}
-              className="text-xs px-2 py-1.5 rounded"
-              style={{ color: 'var(--accent)', border: '1px solid var(--accent)' }}
-              title="Break this item into child items (Life Tree)"
-            >
-              Break down
-            </button>
-            <button
-              onClick={() => void handleDelete()}
-              className="text-xs px-2 py-1.5 rounded"
-              style={{ color: 'var(--color-danger)', border: '1px solid var(--border)' }}
-            >
-              Delete
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <ExportMenu item={item} tasks={tasks} tests={tests} />
+          {canManage && (
+            <>
+              <button
+                onClick={() => setShowBreakdown(true)}
+                className="text-xs px-2 py-1.5 rounded"
+                style={{ color: 'var(--accent)', border: '1px solid var(--accent)' }}
+                title="Break this item into child items (Life Tree)"
+              >
+                Break down
+              </button>
+              <button
+                onClick={() => void handleDelete()}
+                className="text-xs px-2 py-1.5 rounded"
+                style={{ color: 'var(--color-danger)', border: '1px solid var(--border)' }}
+              >
+                Delete
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* ── Controls: Stage, Sprint, Status, SP, Assignee ── */}
