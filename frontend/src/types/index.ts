@@ -291,6 +291,7 @@ export interface Task {
   created_by: string;
   created_at: string;
   updated_at: string;
+  number: number;
 }
 
 // -- TestSpec ----------------------------------------------------------------
@@ -346,4 +347,5 @@ export interface TestSpec {
   created_by: string;
   created_at: string;
   updated_at: string;
+  number: number;
 }

@@ -1,0 +1,5 @@
+ALTER TABLE tests  DROP COLUMN IF EXISTS number;
+DROP SEQUENCE IF EXISTS tests_number_seq;
+
+ALTER TABLE tasks  DROP COLUMN IF EXISTS number;
+DROP SEQUENCE IF EXISTS tasks_number_seq;

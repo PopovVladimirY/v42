@@ -27,6 +27,7 @@ type Task struct {
 	CreatedBy     string    `json:"created_by"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
+	Number        int64     `json:"number"`
 }
 
 // TaskStore wraps sqlc task queries.
@@ -51,6 +52,7 @@ func taskFromCreateRow(r dbgen.CreateTaskRow) Task {
 		CreatedBy:     uuidToString(r.CreatedBy),
 		CreatedAt:     r.CreatedAt.Time,
 		UpdatedAt:     r.UpdatedAt.Time,
+		Number:        r.Number,
 	}
 	if r.AssigneeID.Valid {
 		v := uuidToString(r.AssigneeID)
@@ -79,6 +81,7 @@ func taskFromListRow(r dbgen.ListTasksByBacklogItemRow) Task {
 		CreatedBy:     uuidToString(r.CreatedBy),
 		CreatedAt:     r.CreatedAt.Time,
 		UpdatedAt:     r.UpdatedAt.Time,
+		Number:        r.Number,
 	}
 	if r.AssigneeID.Valid {
 		v := uuidToString(r.AssigneeID)
@@ -107,6 +110,7 @@ func taskFromUpdateRow(r dbgen.UpdateTaskRow) Task {
 		CreatedBy:     uuidToString(r.CreatedBy),
 		CreatedAt:     r.CreatedAt.Time,
 		UpdatedAt:     r.UpdatedAt.Time,
+		Number:        r.Number,
 	}
 	if r.AssigneeID.Valid {
 		v := uuidToString(r.AssigneeID)
@@ -136,6 +140,7 @@ func taskFromMoveRow(r dbgen.MoveTaskRow) Task {
 		CreatedBy:     uuidToString(r.CreatedBy),
 		CreatedAt:     r.CreatedAt.Time,
 		UpdatedAt:     r.UpdatedAt.Time,
+		Number:        r.Number,
 	}
 	if r.AssigneeID.Valid {
 		v := uuidToString(r.AssigneeID)
@@ -164,6 +169,7 @@ func taskFromGetRow(r dbgen.GetTaskByIDRow) Task {
 		CreatedBy:     uuidToString(r.CreatedBy),
 		CreatedAt:     r.CreatedAt.Time,
 		UpdatedAt:     r.UpdatedAt.Time,
+		Number:        r.Number,
 	}
 	if r.AssigneeID.Valid {
 		v := uuidToString(r.AssigneeID)

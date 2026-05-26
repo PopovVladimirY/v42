@@ -27,6 +27,7 @@ type TestSpec struct {
 	CreatedBy       string    `json:"created_by"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
+	Number          int64     `json:"number"`
 }
 
 // TestStore wraps sqlc test queries.
@@ -53,6 +54,7 @@ func testFromRow(r dbgen.Test) TestSpec {
 		CreatedBy:       uuidToString(r.CreatedBy),
 		CreatedAt:       r.CreatedAt.Time,
 		UpdatedAt:       r.UpdatedAt.Time,
+		Number:          r.Number,
 	}
 	if r.BacklogItemID.Valid {
 		v := uuidToString(r.BacklogItemID)

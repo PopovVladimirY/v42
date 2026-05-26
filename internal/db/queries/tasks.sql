@@ -1,15 +1,15 @@
 -- name: CreateTask :one
 INSERT INTO tasks (backlog_item_id, title, description, status, estimate, order_index, assignee_id, skill_required, reviewer_id, created_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, backlog_item_id, title, description, status, estimate, order_index, assignee_id, skill_required, reviewer_id, created_by, created_at, updated_at;
+RETURNING id, backlog_item_id, title, description, status, estimate, order_index, assignee_id, skill_required, reviewer_id, created_by, created_at, updated_at, number;
 
 -- name: GetTaskByID :one
-SELECT id, backlog_item_id, title, description, status, estimate, order_index, assignee_id, skill_required, reviewer_id, created_by, created_at, updated_at
+SELECT id, backlog_item_id, title, description, status, estimate, order_index, assignee_id, skill_required, reviewer_id, created_by, created_at, updated_at, number
 FROM tasks
 WHERE id = $1;
 
 -- name: ListTasksByBacklogItem :many
-SELECT id, backlog_item_id, title, description, status, estimate, order_index, assignee_id, skill_required, reviewer_id, created_by, created_at, updated_at
+SELECT id, backlog_item_id, title, description, status, estimate, order_index, assignee_id, skill_required, reviewer_id, created_by, created_at, updated_at, number
 FROM tasks
 WHERE backlog_item_id = $1
 ORDER BY order_index ASC, created_at ASC;
@@ -25,14 +25,14 @@ SET title          = coalesce(sqlc.narg('title'),          title),
     reviewer_id    = coalesce(sqlc.narg('reviewer_id'),    reviewer_id),
     updated_at     = now()
 WHERE id = $1
-RETURNING id, backlog_item_id, title, description, status, estimate, order_index, assignee_id, skill_required, reviewer_id, created_by, created_at, updated_at;
+RETURNING id, backlog_item_id, title, description, status, estimate, order_index, assignee_id, skill_required, reviewer_id, created_by, created_at, updated_at, number;
 
 -- name: MoveTask :one
 UPDATE tasks
 SET backlog_item_id = $2,
     updated_at      = now()
 WHERE id = $1
-RETURNING id, backlog_item_id, title, description, status, estimate, order_index, assignee_id, skill_required, reviewer_id, created_by, created_at, updated_at;
+RETURNING id, backlog_item_id, title, description, status, estimate, order_index, assignee_id, skill_required, reviewer_id, created_by, created_at, updated_at, number;
 
 -- name: DeleteTask :exec
 DELETE FROM tasks WHERE id = $1;

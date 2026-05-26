@@ -307,7 +307,6 @@ function DraggableTaskRow({
   moveTask,
   onDelete,
   onUpdate,
-  rowIndex,
   onTitleClick,
 }: {
   task: Task;
@@ -317,7 +316,6 @@ function DraggableTaskRow({
   moveTask: ReturnType<typeof useMoveTask>;
   onDelete: () => void;
   onUpdate: (title: string) => void;
-  rowIndex: number;
   onTitleClick: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -350,13 +348,13 @@ function DraggableTaskRow({
           onDoubleClick={(e) => e.stopPropagation()}
         >&#8942;</div>
       </td>
-      <td className="px-3 py-1 align-middle" style={{ width: '4rem' }}>
-        <span className="font-mono" style={{ color: '#60A5FA', fontSize: '0.65rem' }}>Z-{rowIndex}</span>
+      <td className="pl-5 pr-3 py-1 align-middle" style={{ width: '4rem' }}>
+        <span className="font-mono" style={{ color: '#60A5FA', fontSize: '0.65rem' }}>Z-{task.number}</span>
       </td>
-      <td className="px-3 py-1 align-middle" style={{ width: '5rem' }}>
+      <td className="pl-5 pr-3 py-1 align-middle" style={{ width: '5rem' }}>
         <span className="text-xs font-mono uppercase" style={{ color: '#60A5FA' }}>task</span>
       </td>
-      <td className="px-3 py-1 align-middle" style={{ maxWidth: 0 }}>
+      <td className="pl-5 pr-3 py-1 align-middle" style={{ maxWidth: 0 }}>
         {editing ? (
           <input
             autoFocus
@@ -370,10 +368,11 @@ function DraggableTaskRow({
           />
         ) : (
           <span
-            className="block truncate text-sm cursor-pointer hover:underline"
+            className="block truncate cursor-pointer hover:underline"
             style={{
               color: 'var(--text-1)',
               fontStyle: 'italic',
+              fontSize: '0.963rem',
               textDecoration: (task.status === 'done' || task.status === 'cancelled') ? 'line-through' : undefined,
               opacity: task.status === 'cancelled' ? 0.5 : 1,
             }}
@@ -384,7 +383,7 @@ function DraggableTaskRow({
       </td>
       <td style={{ width: '8rem' }} />
       <td style={{ width: '6rem' }} />
-      <td className="px-3 py-1 align-middle" style={{ width: '8rem' }}>
+      <td className="pl-5 pr-3 py-1 align-middle" style={{ width: '8rem' }}>
         <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: TASK_STATUS_COLOR[task.status] ?? '#6B7280', color: '#fff' }}>
           {task.status.replace('_', ' ')}
         </span>
@@ -430,7 +429,6 @@ function DraggableTestRow({
   moveTest,
   onDelete,
   onUpdate,
-  rowIndex,
   onTitleClick,
 }: {
   test: TestSpec;
@@ -440,7 +438,6 @@ function DraggableTestRow({
   moveTest: ReturnType<typeof useMoveItemTest>;
   onDelete: () => void;
   onUpdate: (title: string) => void;
-  rowIndex: number;
   onTitleClick: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -473,13 +470,13 @@ function DraggableTestRow({
           onDoubleClick={(e) => e.stopPropagation()}
         >&#8942;</div>
       </td>
-      <td className="px-3 py-1 align-middle" style={{ width: '4rem' }}>
-        <span className="font-mono" style={{ color: '#34D399', fontSize: '0.65rem' }}>T-{rowIndex}</span>
+      <td className="pl-5 pr-3 py-1 align-middle" style={{ width: '4rem' }}>
+        <span className="font-mono" style={{ color: '#34D399', fontSize: '0.65rem' }}>T-{test.number}</span>
       </td>
-      <td className="px-3 py-1 align-middle" style={{ width: '5rem' }}>
+      <td className="pl-5 pr-3 py-1 align-middle" style={{ width: '5rem' }}>
         <span className="text-xs font-mono capitalize" style={{ color: '#34D399' }}>{test.type}</span>
       </td>
-      <td className="px-3 py-1 align-middle" style={{ maxWidth: 0 }}>
+      <td className="pl-5 pr-3 py-1 align-middle" style={{ maxWidth: 0 }}>
         {editing ? (
           <input
             autoFocus
@@ -492,7 +489,7 @@ function DraggableTestRow({
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <span className="block truncate text-sm cursor-pointer hover:underline" style={{ color: 'var(--text-1)', fontStyle: 'italic' }} title={test.title} onClick={(e) => { e.stopPropagation(); onTitleClick(); }}>{test.title}</span>
+          <span className="block truncate cursor-pointer hover:underline" style={{ color: 'var(--text-1)', fontStyle: 'italic', fontSize: '0.963rem' }} title={test.title} onClick={(e) => { e.stopPropagation(); onTitleClick(); }}>{test.title}</span>
         )}
       </td>
       <td style={{ width: '8rem' }} />
@@ -665,11 +662,6 @@ function ExpandedItemPanel({
 
   const isLoading = loadingTasks || loadingTests;
 
-  const indexedUnified = useMemo(() => {
-    let tIdx = 0, ttIdx = 0;
-    return unified.map((row) => ({ ...row, idx: row.kind === 'task' ? ++tIdx : ++ttIdx }));
-  }, [unified]);
-
   return (
     <>
       {isLoading && (
@@ -682,7 +674,7 @@ function ExpandedItemPanel({
           <td colSpan={10} className="px-6 py-2 text-xs" style={{ color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>No tasks or tests yet.</td>
         </tr>
       )}
-      {indexedUnified.map((row) =>
+      {unified.map((row) =>
         row.kind === 'task' ? (
           <DraggableTaskRow
             key={row.data.id}
@@ -691,7 +683,6 @@ function ExpandedItemPanel({
             item={item}
             allItems={allItems}
             moveTask={moveTask}
-            rowIndex={row.idx}
             onDelete={() => deleteTask.mutate(row.data.id)}
             onUpdate={(title) => updateTask.mutate({ taskId: row.data.id, title })}
             onTitleClick={() => setModalTask({ id: row.data.id, itemId: item.id })}
@@ -704,7 +695,6 @@ function ExpandedItemPanel({
             item={item}
             allItems={allItems}
             moveTest={moveTest}
-            rowIndex={row.idx}
             onDelete={() => deleteTest.mutate({ testId: row.data.id, itemId: item.id })}
             onUpdate={(title) => updateTest.mutate({ testId: row.data.id, title })}
             onTitleClick={() => setModalTest({ id: row.data.id })}
@@ -1235,8 +1225,8 @@ export function BacklogPage() {
                         <td className="px-3 py-1 align-middle" style={{ maxWidth: 0 }}>
                           <Link
                             to={`/projects/${projectId}/backlog/${item.id}`}
-                            className="block truncate hover:underline text-sm"
-                            style={{ color: 'var(--text-1)' }}
+                            className="block truncate hover:underline font-semibold"
+                            style={{ color: 'var(--text-1)', fontSize: '1.006rem' }}
                             title={item.title}
                             onClick={(e) => e.stopPropagation()}
                           >

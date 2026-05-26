@@ -158,7 +158,6 @@ function DraggableTaskRow({
   moveTask,
   onDelete,
   onUpdate,
-  rowIndex,
   canManage,
   onTitleClick,
 }: {
@@ -169,7 +168,6 @@ function DraggableTaskRow({
   moveTask: ReturnType<typeof useMoveTask>;
   onDelete: () => void;
   onUpdate: (title: string) => void;
-  rowIndex: number;
   canManage: boolean;
   onTitleClick: () => void;
 }) {
@@ -203,13 +201,13 @@ function DraggableTaskRow({
           onDoubleClick={(e) => e.stopPropagation()}
         >&#8942;</div>
       </td>
-      <td className="px-3 py-1 align-middle w-16">
-        <span className="font-mono" style={{ color: '#60A5FA', fontSize: '0.65rem' }}>Z-{rowIndex}</span>
+      <td className="pl-5 pr-3 py-1 align-middle w-16">
+        <span className="font-mono" style={{ color: '#60A5FA', fontSize: '0.65rem' }}>Z-{task.number}</span>
       </td>
-      <td className="px-3 py-1 align-middle w-20">
+      <td className="pl-5 pr-3 py-1 align-middle w-20">
         <span className="text-xs font-mono uppercase" style={{ color: '#60A5FA' }}>task</span>
       </td>
-      <td className="px-3 py-1 align-middle max-w-0">
+      <td className="pl-5 pr-3 py-1 align-middle max-w-0">
         {editing ? (
           <input
             autoFocus
@@ -223,10 +221,11 @@ function DraggableTaskRow({
           />
         ) : (
           <span
-            className="block truncate text-xs cursor-pointer hover:underline"
+            className="block truncate cursor-pointer hover:underline"
             style={{
               color: 'var(--text-1)',
               fontStyle: 'italic',
+              fontSize: '0.825rem',
               textDecoration: (task.status === 'done' || task.status === 'cancelled') ? 'line-through' : undefined,
               opacity: task.status === 'cancelled' ? 0.5 : 1,
             }}
@@ -235,7 +234,7 @@ function DraggableTaskRow({
           >{task.title}</span>
         )}
       </td>
-      <td className="px-3 py-1 align-middle w-28">
+      <td className="pl-5 pr-3 py-1 align-middle w-28">
         <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ background: TASK_STATUS_COLOR[task.status] ?? '#6B7280', color: '#fff' }}>
           {task.status.replace('_', ' ')}
         </span>
@@ -286,7 +285,6 @@ function DraggableTestRow({
   moveTest,
   onDelete,
   onUpdate,
-  rowIndex,
   canManage,
   onTitleClick,
 }: {
@@ -297,7 +295,6 @@ function DraggableTestRow({
   moveTest: ReturnType<typeof useMoveItemTest>;
   onDelete: () => void;
   onUpdate: (title: string) => void;
-  rowIndex: number;
   canManage: boolean;
   onTitleClick: () => void;
 }) {
@@ -331,13 +328,13 @@ function DraggableTestRow({
           onDoubleClick={(e) => e.stopPropagation()}
         >&#8942;</div>
       </td>
-      <td className="px-3 py-1 align-middle w-16">
-        <span className="font-mono" style={{ color: '#34D399', fontSize: '0.65rem' }}>T-{rowIndex}</span>
+      <td className="pl-5 pr-3 py-1 align-middle w-16">
+        <span className="font-mono" style={{ color: '#34D399', fontSize: '0.65rem' }}>T-{test.number}</span>
       </td>
-      <td className="px-3 py-1 align-middle w-20">
+      <td className="pl-5 pr-3 py-1 align-middle w-20">
         <span className="text-xs font-mono capitalize" style={{ color: '#34D399' }}>{test.type}</span>
       </td>
-      <td className="px-3 py-1 align-middle max-w-0">
+      <td className="pl-5 pr-3 py-1 align-middle max-w-0">
         {editing ? (
           <input
             autoFocus
@@ -350,7 +347,7 @@ function DraggableTestRow({
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <span className="block truncate text-xs cursor-pointer hover:underline" style={{ color: 'var(--text-1)', fontStyle: 'italic' }} title={test.title} onClick={(e) => { e.stopPropagation(); onTitleClick(); }}>{test.title}</span>
+          <span className="block truncate cursor-pointer hover:underline" style={{ color: 'var(--text-1)', fontStyle: 'italic', fontSize: '0.825rem' }} title={test.title} onClick={(e) => { e.stopPropagation(); onTitleClick(); }}>{test.title}</span>
         )}
       </td>
       <td className="w-28" />
@@ -432,11 +429,6 @@ function ExpandedItemPanel({
     return rows.sort((a, b) => new Date(a.data.created_at).getTime() - new Date(b.data.created_at).getTime());
   }, [tasks, tests]);
 
-  const indexedUnified = useMemo(() => {
-    let tIdx = 0, ttIdx = 0;
-    return unified.map((row) => ({ ...row, idx: row.kind === 'task' ? ++tIdx : ++ttIdx }));
-  }, [unified]);
-
   function startAdding(type: 'task' | 'test') {
     setAddingTitle('');
     setAddingType(type);
@@ -467,7 +459,7 @@ function ExpandedItemPanel({
           <td colSpan={colSpan} className="px-6 py-2 text-xs" style={{ color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>No tasks or tests yet.</td>
         </tr>
       )}
-      {indexedUnified.map((row) =>
+      {unified.map((row) =>
         row.kind === 'task' ? (
           <DraggableTaskRow
             key={row.data.id}
@@ -476,7 +468,6 @@ function ExpandedItemPanel({
             item={item}
             allItems={allItems}
             moveTask={moveTask}
-            rowIndex={row.idx}
             canManage={canManage}
             onDelete={() => deleteTask.mutate(row.data.id)}
             onUpdate={(title) => updateTask.mutate({ taskId: row.data.id, title })}
@@ -490,7 +481,6 @@ function ExpandedItemPanel({
             item={item}
             allItems={allItems}
             moveTest={moveTest}
-            rowIndex={row.idx}
             canManage={canManage}
             onDelete={() => deleteTest.mutate({ testId: row.data.id, itemId: item.id })}
             onUpdate={(title) => updateTest.mutate({ testId: row.data.id, title })}
@@ -759,8 +749,8 @@ export function SprintBacklogTab() {
                     <td className="px-3 py-2 max-w-0">
                       <Link
                         to={`/projects/${projectId}/backlog/${item.id}`}
-                        className="truncate block hover:underline"
-                        style={{ color: 'var(--text-1)' }}
+                        className="truncate block hover:underline font-semibold"
+                        style={{ color: 'var(--text-1)', fontSize: '1.006rem' }}
                         onClick={(e) => e.stopPropagation()}
                         onDoubleClick={(e) => e.stopPropagation()}
                       >
