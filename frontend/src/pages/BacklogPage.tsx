@@ -67,6 +67,8 @@ const STATUS_OPTS: BacklogItemStatus[] = [
   'planned', 'request', 'on_hold', 'open', 'in_progress', 'in_review', 'done', 'closed', 'cancelled', 'rejected',
 ];
 
+const CLARITY_ORDER_BACKLOG: Record<string, number> = { clear: 0, scoped: 1, tacit: 2, foggy: 3, unknown: 4 };
+
 const CLARITY_OPTS: { value: ClarityQuadrant; label: string }[] = [
   { value: 'clear',   label: CLARITY_LABEL.clear   },
   { value: 'scoped',  label: CLARITY_LABEL.scoped  },
@@ -851,7 +853,7 @@ function _saveFilters(projectId: string, f: SavedFilters) {
   try { localStorage.setItem(_filtersKey(projectId), JSON.stringify(f)); } catch { /* quota */ }
 }
 
-type SortField = 'title' | 'type' | 'clarity' | 'status' | 'sprint';
+type SortField = 'number' | 'title' | 'type' | 'clarity' | 'status' | 'sprint';
 type SortDir   = 'asc' | 'desc' | null;
 
 // Cycle: null -> asc -> desc -> null
@@ -965,7 +967,7 @@ export function BacklogPage() {
   // Sort indicator ASCII: [^] asc, [v] desc, nothing for neutral
   function sortMark(field: SortField) {
     if (sortField !== field || sortDir === null) return '';
-    return sortDir === 'asc' ? ' [^]' : ' [v]';
+    return sortDir === 'asc' ? ' ↑' : ' ↓';
   }
 
   const { data: sprints = [] } = useSprints(projectId ?? '');
@@ -1012,9 +1014,10 @@ export function BacklogPage() {
     if (sortField && sortDir) {
       list = [...list].sort((a, b) => {
         let cmp = 0;
+        if (sortField === 'number')  cmp = a.number - b.number;
         if (sortField === 'title')   cmp = a.title.localeCompare(b.title);
         if (sortField === 'type')    cmp = a.type.localeCompare(b.type);
-        if (sortField === 'clarity') cmp = (a.clarity ?? '').localeCompare(b.clarity ?? '');
+        if (sortField === 'clarity') cmp = (CLARITY_ORDER_BACKLOG[a.clarity] ?? 9) - (CLARITY_ORDER_BACKLOG[b.clarity] ?? 9);
         if (sortField === 'status')  cmp = a.status.localeCompare(b.status);
         if (sortField === 'sprint') {
           const sa = a.sprint_name ?? '';
@@ -1143,22 +1146,24 @@ export function BacklogPage() {
               <thead style={{ background: 'var(--bg-elevated)' }}>
                 <tr>
                   <th className="text-xs font-medium text-left px-2 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '2rem' }}></th>
-                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '4rem' }}>ID</th>
-                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '5rem' }}>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: sortField === 'number' ? 'var(--text-1)' : 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '4rem' }}>
+                    <button onClick={() => toggleSort('number')} className="hover:opacity-80">ID{sortMark('number')}</button>
+                  </th>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: sortField === 'type' ? 'var(--text-1)' : 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '5rem' }}>
                     <button onClick={() => toggleSort('type')} className="hover:opacity-80">Type{sortMark('type')}</button>
                   </th>
-                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)' }}>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: sortField === 'title' ? 'var(--text-1)' : 'var(--text-3)', borderBottom: '1px solid var(--border)' }}>
                     <button onClick={() => toggleSort('title')} className="hover:opacity-80">Title{sortMark('title')}</button>
                   </th>
                   <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '8rem' }}>Stage</th>
-                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '6rem' }}>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: sortField === 'clarity' ? 'var(--text-1)' : 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '6rem' }}>
                     <button onClick={() => toggleSort('clarity')} className="hover:opacity-80">Clarity{sortMark('clarity')}</button>
                   </th>
-                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '8rem' }}>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: sortField === 'status' ? 'var(--text-1)' : 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '8rem' }}>
                     <button onClick={() => toggleSort('status')} className="hover:opacity-80">Status{sortMark('status')}</button>
                   </th>
                   <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '3.5rem' }} title="Story points">SP</th>
-                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '8rem' }}>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: sortField === 'sprint' ? 'var(--text-1)' : 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '8rem' }}>
                     <button onClick={() => toggleSort('sprint')} className="hover:opacity-80">Sprint{sortMark('sprint')}</button>
                   </th>
                   <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '2rem' }}></th>

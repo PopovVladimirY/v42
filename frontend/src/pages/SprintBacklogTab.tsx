@@ -63,6 +63,16 @@ const CLARITY_LABEL: Record<string, string> = {
 
 const CLARITY_OPTIONS = ['clear', 'scoped', 'tacit', 'foggy', 'unknown'] as const;
 const ESTIMATE_OPTIONS = ['', '1', '2', '3', '5', '8', '13', '20', '40'];
+const CLARITY_ORDER: Record<string, number> = { clear: 0, scoped: 1, tacit: 2, foggy: 3, unknown: 4 };
+
+type SortCol = 'number' | 'type' | 'title' | 'status' | 'clarity' | 'assignee' | 'estimate';
+type SortDir = 'asc' | 'desc' | null;
+
+function nextSortDir(cur: SortDir): SortDir {
+  if (cur === null) return 'asc';
+  if (cur === 'asc') return 'desc';
+  return null;
+}
 
 // -- Active drag state -------------------------------------------------------
 
@@ -650,6 +660,38 @@ export function SprintBacklogTab() {
 
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
+  const [sortCol, setSortCol] = useState<SortCol | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>(null);
+
+  function handleSort(col: SortCol) {
+    if (sortCol === col) {
+      const d = nextSortDir(sortDir);
+      setSortDir(d);
+      if (d === null) setSortCol(null);
+    } else {
+      setSortCol(col);
+      setSortDir('asc');
+    }
+  }
+
+  const sortedItems = useMemo(() => {
+    if (!sortCol || !sortDir) return items;
+    const arr = [...items];
+    arr.sort((a, b) => {
+      let v = 0;
+      switch (sortCol) {
+        case 'number':   v = a.number - b.number; break;
+        case 'type':     v = a.type.localeCompare(b.type); break;
+        case 'title':    v = a.title.localeCompare(b.title); break;
+        case 'status':   v = a.status.localeCompare(b.status); break;
+        case 'clarity':  v = (CLARITY_ORDER[a.clarity] ?? 9) - (CLARITY_ORDER[b.clarity] ?? 9); break;
+        case 'assignee': v = (a.assignee_name ?? '').localeCompare(b.assignee_name ?? ''); break;
+        case 'estimate': v = (parseFloat(a.estimate ?? '0') || 0) - (parseFloat(b.estimate ?? '0') || 0); break;
+      }
+      return sortDir === 'asc' ? v : -v;
+    });
+    return arr;
+  }, [items, sortCol, sortDir]);
 
   const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: 8 } }));
 
@@ -705,18 +747,37 @@ export function SprintBacklogTab() {
           <thead>
             <tr className="sticky top-0 z-10" style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
               <th className="w-8 px-2" />
-              <th className="text-left px-3 py-2 font-medium w-16" style={{ color: 'var(--text-3)' }}>ID</th>
-              <th className="text-left px-3 py-2 font-medium w-20" style={{ color: 'var(--text-3)' }}>Type</th>
-              <th className="text-left px-3 py-2 font-medium" style={{ color: 'var(--text-3)' }}>Title</th>
-              <th className="text-left px-3 py-2 font-medium w-28" style={{ color: 'var(--text-3)' }}>Status</th>
-              <th className="text-center px-3 py-2 font-medium w-16" style={{ color: 'var(--text-3)' }}>Clarity</th>
-              <th className="text-left px-3 py-2 font-medium w-32" style={{ color: 'var(--text-3)' }}>Assignee</th>
-              <th className="text-center px-3 py-2 font-medium w-20" style={{ color: 'var(--text-3)' }}>SP</th>
+              {(['number', 'type', 'title', 'status'] as const).map((col, i) => (
+                <th
+                  key={col}
+                  className="text-left px-3 py-2 font-medium cursor-pointer select-none whitespace-nowrap"
+                  style={{ color: sortCol === col ? 'var(--text-1)' : 'var(--text-3)', width: i === 0 ? '4rem' : i === 1 ? '5rem' : i === 3 ? '7rem' : undefined }}
+                  onClick={() => handleSort(col)}
+                >
+                  {col === 'number' ? 'ID' : col.charAt(0).toUpperCase() + col.slice(1)}
+                  {sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                </th>
+              ))}
+              <th
+                className="text-center px-3 py-2 font-medium cursor-pointer select-none w-16"
+                style={{ color: sortCol === 'clarity' ? 'var(--text-1)' : 'var(--text-3)' }}
+                onClick={() => handleSort('clarity')}
+              >Clarity{sortCol === 'clarity' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</th>
+              <th
+                className="text-left px-3 py-2 font-medium cursor-pointer select-none w-32"
+                style={{ color: sortCol === 'assignee' ? 'var(--text-1)' : 'var(--text-3)' }}
+                onClick={() => handleSort('assignee')}
+              >Assignee{sortCol === 'assignee' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</th>
+              <th
+                className="text-center px-3 py-2 font-medium cursor-pointer select-none w-20"
+                style={{ color: sortCol === 'estimate' ? 'var(--text-1)' : 'var(--text-3)' }}
+                onClick={() => handleSort('estimate')}
+              >SP{sortCol === 'estimate' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</th>
               {canManage && <th className="w-12" />}
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => {
+            {sortedItems.map((item) => {
               const isExpanded = expandedItems.has(item.id);
               const isEditingThis = isEditable && editingItemId === item.id;
               return (
