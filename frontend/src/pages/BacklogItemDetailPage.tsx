@@ -1,4 +1,7 @@
 import { useState, useMemo, Fragment, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { TaskDetailModal } from '@/components/TaskDetailModal';
+import { TestDetailModal } from '@/components/TestDetailModal';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useBacklogItem, useUpdateBacklogItem, useDeleteBacklogItem, useProjectAncestors, backlogKeys } from '@/hooks/useProjects';
@@ -88,10 +91,12 @@ function TaskRow({
   task,
   projectId,
   itemId,
+  onOpen,
 }: {
   task: Task;
   projectId: string;
   itemId: string;
+  onOpen: () => void;
 }) {
   const updateTask = useUpdateTask(projectId, itemId);
   const deleteTask = useDeleteTask(projectId, itemId);
@@ -132,8 +137,10 @@ function TaskRow({
 
       {/* Title */}
       <span
-        className="flex-1 truncate"
+        className="flex-1 truncate cursor-pointer hover:underline"
         style={{ color: isDone ? 'var(--text-3)' : 'var(--text-1)', textDecoration: isDone ? 'line-through' : 'none' }}
+        onClick={onOpen}
+        title="Click to open task details"
       >
         {task.title}
       </span>
@@ -801,6 +808,8 @@ export function BacklogItemDetailPage() {
   const [showCreateTask, setShowCreateTask] = useState(false);
   const [showCreateTest, setShowCreateTest] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
+  const [modalTaskId, setModalTaskId] = useState<string | null>(null);
+  const [modalTestId, setModalTestId] = useState<string | null>(null);
   const [editDesc, setEditDesc] = useState(false);
   const [descDraft, setDescDraft] = useState('');
   const [editAC, setEditAC] = useState(false);
@@ -1108,7 +1117,7 @@ export function BacklogItemDetailPage() {
           <p className="text-xs" style={{ color: 'var(--text-3)' }}>No tasks yet. Break down the work.</p>
         )}
         {tasks.map((task) => (
-          <TaskRow key={task.id} task={task} projectId={projectId} itemId={itemId} />
+          <TaskRow key={task.id} task={task} projectId={projectId} itemId={itemId} onOpen={() => setModalTaskId(task.id)} />
         ))}
       </section>
 
@@ -1142,7 +1151,7 @@ export function BacklogItemDetailPage() {
             <span className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 mt-0.5" style={{ background: 'var(--bg-elevated)', color: 'var(--color-info)' }}>
               {t.type}
             </span>
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 cursor-pointer hover:underline" onClick={() => setModalTestId(t.id)} title="Click to open test details">
               <p className="text-xs font-medium truncate" style={{ color: 'var(--text-1)' }}>{t.title}</p>
               {t.steps && (
                 <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-3)' }}>{t.steps}</p>
@@ -1179,6 +1188,23 @@ export function BacklogItemDetailPage() {
           tests={tests}
           onClose={() => setShowBreakdown(false)}
         />
+      )}
+      {modalTaskId && createPortal(
+        <TaskDetailModal
+          projectId={projectId}
+          itemId={itemId}
+          taskId={modalTaskId}
+          onClose={() => setModalTaskId(null)}
+        />,
+        document.body
+      )}
+      {modalTestId && createPortal(
+        <TestDetailModal
+          projectId={projectId}
+          testId={modalTestId}
+          onClose={() => setModalTestId(null)}
+        />,
+        document.body
       )}
       </div>
       </div>
