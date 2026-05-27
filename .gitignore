@@ -12,6 +12,7 @@ coverage.html
 
 # dependency vendor directory (we use module cache instead)
 vendor/
+planning/
 
 # sqlc generated code -- regenerate with: make sqlc
 internal/db/gen/
