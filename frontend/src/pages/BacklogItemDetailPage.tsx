@@ -9,13 +9,24 @@ import { projectsApi } from '@/api/endpoints/projects';
 import { usersApi } from '@/api/endpoints/users';
 import { backlogApi } from '@/api/endpoints/backlog';
 import { useAuthStore } from '@/hooks/useAuth';
-import { CLARITY_COLOR, CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
-import type { BacklogItemStatus, Project, Task, TestType } from '@/types';
+import { CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
+import type { BacklogItemStatus, Project, Skill, Task, TestType } from '@/types';
 import { BreakdownModal } from './BreakdownModal';
+import { ClarityIndicator, ClarityPicker } from '@/components/ClarityIndicator';
+import { skillsApi } from '@/api/endpoints/users';
 
 // ---------------------------------------------------------------------------
 //  Constants
 // ---------------------------------------------------------------------------
+
+// Shared skills catalog -- the single source of truth for required-skill pickers.
+function useSkills() {
+  return useQuery({
+    queryKey: ['skills'],
+    queryFn: skillsApi.list,
+    staleTime: 5 * 60_000,
+  });
+}
 
 
 const TEST_TYPE_OPTS: { value: TestType; label: string }[] = [
@@ -96,8 +107,7 @@ function TaskRow({
   const navigate = useNavigate();
   const updateTask = useUpdateTask(projectId, itemId);
   const deleteTask = useDeleteTask(projectId, itemId);
-  const [editingSkill, setEditingSkill] = useState(false);
-  const [skillDraft, setSkillDraft] = useState(task.skill_required ?? '');
+  const { data: skills = [] } = useSkills();
 
   const isDone = task.status === 'done';
   const statusColor = isDone ? 'var(--color-success)' : task.status === 'in_progress' ? 'var(--accent)' : 'var(--text-3)';
@@ -106,14 +116,6 @@ function TaskRow({
     const order: Task['status'][] = ['todo', 'in_progress', 'done', 'cancelled'];
     const next = order[(order.indexOf(task.status) + 1) % order.length];
     void updateTask.mutate({ taskId: task.id, status: next });
-  }
-
-  function commitSkill() {
-    setEditingSkill(false);
-    const val = skillDraft.trim() || undefined;
-    if ((val ?? '') !== (task.skill_required ?? '')) {
-      void updateTask.mutate({ taskId: task.id, skill_required: val ?? null as unknown as undefined });
-    }
   }
 
   return (
@@ -141,28 +143,20 @@ function TaskRow({
         {task.title}
       </span>
 
-      {/* Skill chip -- click to edit inline */}
-      {editingSkill ? (
-        <input
-          className="text-xs px-2 py-0.5 rounded w-28 outline-none"
-          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--accent)', color: 'var(--text-1)' }}
-          value={skillDraft}
-          autoFocus
-          onChange={(e) => setSkillDraft(e.target.value)}
-          onBlur={commitSkill}
-          onKeyDown={(e) => { if (e.key === 'Enter') commitSkill(); if (e.key === 'Escape') { setEditingSkill(false); setSkillDraft(task.skill_required ?? ''); } }}
-          placeholder="skill..."
-        />
-      ) : (
-        <button
-          onClick={() => setEditingSkill(true)}
-          className="text-xs px-2 py-0.5 rounded flex-shrink-0"
-          style={{ background: 'var(--bg-elevated)', color: task.skill_required ? 'var(--color-info)' : 'var(--text-3)' }}
-          title="Click to set required skill"
-        >
-          {task.skill_required ?? '+ skill'}
-        </button>
-      )}
+      {/* Skill chip -- pick required skill from the catalog */}
+      <select
+        value={task.skill_required ?? ''}
+        onChange={(e) => void updateTask.mutate({ taskId: task.id, skill_required: e.target.value || null as unknown as undefined })}
+        onClick={(e) => e.stopPropagation()}
+        className="text-xs px-2 py-0.5 rounded flex-shrink-0 outline-none max-w-[10rem] truncate"
+        style={{ background: 'var(--bg-elevated)', color: task.skill_required ? 'var(--color-info)' : 'var(--text-3)', border: '1px solid var(--border)' }}
+        title="Required skill"
+      >
+        <option value="">+ skill</option>
+        {skills.filter((s) => !s.is_hidden).map((s) => (
+          <option key={s.id} value={s.name}>{s.name}</option>
+        ))}
+      </select>
 
       {/* Estimate */}
       {task.estimate && (
@@ -213,6 +207,7 @@ function CreateTaskForm({
   onClose: () => void;
 }) {
   const create = useCreateTask(projectId, itemId);
+  const { data: skills = [] } = useSkills();
   const [title, setTitle] = useState('');
   const [skill, setSkill] = useState('');
   const [estimate, setEstimate] = useState('');
@@ -239,13 +234,18 @@ function CreateTaskForm({
           onChange={(e) => setTitle(e.target.value)}
           autoFocus
         />
-        <input
-          className="w-24 text-xs px-2 py-1.5 rounded outline-none"
-          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
-          placeholder="Skill..."
+        <select
+          className="w-32 text-xs px-2 py-1.5 rounded outline-none"
+          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: skill ? 'var(--text-1)' : 'var(--text-3)' }}
           value={skill}
           onChange={(e) => setSkill(e.target.value)}
-        />
+          title="Required skill"
+        >
+          <option value="">-- skill --</option>
+          {skills.filter((s) => !s.is_hidden).map((s) => (
+            <option key={s.id} value={s.name}>{s.name}</option>
+          ))}
+        </select>
         <input
           className="w-16 text-xs px-2 py-1.5 rounded outline-none"
           style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
@@ -979,10 +979,8 @@ export function BacklogItemDetailPage() {
             {item.title}
           </h1>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <span
-              className="text-xs px-2 py-0.5 rounded font-medium text-white"
-              style={{ background: CLARITY_COLOR[item.clarity] }}
-            >
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--text-2)' }}>
+              <ClarityIndicator clarity={item.clarity} size={18} />
               {CLARITY_LABEL[item.clarity]}
             </span>
           </div>
@@ -1011,44 +1009,73 @@ export function BacklogItemDetailPage() {
         </div>
       </div>
 
-      {/* ── Controls: Stage, Sprint, Status, SP, Assignee ── */}
-      <section className="flex items-center gap-3 flex-wrap">
-        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>Stage</span>
-        <StagePicker projectId={projectId} itemId={itemId} stageId={item.node_id ?? null} />
-        <span className="text-xs font-semibold uppercase tracking-wider ml-3" style={{ color: 'var(--text-3)' }}>Epic</span>
-        <EpicPicker projectId={projectId} itemId={itemId} epicId={item.epic_id ?? null} />
-        <span className="text-xs font-semibold uppercase tracking-wider ml-3" style={{ color: 'var(--text-3)' }}>Sprint</span>
-        <SprintPanel projectId={projectId} itemId={itemId} sprintId={item.sprint_id ?? null} sprintName={item.sprint_name ?? null} />
-        <span className="text-xs font-semibold uppercase tracking-wider ml-3" style={{ color: 'var(--text-3)' }}>Status</span>
-        <select
-          value={item.status}
-          onChange={(e) => void updateItem.mutate({ itemId: item.id, status: e.target.value as BacklogItemStatus })}
-          className="text-xs px-2 py-1.5 rounded-lg outline-none font-medium"
-          style={{
-            background: STATUS_COLOR[item.status]?.bg ?? 'var(--bg-surface)',
-            color: STATUS_COLOR[item.status]?.fg ?? 'var(--text-1)',
-            border: '1px solid transparent',
-          }}
-        >
-          {STATUS_OPTS.map(({ value, label }) => (
-            <option key={value} value={value}>{label}</option>
-          ))}
-        </select>
-        <span className="text-xs font-semibold uppercase tracking-wider ml-3" style={{ color: 'var(--text-3)' }}>SP</span>
-        <select
-          data-testid="sp-selector"
-          value={item.estimate ?? ''}
-          onChange={(e) => void updateItem.mutate({ itemId: item.id, estimate: e.target.value || null })}
-          className="text-xs px-2 py-1.5 rounded-lg outline-none"
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: item.estimate ? 'var(--text-1)' : 'var(--text-3)' }}
-        >
-          <option value="">-- SP</option>
-          {SP_OPTS.map((v) => (
-            <option key={v} value={v}>{v}</option>
-          ))}
-        </select>
-        <span className="text-xs font-semibold uppercase tracking-wider ml-3" style={{ color: 'var(--text-3)' }}>Assignee</span>
-        <AssigneePicker projectId={projectId} itemId={itemId} assigneeId={item.assignee_id ?? null} />
+      {/* ── Controls: left = label/field pairs, right = Clarity quadrant ── */}
+      <section className="flex items-start gap-6 flex-wrap">
+        {/* Left column: two rows, each label glued to its field */}
+        <div className="flex-1 min-w-0 flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+            <div className="flex items-center gap-2 whitespace-nowrap">
+              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>Stage</span>
+              <StagePicker projectId={projectId} itemId={itemId} stageId={item.node_id ?? null} />
+            </div>
+            <div className="flex items-center gap-2 whitespace-nowrap">
+              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>Epic</span>
+              <EpicPicker projectId={projectId} itemId={itemId} epicId={item.epic_id ?? null} />
+            </div>
+            <div className="flex items-center gap-2 whitespace-nowrap">
+              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>Sprint</span>
+              <SprintPanel projectId={projectId} itemId={itemId} sprintId={item.sprint_id ?? null} sprintName={item.sprint_name ?? null} />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+            <div className="flex items-center gap-2 whitespace-nowrap">
+              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>SP</span>
+              <select
+                data-testid="sp-selector"
+                value={item.estimate ?? ''}
+                onChange={(e) => void updateItem.mutate({ itemId: item.id, estimate: e.target.value || null })}
+                className="text-xs px-2 py-1.5 rounded-lg outline-none"
+                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: item.estimate ? 'var(--text-1)' : 'var(--text-3)' }}
+              >
+                <option value="">-- SP</option>
+                {SP_OPTS.map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2 whitespace-nowrap">
+              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>Status</span>
+              <select
+                value={item.status}
+                onChange={(e) => void updateItem.mutate({ itemId: item.id, status: e.target.value as BacklogItemStatus })}
+                className="text-xs px-2 py-1.5 rounded-lg outline-none font-medium"
+                style={{
+                  background: STATUS_COLOR[item.status]?.bg ?? 'var(--bg-surface)',
+                  color: STATUS_COLOR[item.status]?.fg ?? 'var(--text-1)',
+                  border: '1px solid transparent',
+                }}
+              >
+                {STATUS_OPTS.map(({ value, label }) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2 whitespace-nowrap">
+              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>Assignee</span>
+              <AssigneePicker projectId={projectId} itemId={itemId} assigneeId={item.assignee_id ?? null} />
+            </div>
+          </div>
+        </div>
+
+        {/* Right column: Clarity quadrant picker, label to the left of it */}
+        <div className="flex items-start gap-3 flex-shrink-0">
+          <span className="text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-3)' }}>Clarity</span>
+          <ClarityPicker
+            value={item.clarity}
+            disabled={!canManage}
+            onChange={(clarity) => void updateItem.mutate({ itemId: item.id, clarity })}
+          />
+        </div>
       </section>
 
       {/* ── Agent Readiness ── */}

@@ -4,26 +4,12 @@ import { useEpics } from '@/hooks/useProjects';
 import { useBacklog } from '@/hooks/useProjects';
 import { useQuery } from '@tanstack/react-query';
 import { projectsApi } from '@/api/endpoints/projects';
-import { CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
+import { STATUS_COLOR, STATUS_LABEL } from '@/types';
 import type { BacklogItem, ClarityQuadrant, Project } from '@/types';
-
-// Clarity squares -- hex mirror of the Tailwind palette used elsewhere.
-const CLARITY_HEX: Record<string, string> = {
-  clear:   '#10B981',
-  scoped:  '#FBBF24',
-  tacit:   '#F97316',
-  foggy:   '#EF4444',
-  unknown: '#6B7280',
-};
+import { ClarityIndicator } from '@/components/ClarityIndicator';
 
 function ClarityBadge({ clarity }: { clarity: ClarityQuadrant }) {
-  return (
-    <span
-      className="inline-block w-5 h-5 rounded flex-shrink-0"
-      style={{ background: CLARITY_HEX[clarity] ?? CLARITY_HEX.unknown }}
-      title={`Clarity: ${CLARITY_LABEL[clarity]}`}
-    />
-  );
+  return <ClarityIndicator clarity={clarity} size={18} />;
 }
 
 function StatusPill({ status }: { status: BacklogItem['status'] }) {

@@ -24,6 +24,7 @@ import { useUpdateBacklogItem } from '@/hooks/useProjects';
 import { useAuthStore } from '@/hooks/useAuth';
 import type { SprintItem } from '@/api/endpoints/sprints';
 import type { Task, TestSpec, ClarityQuadrant, BacklogItem } from '@/types';
+import { ClarityIndicator } from '@/components/ClarityIndicator';
 
 // -- Constants ---------------------------------------------------------------
 
@@ -559,15 +560,16 @@ function ClarityDropdown({
   onChange: (v: ClarityQuadrant) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const hex = CLARITY_HEX[value] ?? CLARITY_HEX.unknown;
   return (
     <div className="relative flex justify-center">
       <button
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
-        className="w-5 h-5 rounded flex-shrink-0"
-        style={{ background: hex, cursor: 'pointer' }}
-        title={`Clarity: ${CLARITY_LABEL[value] ?? value} — click to change`}
-      />
+        className="flex-shrink-0"
+        style={{ cursor: 'pointer', lineHeight: 0 }}
+        title={`Clarity: ${CLARITY_LABEL[value] ?? value} -- click to change`}
+      >
+        <ClarityIndicator clarity={value as ClarityQuadrant} size={18} />
+      </button>
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
@@ -595,14 +597,9 @@ function ClarityDropdown({
 // -- ClarityBadge (read-only) ------------------------------------------------
 
 function ClarityBadge({ value }: { value: string }) {
-  const hex = CLARITY_HEX[value] ?? CLARITY_HEX.unknown;
   return (
     <div className="flex justify-center">
-      <span
-        className="inline-block w-5 h-5 rounded flex-shrink-0"
-        style={{ background: hex }}
-        title={`Clarity: ${CLARITY_LABEL[value] ?? value}`}
-      />
+      <ClarityIndicator clarity={value as ClarityQuadrant} size={18} />
     </div>
   );
 }

@@ -2,9 +2,10 @@ import { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useEpics, useCreateEpic, useUpdateEpic, useDeleteEpic } from '@/hooks/useProjects';
 import type { Epic, EpicStatus, ClarityQuadrant } from '@/types';
-import { CLARITY_COLOR, CLARITY_LABEL } from '@/types';
+import { CLARITY_LABEL } from '@/types';
 import { usePaginationStore } from '@/stores/usePagination';
 import { Paginator } from '@/components/Paginator';
+import { ClarityIndicator } from '@/components/ClarityIndicator';
 import { loadJSON, saveJSON } from '@/lib/persist';
 
 const STATUS_OPTS: { value: EpicStatus; label: string; color: string; bg: string }[] = [
@@ -32,9 +33,10 @@ function ClarityBadge({ clarity }: { clarity: ClarityQuadrant }) {
   return (
     <span
       data-testid={`epic-clarity-badge-${clarity}`}
-      className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap"
-      style={{ background: CLARITY_COLOR[clarity], color: '#fff' }}
+      className="inline-flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
+      style={{ color: 'var(--text-2)' }}
     >
+      <ClarityIndicator clarity={clarity} size={18} />
       {CLARITY_LABEL[clarity]}
     </span>
   );

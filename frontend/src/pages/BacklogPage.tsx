@@ -32,6 +32,7 @@ import { CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
 import type { BacklogItem, BacklogItemStatus, BacklogItemType, ClarityQuadrant, Epic, Project, Task, TestSpec } from '@/types';
 import { usePaginationStore } from '@/stores/usePagination';
 import { Paginator } from '@/components/Paginator';
+import { ClarityIndicator } from '@/components/ClarityIndicator';
 import { loadJSON, saveJSON } from '@/lib/persist';
 import { BreakdownModal } from './BreakdownModal';
 
@@ -197,24 +198,10 @@ function StatusPill({
 }
 
 // -- Clarity badge -----------------------------------------------------------
-
-const CLARITY_HEX: Record<string, string> = {
-  clear:   '#10B981',
-  scoped:  '#FBBF24',
-  tacit:   '#F97316',
-  foggy:   '#EF4444',
-  unknown: '#6B7280',
-};
+// Cynefin 2x2 map indicator lives in components/ClarityIndicator.
 
 function ClarityBadge({ clarity }: { clarity: ClarityQuadrant }) {
-  return (
-    <span
-      data-testid={`clarity-badge-${clarity}`}
-      className="inline-block w-5 h-5 rounded flex-shrink-0"
-      style={{ background: CLARITY_HEX[clarity] ?? CLARITY_HEX.unknown }}
-      title={`Clarity: ${CLARITY_LABEL[clarity]}`}
-    />
-  );
+  return <ClarityIndicator clarity={clarity} size={18} />;
 }
 
 
