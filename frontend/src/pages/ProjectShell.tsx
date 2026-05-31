@@ -4,11 +4,12 @@ import { useQuery, useQueries } from '@tanstack/react-query';
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer,
 } from 'recharts';
-import { useProject, useProjectAncestors, useProjectTeams, useAddProjectTeam, useRemoveProjectTeam } from '@/hooks/useProjects';
+import { useProject, useProjectAncestors, useProjectTeams, useAddProjectTeam, useRemoveProjectTeam, useUpdateProject } from '@/hooks/useProjects';
 import { useAuthStore } from '@/hooks/useAuth';
 import { pushRecentProject } from '@/hooks/useLastProject';
 import { teamsApi } from '@/api/endpoints/teams';
 import { capacityApi } from '@/api/endpoints/capacity';
+import type { ProjectStatus } from '@/types';
 
 // Sub-nav tabs for a project
 const TABS = [
@@ -116,11 +117,13 @@ export function ProjectOverviewPage() {
   const { data: projectTeams = [], isLoading: teamsLoading } = useProjectTeams(projectId ?? '');
   const addTeam = useAddProjectTeam(projectId ?? '');
   const removeTeam = useRemoveProjectTeam(projectId ?? '');
+  const updateProject = useUpdateProject(projectId ?? '');
   const { data: allTeams = [] } = useQuery({ queryKey: ['teams'], queryFn: teamsApi.list });
   const user = useAuthStore((s) => s.user);
   const canEdit = user?.role === 'admin' || user?.role === 'maintainer';
   const [showAddTeam, setShowAddTeam] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState('');
+  const [confirmArchive, setConfirmArchive] = useState(false);
 
   const linkedTeamIds = new Set(projectTeams.map((t) => t.id));
   const availableTeams = allTeams.filter((t) => !linkedTeamIds.has(t.id));
@@ -140,50 +143,6 @@ export function ProjectOverviewPage() {
           style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
         >
           <p className="text-sm" style={{ color: 'var(--text-2)' }}>{project.description}</p>
-        </section>
-      )}
-
-      <div className="grid sm:grid-cols-3 gap-4">
-        <Link
-          to={`/projects/${projectId}/backlog`}
-          className="rounded-xl p-5 hover:border-[var(--accent)] transition-colors"
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-        >
-          <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-3)' }}>Backlog</p>
-          <p className="text-sm" style={{ color: 'var(--text-2)' }}>View all items</p>
-        </Link>
-        <Link
-          to={`/projects/${projectId}/epics`}
-          className="rounded-xl p-5 hover:border-[var(--accent)] transition-colors"
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-        >
-          <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-3)' }}>Epics</p>
-          <p className="text-sm" style={{ color: 'var(--text-2)' }}>Group your work</p>
-        </Link>
-        <Link
-          to={`/projects/${projectId}/sprints`}
-          className="rounded-xl p-5 hover:border-[var(--accent)] transition-colors"
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-        >
-          <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-3)' }}>Sprints</p>
-          <p className="text-sm" style={{ color: 'var(--text-2)' }}>Plan iterations</p>
-        </Link>
-      </div>
-
-      {/* Skill planning -- what the backlog needs vs what the teams can do */}
-      <SkillPlanningSection projectId={projectId ?? ''} teamIds={projectTeams.map((t) => t.id)} />
-
-      {canEdit && (
-        <section
-          className="rounded-xl p-4"
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-        >
-          <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
-            Danger Zone
-          </p>
-          <p className="text-xs" style={{ color: 'var(--text-3)' }}>
-            Status management and archiving coming soon.
-          </p>
         </section>
       )}
 
@@ -268,6 +227,95 @@ export function ProjectOverviewPage() {
           </ul>
         )}
       </section>
+
+      {/* Skill planning -- what the backlog needs vs what the teams can do */}
+      <SkillPlanningSection projectId={projectId ?? ''} teamIds={projectTeams.map((t) => t.id)} />
+
+      {/* Danger Zone -- status and archiving live at the bottom, where the dragons sleep */}
+      {canEdit && project && (
+        <section
+          className="rounded-xl p-4"
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--color-danger)' }}
+        >
+          <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--color-danger)' }}>
+            Danger Zone
+          </p>
+
+          {/* Status switch */}
+          <div className="flex items-center justify-between gap-4 py-2">
+            <div>
+              <p className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>Status</p>
+              <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+                Lifecycle state shown on cards and breadcrumbs.
+              </p>
+            </div>
+            <select
+              value={project.status}
+              disabled={updateProject.isPending}
+              onChange={(e) => updateProject.mutate({ status: e.target.value as ProjectStatus })}
+              className="text-sm rounded px-2 py-1 disabled:opacity-40"
+              style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+            >
+              <option value="active">Active</option>
+              <option value="on_hold">On Hold</option>
+              <option value="completed">Done</option>
+              <option value="archived">Archived</option>
+            </select>
+          </div>
+
+          <div className="my-3 h-px" style={{ background: 'var(--border)' }} />
+
+          {/* Archive / restore */}
+          <div className="flex items-center justify-between gap-4 py-2">
+            <div>
+              <p className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>
+                {project.status === 'archived' ? 'Restore project' : 'Archive project'}
+              </p>
+              <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+                {project.status === 'archived'
+                  ? 'Bring it back to Active and out of the archive.'
+                  : 'Hide it from active views. Nothing is deleted -- you can restore it later.'}
+              </p>
+            </div>
+            {project.status === 'archived' ? (
+              <button
+                onClick={() => updateProject.mutate({ status: 'active' })}
+                disabled={updateProject.isPending}
+                className="text-xs px-3 py-1.5 rounded disabled:opacity-40 flex-shrink-0"
+                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--accent)' }}
+              >
+                {updateProject.isPending ? '...' : 'Restore'}
+              </button>
+            ) : confirmArchive ? (
+              <div className="flex gap-2 flex-shrink-0">
+                <button
+                  onClick={() => { updateProject.mutate({ status: 'archived' }); setConfirmArchive(false); }}
+                  disabled={updateProject.isPending}
+                  className="text-xs px-3 py-1.5 rounded disabled:opacity-40"
+                  style={{ background: 'var(--color-danger)', color: 'var(--accent-fg)' }}
+                >
+                  {updateProject.isPending ? '...' : 'Confirm archive'}
+                </button>
+                <button
+                  onClick={() => setConfirmArchive(false)}
+                  className="text-xs px-3 py-1.5 rounded"
+                  style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmArchive(true)}
+                className="text-xs px-3 py-1.5 rounded flex-shrink-0"
+                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--color-danger)', color: 'var(--color-danger)' }}
+              >
+                Archive
+              </button>
+            )}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
