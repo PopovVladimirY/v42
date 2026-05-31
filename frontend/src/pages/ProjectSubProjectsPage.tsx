@@ -128,7 +128,7 @@ function SubProjectNode({
 }) {
   const children = tree.get(node.id) ?? [];
   const hasChildren = children.length > 0;
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(node.name);
   const [editStart, setEditStart] = useState(node.start_date ?? '');

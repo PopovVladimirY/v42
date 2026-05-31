@@ -12,8 +12,12 @@ const STATUS_BADGE: Record<ProjectStatus, { label: string; color: string }> = {
   archived:  { label: 'Archived', color: 'var(--text-3)'        },
 };
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric' });
+// Compact "start -> end" timeline label; em-dash when neither date is set.
+function fmtRange(start: string | null, end: string | null): string {
+  if (!start && !end) return '\u2014';
+  const f = (s: string | null) =>
+    s ? new Date(s + 'T00:00:00').toLocaleDateString('en', { month: 'short', day: 'numeric', year: '2-digit' }) : '?';
+  return `${f(start)} \u2192 ${f(end)}`;
 }
 
 interface TreeNode extends Project {
@@ -92,48 +96,62 @@ function TreeRow({
   filter: ProjectStatus | 'all';
   search: string;
 }) {
+  const hasChildren = node.children.length > 0;
+  const [expanded, setExpanded] = useState(false);
   if (!nodeVisible(node, filter, search)) return null;
   const badge = STATUS_BADGE[node.status] ?? STATUS_BADGE.active;
   // Full opacity only if this node itself matches; otherwise dimmed (it is just an ancestor path).
   const matches = selfMatches(node, filter, search);
+  // While searching, force-expand so matching descendants reveal their full path.
+  const searching = search.length > 0;
+  const open = searching ? true : expanded;
 
   return (
     <>
-      <Link
-        to={`/projects/${node.id}/backlog`}
+      <div
         className="flex items-center gap-3 py-2.5 transition-colors hover:bg-[var(--bg-hover)]"
         style={{
           paddingLeft: `${16 + depth * 24}px`,
           paddingRight: 16,
           borderTop: '1px solid var(--border)',
           background: 'var(--bg-elevated)',
-          textDecoration: 'none',
           opacity: matches ? 1 : 0.45,
         }}
       >
-        {depth > 0 && (
-          <span style={{ color: 'var(--text-3)', fontSize: 11, userSelect: 'none', flexShrink: 0 }}>
-            {'\u2514'}
-          </span>
-        )}
+        {/* expand / collapse toggle */}
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          disabled={!hasChildren || searching}
+          className="flex items-center justify-center flex-shrink-0 select-none"
+          style={{
+            width: '1.1rem', fontSize: '1.1rem', lineHeight: 1,
+            color: hasChildren ? 'var(--text-3)' : 'transparent',
+            cursor: hasChildren && !searching ? 'pointer' : 'default',
+            background: 'none', border: 'none', padding: 0,
+          }}
+          tabIndex={hasChildren ? 0 : -1}
+          aria-label={open ? 'Collapse' : 'Expand'}
+        >
+          {hasChildren ? (open ? '\u25be' : '\u25b8') : ''}
+        </button>
         <span style={{ width: 7, height: 7, borderRadius: '50%', background: badge.color, flexShrink: 0 }} />
-        <div className="flex-1 min-w-0">
+        <Link to={`/projects/${node.id}/backlog`} className="flex-1 min-w-0" style={{ textDecoration: 'none' }}>
           <p className="text-sm font-medium truncate" style={{ color: 'var(--text-1)' }}>{node.name}</p>
           {node.description && (
             <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-3)' }}>{node.description}</p>
           )}
-        </div>
+        </Link>
         <span
           className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
           style={{ color: badge.color, background: `${badge.color}18`, border: `1px solid ${badge.color}40` }}
         >
           {badge.label}
         </span>
-        <span className="text-xs hidden sm:block flex-shrink-0" style={{ color: 'var(--text-3)', minWidth: 120, textAlign: 'right' }}>
-          {fmtDate(node.created_at)}
+        <span className="text-xs hidden sm:block flex-shrink-0" style={{ color: 'var(--text-3)', minWidth: 160, textAlign: 'right' }}>
+          {fmtRange(node.start_date, node.end_date)}
         </span>
-      </Link>
-      {node.children.map((child) => (
+      </div>
+      {open && node.children.map((child) => (
         <TreeRow key={child.id} node={child} depth={depth + 1} filter={filter} search={search} />
       ))}
     </>
@@ -269,7 +287,7 @@ export function AllProjectsPage() {
           >
             <span style={{ flex: 1 }}>Project</span>
             <span style={{ minWidth: 80 }}>Status</span>
-            <span className="hidden sm:block" style={{ minWidth: 120, textAlign: 'right' }}>Created</span>
+            <span className="hidden sm:block" style={{ minWidth: 160, textAlign: 'right' }}>Timeline</span>
           </div>
           {tree.map((root) => (
             <TreeRow key={root.id} node={root} depth={0} filter={statusFilter} search={q} />

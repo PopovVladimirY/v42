@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useState, useMemo, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/hooks/useAuth';
 import {
   useMilestones, useTimeline,
@@ -104,10 +104,19 @@ function MilestoneForm({
 }
 
 // -- Table view --------------------------------------------------------------
-function MilestonesTable({ projectId, milestones, canEdit }: { projectId: string; milestones: Milestone[]; canEdit: boolean }) {
+function MilestonesTable({ projectId, milestones, canEdit, focusId, onFocusHandled }: { projectId: string; milestones: Milestone[]; canEdit: boolean; focusId?: string | null; onFocusHandled?: () => void }) {
   const del = useDeleteMilestone(projectId);
   const [editing, setEditing] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+
+  // Open the milestone requested from the Gantt (double-click).
+  useEffect(() => {
+    if (focusId) {
+      setEditing(focusId);
+      setCreating(false);
+      onFocusHandled?.();
+    }
+  }, [focusId, onFocusHandled]);
 
   // Filters
   const [statusF, setStatusF] = useState<MilestoneStatus | ''>('');
@@ -211,10 +220,12 @@ function MilestonesTable({ projectId, milestones, canEdit }: { projectId: string
 // -- Page --------------------------------------------------------------------
 export function MilestonesPage() {
   const { projectId = '' } = useParams();
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const canEdit = user?.role === 'admin' || user?.role === 'maintainer';
 
   const [view, setView] = useState<'list' | 'gantt'>('list');
+  const [focusId, setFocusId] = useState<string | null>(null);
   const milestonesQ = useMilestones(projectId);
   const timelineQ = useTimeline(projectId);
   const bind = useBindNodeMilestone(projectId);
@@ -245,13 +256,15 @@ export function MilestonesPage() {
       {milestonesQ.isLoading ? (
         <p className="text-sm" style={{ color: 'var(--text-3)' }}>Loading...</p>
       ) : view === 'list' ? (
-        <MilestonesTable projectId={projectId} milestones={milestones} canEdit={canEdit} />
+        <MilestonesTable projectId={projectId} milestones={milestones} canEdit={canEdit} focusId={focusId} onFocusHandled={() => setFocusId(null)} />
       ) : (
         <GanttChart
           milestones={timelineQ.data?.milestones ?? milestones}
           stages={timelineQ.data?.stages ?? []}
           canEdit={canEdit}
           onBind={(nodeId, milestoneId) => bind.mutate({ nodeId, milestoneId })}
+          onOpenStage={(nodeId) => navigate(`/projects/${nodeId}`)}
+          onOpenMilestone={(id) => { setFocusId(id); setView('list'); }}
         />
       )}
     </div>

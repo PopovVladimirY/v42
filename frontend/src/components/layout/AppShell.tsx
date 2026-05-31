@@ -336,6 +336,18 @@ export function AppShell() {
                   </Link>
                   {/* Quick icon links */}
                   <Link
+                    to={`/projects/${p.id}/milestones`}
+                    title="Milestones (Gantt)"
+                    className="flex-shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[var(--bg-elevated)]"
+                    style={{ color: 'var(--text-3)' }}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                      <rect x="1" y="2" width="6" height="2" rx="1" fill="currentColor" />
+                      <rect x="3" y="5" width="7" height="2" rx="1" fill="currentColor" />
+                      <rect x="2" y="8" width="5" height="2" rx="1" fill="currentColor" />
+                    </svg>
+                  </Link>
+                  <Link
                     to={`/projects/${p.id}/backlog`}
                     title="Backlog"
                     className="flex-shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[var(--bg-elevated)]"

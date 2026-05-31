@@ -33,9 +33,11 @@ interface GanttProps {
   stages: TimelineNode[];
   canEdit: boolean;
   onBind: (nodeId: string, milestoneId: string | null) => void;
+  onOpenStage?: (nodeId: string) => void;
+  onOpenMilestone?: (milestoneId: string) => void;
 }
 
-export function GanttChart({ milestones, stages, canEdit, onBind }: GanttProps) {
+export function GanttChart({ milestones, stages, canEdit, onBind, onOpenStage, onOpenMilestone }: GanttProps) {
   const [scale, setScale] = useState<Scale>('quarter');
   const scrollRef = useRef<HTMLDivElement>(null);
   const [fitWidth, setFitWidth] = useState(1000);
@@ -164,8 +166,9 @@ export function GanttChart({ milestones, stages, canEdit, onBind }: GanttProps) 
               >
                 <span
                   className="text-xs truncate"
-                  style={{ color: 'var(--text-2)', paddingLeft: s.depth * 10, maxWidth: canEdit ? 120 : 200 }}
-                  title={s.name}
+                  style={{ color: 'var(--text-2)', paddingLeft: s.depth * 10, maxWidth: canEdit ? 120 : 200, cursor: onOpenStage ? 'pointer' : 'default' }}
+                  title={onOpenStage ? `${s.name} (double-click to open)` : s.name}
+                  onDoubleClick={() => onOpenStage?.(s.id)}
                 >
                   {s.name}
                 </span>
@@ -227,11 +230,12 @@ export function GanttChart({ milestones, stages, canEdit, onBind }: GanttProps) 
                   return (
                     <div
                       key={ms.id}
-                      title={`M-${ms.number} ${ms.name} -- ${ms.target_date} (${ms.health})`}
+                      title={`M-${ms.number} ${ms.name} -- ${ms.target_date} (${ms.health})${onOpenMilestone ? ' -- double-click to open' : ''}`}
+                      onDoubleClick={() => onOpenMilestone?.(ms.id)}
                       style={{
                         position: 'absolute', left, top: MS_LANE_H / 2, width: 12, height: 12,
                         background: color, transform: 'translate(-50%, -50%) rotate(45deg)',
-                        border: '1px solid var(--bg-surface)', cursor: 'default',
+                        border: '1px solid var(--bg-surface)', cursor: onOpenMilestone ? 'pointer' : 'default',
                       }}
                     />
                   );
@@ -248,10 +252,14 @@ export function GanttChart({ milestones, stages, canEdit, onBind }: GanttProps) 
                   ? MILESTONE_HEALTH_META[health.get(s.milestone_id) as Milestone['health']].color
                   : 'color-mix(in srgb, var(--accent) 35%, var(--bg-elevated))';
                 return (
-                  <div key={s.id} style={{ height: LANE_H, position: 'relative', borderBottom: '1px solid color-mix(in srgb, var(--border) 50%, transparent)' }}>
+                  <div
+                    key={s.id}
+                    onDoubleClick={() => onOpenStage?.(s.id)}
+                    style={{ height: LANE_H, position: 'relative', borderBottom: '1px solid color-mix(in srgb, var(--border) 50%, transparent)', cursor: onOpenStage ? 'pointer' : 'default' }}
+                  >
                     {hasRange && (
                       <div
-                        title={`${s.name}: ${s.start_date} -> ${s.end_date}`}
+                        title={`${s.name}: ${s.start_date} -> ${s.end_date}${onOpenStage ? ' -- double-click to open' : ''}`}
                         style={{
                           position: 'absolute', left, top: 6, width: w, height: LANE_H - 12,
                           background: barColor, borderRadius: 5, border: '1px solid color-mix(in srgb, var(--text-1) 12%, transparent)',
