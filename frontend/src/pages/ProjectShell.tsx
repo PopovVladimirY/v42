@@ -135,16 +135,52 @@ export function ProjectOverviewPage() {
     setShowAddTeam(false);
   }
 
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [descDraft, setDescDraft] = useState('');
+
+  function startEditDesc() {
+    if (!canEdit) return;
+    setDescDraft(project?.description ?? '');
+    setEditingDesc(true);
+  }
+
+  function commitDesc() {
+    const trimmed = descDraft.trim();
+    if (trimmed !== (project?.description ?? '')) {
+      updateProject.mutate({ description: trimmed || undefined });
+    }
+    setEditingDesc(false);
+  }
+
   return (
     <div className="px-6 py-4 flex flex-col gap-6">
-      {project?.description && (
-        <section
-          className="rounded-xl p-4"
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-        >
-          <p className="text-sm" style={{ color: 'var(--text-2)' }}>{project.description}</p>
-        </section>
-      )}
+      {/* Description -- click to edit for admins/maintainers */}
+      <section
+        className="rounded-xl p-4"
+        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+      >
+        {editingDesc ? (
+          <textarea
+            autoFocus
+            rows={4}
+            value={descDraft}
+            onChange={(e) => setDescDraft(e.target.value)}
+            onBlur={commitDesc}
+            onKeyDown={(e) => { if (e.key === 'Escape') { setEditingDesc(false); } }}
+            className="w-full text-sm rounded outline-none resize-none"
+            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--accent)', color: 'var(--text-1)', padding: '0.5rem' }}
+          />
+        ) : (
+          <p
+            className="text-sm"
+            style={{ color: project?.description ? 'var(--text-2)' : 'var(--text-3)', cursor: canEdit ? 'pointer' : 'default', minHeight: '1.5rem' }}
+            onClick={startEditDesc}
+            title={canEdit ? 'Click to edit description' : undefined}
+          >
+            {project?.description || (canEdit ? 'No description. Click to add.' : '')}
+          </p>
+        )}
+      </section>
 
       {/* Teams section */}
       <section
