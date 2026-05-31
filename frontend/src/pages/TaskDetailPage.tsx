@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTask, useUpdateTask, useDeleteTask } from '@/hooks/useItemDetails';
 import { useBacklogItem, useProjectAncestors } from '@/hooks/useProjects';
 import { useAuthStore } from '@/hooks/useAuth';
-import { CLARITY_LABEL, STATUS_LABEL } from '@/types';
+import { CLARITY_LABEL } from '@/types';
 import type { TaskStatus } from '@/types';
 import client from '@/api/client';
 import type { ApiResponse, Skill } from '@/types';
@@ -189,7 +189,6 @@ export function TaskDetailPage() {
             >
               {CLARITY_LABEL[backlogItem.clarity] ?? backlogItem.clarity}
             </span>
-            <span>{STATUS_LABEL[backlogItem.status] ?? backlogItem.status}</span>
           </div>
         )}
 
@@ -242,7 +241,7 @@ export function TaskDetailPage() {
             >
               <option value="">-- none --</option>
               {skills.filter((s) => !s.is_hidden).map((s) => (
-                <option key={s.id} value={s.name}>{s.name}</option>
+                <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
           </div>

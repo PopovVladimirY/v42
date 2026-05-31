@@ -161,29 +161,7 @@ function TaskRow({
         ))}
       </select>
 
-      {/* Estimate */}
-      {task.estimate && (
-        <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-3)' }}>
-          {task.estimate}
-        </span>
-      )}
-
-      {/* Status label (small) */}
-      <span className="text-[10px] flex-shrink-0" style={{ color: statusColor }}>
-        {task.status.replace('_', ' ')}
-      </span>
-
-      {/* Open detail */}
-      <Link
-        to={`/projects/${projectId}/backlog/${itemId}/tasks/${task.id}`}
-        className="opacity-0 group-hover:opacity-100 transition-opacity text-xs px-1 rounded flex-shrink-0"
-        style={{ color: 'var(--accent)' }}
-        title="Open task details"
-      >
-        &rarr;
-      </Link>
-
-      {/* Delete */}
+      {/* Delete -- everything else lives on the task detail page and the backlog table */}
       <button
         onClick={() => void deleteTask.mutate(task.id)}
         className="opacity-0 group-hover:opacity-100 transition-opacity text-xs px-1 rounded"
@@ -860,8 +838,13 @@ export function BacklogItemDetailPage() {
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      // Only handle Escape when no child route (task/test detail) is active
-      if (e.key === 'Escape' && !location.pathname.includes('/tasks/') && !location.pathname.includes('/tests/')) {
+      if (e.key !== 'Escape') return;
+      // Don't hijack Escape while the user is typing in a form control --
+      // otherwise cancelling an inline composer bounces them out of the page.
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      // Only close this modal when no child route (task/test detail) is active
+      if (!location.pathname.includes('/tasks/') && !location.pathname.includes('/tests/')) {
         navigate(-1);
       }
     }
@@ -1270,14 +1253,6 @@ export function BacklogItemDetailPage() {
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
-            <Link
-              to={`/projects/${projectId}/tests/${t.id}`}
-              className="opacity-0 group-hover:opacity-100 transition-opacity text-xs px-1 rounded flex-shrink-0"
-              style={{ color: 'var(--accent)' }}
-              title="Open test details"
-            >
-              &rarr;
-            </Link>
             <button
               onClick={() => void deleteTest.mutate({ testId: t.id, itemId })}
               className="opacity-0 group-hover:opacity-100 transition-opacity text-xs px-1 rounded flex-shrink-0"

@@ -368,10 +368,12 @@ function SkillPlanningSection({ projectId, teamIds }: { projectId: string; teamI
         demand: d.item_count + d.task_count, ceiling: 0, depth: 0,
       });
     }
+    // Only skills the backlog actually asks for matter here -- idle team skills
+    // are noise on the planning view. We still pull coverage, but for demand
+    // skills only.
     for (const [id, c] of coverage) {
       const row = byId.get(id);
       if (row) { row.ceiling = c.ceiling; row.depth = c.depth; }
-      else byId.set(id, { id, name: c.name, demand: 0, ceiling: c.ceiling, depth: c.depth });
     }
     return Array.from(byId.values()).sort((a, b) => b.demand - a.demand || b.ceiling - a.ceiling);
   }, [demand, coverage]);
