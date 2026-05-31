@@ -16,8 +16,14 @@ FROM   (
 ) sub
 WHERE  t.id = sub.id;
 
--- Advance sequence past backfilled values
-SELECT setval('tasks_number_seq', COALESCE((SELECT MAX(number) FROM tasks), 0));
+-- Advance sequence past backfilled values.
+-- Three-arg setval: on an empty table set to 1 with is_called=false so the first
+-- nextval() still yields 1 (setval value 0 is illegal -- a sequence floor is 1).
+SELECT setval(
+  'tasks_number_seq',
+  GREATEST(COALESCE((SELECT MAX(number) FROM tasks), 0), 1),
+  (SELECT MAX(number) FROM tasks) IS NOT NULL
+);
 
 ALTER TABLE tasks
   ALTER COLUMN number SET DEFAULT nextval('tasks_number_seq'),
@@ -39,7 +45,11 @@ FROM   (
 ) sub
 WHERE  t.id = sub.id;
 
-SELECT setval('tests_number_seq', COALESCE((SELECT MAX(number) FROM tests), 0));
+SELECT setval(
+  'tests_number_seq',
+  GREATEST(COALESCE((SELECT MAX(number) FROM tests), 0), 1),
+  (SELECT MAX(number) FROM tests) IS NOT NULL
+);
 
 ALTER TABLE tests
   ALTER COLUMN number SET DEFAULT nextval('tests_number_seq'),

@@ -13,7 +13,8 @@ import (
 )
 
 // validEpicStatus is the set of accepted epic_status enum values.
-var validEpicStatus = map[string]bool{"open": true, "in_progress": true, "done": true, "cancelled": true}
+// Must mirror the DB enum exactly: {draft, active, done, cancelled}.
+var validEpicStatus = map[string]bool{"draft": true, "active": true, "done": true, "cancelled": true}
 var validEpicClarity = map[string]bool{"clear": true, "scoped": true, "tacit": true, "foggy": true, "unknown": true}
 
 type epicHandlers struct {
@@ -81,7 +82,7 @@ func (h *epicHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Status == "" {
-		req.Status = "open"
+		req.Status = "draft"
 	}
 	if !validEpicStatus[req.Status] {
 		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid status value")

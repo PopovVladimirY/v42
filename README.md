@@ -3,7 +3,7 @@
 Project management platform. Spiritual successor to VersionOne / Planview Agility.
 Built without enterprise bloat, XML APIs, or mandatory SAFe certification.
 
-Stack: **Go 1.25** + **PostgreSQL 16** + **React 18** (frontend coming in Phase 3).
+Stack: **Go 1.25** + **PostgreSQL 16** + **React 18** (Vite + TanStack Query + Zustand + dnd-kit).
 
 ---
 

@@ -931,7 +931,7 @@ func TestBacklog_Create_InvalidStatus(t *testing.T) {
 	pid := e.seedProject(t, ownerID)
 
 	resp := e.postAuth(t, "/api/v1/projects/"+pid+"/backlog",
-		map[string]any{"title": "X", "status": "open"}, token)
+		map[string]any{"title": "X", "status": "not_a_real_status"}, token)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("backlog Create invalid status: expected 400, got %d", resp.StatusCode)
@@ -949,7 +949,7 @@ func TestBacklog_Update_InvalidStatus(t *testing.T) {
 
 	resp := e.patchAuth(t,
 		fmt.Sprintf("/api/v1/projects/%s/backlog/%s", pid, bid),
-		map[string]string{"status": "open"}, token)
+		map[string]string{"status": "not_a_real_status"}, token)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("backlog Update invalid status: expected 400, got %d", resp.StatusCode)
