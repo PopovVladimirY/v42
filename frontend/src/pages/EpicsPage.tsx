@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useEpics, useCreateEpic, useUpdateEpic, useDeleteEpic } from '@/hooks/useProjects';
 import type { Epic, EpicStatus, ClarityQuadrant } from '@/types';
 import { CLARITY_COLOR, CLARITY_LABEL } from '@/types';
@@ -248,15 +248,23 @@ function EpicRow({
 
       {/* Delete */}
       <td className="px-3 py-2 align-middle">
-        <button
-          data-testid={`delete-epic-${epic.id}`}
-          onClick={handleDelete}
-          title="Delete"
-          className="opacity-0 group-hover:opacity-100 transition-opacity text-xs px-1 py-0.5 rounded"
-          style={{ color: 'var(--color-danger)' }}
-        >
-          x
-        </button>
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Link
+            to={`/projects/${projectId}/epics/${epic.id}`}
+            title="Open epic backlog"
+            className="text-xs px-1 py-0.5 rounded"
+            style={{ color: 'var(--accent)' }}
+          >&#8599;</Link>
+          <button
+            data-testid={`delete-epic-${epic.id}`}
+            onClick={handleDelete}
+            title="Delete"
+            className="text-xs px-1 py-0.5 rounded"
+            style={{ color: 'var(--color-danger)' }}
+          >
+            x
+          </button>
+        </div>
       </td>
     </tr>
   );

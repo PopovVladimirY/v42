@@ -359,6 +359,11 @@ func (s *BacklogStore) Update(ctx context.Context, req UpdateBacklogItemRequest)
 	if clearEstimate {
 		req.Estimate = nil
 	}
+	// Empty string epic_id means "back to Unsorted" -- COALESCE can't null it, so clear explicitly.
+	clearEpic := req.EpicID != nil && *req.EpicID == ""
+	if clearEpic {
+		req.EpicID = nil
+	}
 	var tp dbgen.NullItemType
 	if req.Type != nil {
 		tp = dbgen.NullItemType{ItemType: dbgen.ItemType(*req.Type), Valid: true}
@@ -427,6 +432,11 @@ func (s *BacklogStore) Update(ctx context.Context, req UpdateBacklogItemRequest)
 	if clearEstimate {
 		_, _ = s.pool.Exec(ctx, `UPDATE backlog_items SET estimate = NULL, updated_at = now() WHERE id = $1`, uid)
 		b.Estimate = nil
+	}
+	// Explicitly clear epic in the DB when empty string was sent (move to Unsorted).
+	if clearEpic {
+		_, _ = s.pool.Exec(ctx, `UPDATE backlog_items SET epic_id = NULL, updated_at = now() WHERE id = $1`, uid)
+		b.EpicID = nil
 	}
 	// When status is reset to a pre-sprint value, auto-remove from any active sprint.
 	if req.Status != nil && (*req.Status == "planned" || *req.Status == "request" || *req.Status == "on_hold" || *req.Status == "rejected") {

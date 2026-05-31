@@ -19,6 +19,7 @@ import {
   useCreateBacklogItem,
   useUpdateBacklogItem,
   useDeleteBacklogItem,
+  useEpics,
 } from '@/hooks/useProjects';
 import { useSprints } from '@/hooks/useSprints';
 import { sprintsApi, type Sprint } from '@/api/endpoints/sprints';
@@ -28,7 +29,7 @@ import {
   useCreateTask, useCreateItemTest, useDeleteTask, useDeleteItemTest, useUpdateTask, useUpdateItemTest,
 } from '@/hooks/useItemDetails';
 import { CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
-import type { BacklogItem, BacklogItemStatus, BacklogItemType, ClarityQuadrant, Project, Task, TestSpec } from '@/types';
+import type { BacklogItem, BacklogItemStatus, BacklogItemType, ClarityQuadrant, Epic, Project, Task, TestSpec } from '@/types';
 import { usePaginationStore } from '@/stores/usePagination';
 import { Paginator } from '@/components/Paginator';
 import { loadJSON, saveJSON } from '@/lib/persist';
@@ -87,6 +88,7 @@ const ESTIMATE_OPTS = ['', '1', '3', '8', '20', '50'];
 interface EditDraft {
   title: string;
   node_id: string;
+  epic_id: string;
   estimate: string;
   sprint_id: string;
 }
@@ -222,6 +224,7 @@ function ClarityBadge({ clarity }: { clarity: ClarityQuadrant }) {
 function BacklogItemEditRow({
   item,
   stageOptions,
+  epicOptions,
   sprints,
   draft,
   onChange,
@@ -231,6 +234,7 @@ function BacklogItemEditRow({
 }: {
   item: BacklogItem;
   stageOptions: StageOption[];
+  epicOptions: Epic[];
   sprints: Sprint[];
   draft: EditDraft;
   onChange: (patch: Partial<EditDraft>) => void;
@@ -277,6 +281,14 @@ function BacklogItemEditRow({
             <option key={s.id} value={s.id}>
               {s.depth > 0 ? '\u00A0\u00A0'.repeat(s.depth) + '\u2514 ' : ''}{s.name}
             </option>
+          ))}
+        </select>
+      </td>
+      <td className="px-3 py-1.5" style={{ width: '8rem' }}>
+        <select value={draft.epic_id} onChange={(e) => onChange({ epic_id: e.target.value })} onKeyDown={(e) => { if (e.key === 'Escape') onCancel(); }} style={sel}>
+          <option value="">Unsorted</option>
+          {epicOptions.map((ep) => (
+            <option key={ep.id} value={ep.id}>E-{ep.number} {ep.title}</option>
           ))}
         </select>
       </td>
@@ -443,6 +455,7 @@ function DraggableTaskRow({
         )}
       </td>
       <td style={{ width: '8rem' }} />
+      <td style={{ width: '8rem' }} />
       <td style={{ width: '6rem' }} />
       <td className="pl-5 pr-3 py-1 align-middle" style={{ width: '8rem' }}>
         <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: TASK_STATUS_COLOR[task.status] ?? '#6B7280', color: '#fff' }}>
@@ -554,6 +567,7 @@ function DraggableTestRow({
           <span className="block truncate cursor-pointer hover:underline" style={{ color: 'var(--text-1)', fontStyle: 'italic', fontSize: '0.963rem' }} title={test.description || 'No description details available'} onClick={(e) => { e.stopPropagation(); navigate(detailPath); }}>{test.title}</span>
         )}
       </td>
+      <td style={{ width: '8rem' }} />
       <td style={{ width: '8rem' }} />
       <td style={{ width: '6rem' }} />
       <td style={{ width: '8rem' }} />
@@ -726,12 +740,12 @@ function ExpandedItemPanel({
     <>
       {isLoading && (
         <tr style={{ background: 'var(--bg-elevated)' }}>
-          <td colSpan={10} className="px-6 py-2 text-xs" style={{ color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>Loading...</td>
+          <td colSpan={11} className="px-6 py-2 text-xs" style={{ color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>Loading...</td>
         </tr>
       )}
       {!isLoading && unified.length === 0 && !addingType && (
         <tr style={{ background: 'var(--bg-elevated)' }}>
-          <td colSpan={10} className="px-6 py-2 text-xs" style={{ color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>No tasks or tests yet.</td>
+          <td colSpan={11} className="px-6 py-2 text-xs" style={{ color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>No tasks or tests yet.</td>
         </tr>
       )}
       {unified.map((row) =>
@@ -763,7 +777,7 @@ function ExpandedItemPanel({
       )}
       {addingType && (
         <tr style={{ background: 'var(--bg-elevated)', borderTop: '1px solid var(--border)' }}>
-          <td colSpan={10} className="px-6 py-1">
+          <td colSpan={11} className="px-6 py-1">
             <div className="flex items-center gap-2">
               <span
                 className="font-mono px-1 py-0.5 rounded flex-shrink-0"
@@ -790,7 +804,7 @@ function ExpandedItemPanel({
         </tr>
       )}
       <tr style={{ background: 'var(--bg-elevated)', borderTop: '1px solid var(--border)', borderBottom: '2px solid var(--border)' }}>
-        <td colSpan={10} className="px-6 py-2">
+        <td colSpan={11} className="px-6 py-2">
           <div className="flex gap-2">
             <button onClick={() => startAdding('task')} disabled={!!addingType} className="text-xs px-2 py-0.5 rounded disabled:opacity-40" style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}>+ Task</button>
             <button onClick={() => startAdding('test')} disabled={!!addingType} className="text-xs px-2 py-0.5 rounded disabled:opacity-40" style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}>+ Test</button>
@@ -896,7 +910,7 @@ function CreateItemPanel({
 
 // Persist backlog filters per project in localStorage
 function _filtersKey(projectId: string) { return `v42-backlog-filters-${projectId}`; }
-type SavedFilters = { status: BacklogItemStatus | '' | 'all'; clarity: ClarityQuadrant | ''; sprintId: string; text: string };
+type SavedFilters = { status: BacklogItemStatus | '' | 'all'; clarity: ClarityQuadrant | ''; sprintId: string; epicId: string; text: string };
 function _loadFilters(projectId: string): SavedFilters | null {
   return loadJSON<SavedFilters>(_filtersKey(projectId));
 }
@@ -904,7 +918,7 @@ function _saveFilters(projectId: string, f: SavedFilters) {
   saveJSON(_filtersKey(projectId), f);
 }
 
-type SortField = 'number' | 'title' | 'type' | 'clarity' | 'status' | 'sprint';
+type SortField = 'number' | 'title' | 'type' | 'clarity' | 'status' | 'sprint' | 'epic';
 type SortDir   = 'asc' | 'desc' | null;
 
 // Cycle: null -> asc -> desc -> null
@@ -941,6 +955,7 @@ export function BacklogPage() {
     setEditDraft({
       title: item.title,
       node_id: item.node_id ?? '',
+      epic_id: item.epic_id ?? '',
       estimate: item.estimate ?? '',
       sprint_id: item.sprint_id ?? '',
     });
@@ -958,11 +973,14 @@ export function BacklogPage() {
 
     try {
       // Collect field changes (skip sprint -- handled separately)
-      const changes: { title?: string; node_id?: string | null; estimate?: string | null } = {};
+      const changes: { title?: string; node_id?: string | null; epic_id?: string; estimate?: string | null } = {};
       if (editDraft.title.trim() && editDraft.title.trim() !== current.title)
         changes.title = editDraft.title.trim();
       if (editDraft.node_id !== (current.node_id ?? ''))
         changes.node_id = editDraft.node_id || null;
+      // Empty epic_id clears to Unsorted -- backend treats '' as NULL sentinel.
+      if (editDraft.epic_id !== (current.epic_id ?? ''))
+        changes.epic_id = editDraft.epic_id;
       if (editDraft.estimate !== (current.estimate ?? ''))
         changes.estimate = editDraft.estimate || null;
 
@@ -999,16 +1017,18 @@ export function BacklogPage() {
   const [filterStatus,   setFilterStatusRaw]   = useState<BacklogItemStatus | '' | 'all'>(saved?.status ?? '');
   const [filterClarity,  setFilterClarityRaw]  = useState<ClarityQuadrant | ''>(saved?.clarity ?? '');
   const [filterSprintId, setFilterSprintIdRaw] = useState(saved?.sprintId ?? '');
+  const [filterEpicId,   setFilterEpicIdRaw]   = useState(saved?.epicId ?? '');
   const [filterText,     setFilterTextRaw]     = useState(saved?.text ?? '');
   const [sortField,      setSortField]          = useState<SortField | null>(null);
   const [sortDir,        setSortDir]            = useState<SortDir>(null);
 
   function _save(overrides: Partial<SavedFilters>) {
-    if (projectId) _saveFilters(projectId, { status: filterStatus, clarity: filterClarity, sprintId: filterSprintId, text: filterText, ...overrides });
+    if (projectId) _saveFilters(projectId, { status: filterStatus, clarity: filterClarity, sprintId: filterSprintId, epicId: filterEpicId, text: filterText, ...overrides });
   }
   function setFilterStatus(v: BacklogItemStatus | '' | 'all') { setFilterStatusRaw(v);   setPage(1); _save({ status: v }); }
   function setFilterClarity(v: ClarityQuadrant | '')    { setFilterClarityRaw(v);  setPage(1); _save({ clarity: v }); }
   function setFilterSprintId(v: string)                 { setFilterSprintIdRaw(v); setPage(1); _save({ sprintId: v }); }
+  function setFilterEpicId(v: string)                   { setFilterEpicIdRaw(v);   setPage(1); _save({ epicId: v }); }
   function setFilterText(v: string)                     { setFilterTextRaw(v);     setPage(1); _save({ text: v }); }
   function toggleSort(field: SortField) {
     if (sortField !== field) { setSortField(field); setSortDir('asc'); }
@@ -1034,6 +1054,18 @@ export function BacklogPage() {
   });
   const stageOptions = useMemo(() => buildStageOptions(stageNodes), [stageNodes]);
   const stageNameById = useMemo(() => new Map(stageNodes.map(n => [n.id, n.name])), [stageNodes]);
+
+  // Epics -- the "theme" axis. Used for inline epic picker + display.
+  const { data: epicOptions = [] } = useEpics(projectId ?? '');
+  const epicNameById = useMemo(
+    () => new Map(epicOptions.map((ep) => [ep.id, `E-${ep.number} ${ep.title}`])),
+    [epicOptions],
+  );
+  // Epic number lookup for sorting (Unsorted goes last).
+  const epicNumberById = useMemo(
+    () => new Map(epicOptions.map((ep) => [ep.id, ep.number])),
+    [epicOptions],
+  );
 
   const { data: backlog = [], isLoading, isError } = useBacklog(projectId ?? '', {
     // For 'active' and 'all' sentinels, fetch everything and filter client-side.
@@ -1062,6 +1094,12 @@ export function BacklogPage() {
     } else if (filterSprintId) {
       list = list.filter((it) => it.sprint_id === filterSprintId);
     }
+    // Epic axis: __none__ = Unsorted (no epic), otherwise a specific epic.
+    if (filterEpicId === '__none__') {
+      list = list.filter((it) => !it.epic_id);
+    } else if (filterEpicId) {
+      list = list.filter((it) => it.epic_id === filterEpicId);
+    }
     if (sortField && sortDir) {
       list = [...list].sort((a, b) => {
         let cmp = 0;
@@ -1070,6 +1108,11 @@ export function BacklogPage() {
         if (sortField === 'type')    cmp = a.type.localeCompare(b.type);
         if (sortField === 'clarity') cmp = (CLARITY_ORDER_BACKLOG[a.clarity] ?? 9) - (CLARITY_ORDER_BACKLOG[b.clarity] ?? 9);
         if (sortField === 'status')  cmp = a.status.localeCompare(b.status);
+        if (sortField === 'epic') {
+          const na = a.epic_id ? (epicNumberById.get(a.epic_id) ?? Infinity) : Infinity;
+          const nb = b.epic_id ? (epicNumberById.get(b.epic_id) ?? Infinity) : Infinity;
+          cmp = na - nb;   // Unsorted (no epic) sinks to the bottom
+        }
         if (sortField === 'sprint') {
           const sa = a.sprint_name ?? '';
           const sb = b.sprint_name ?? '';
@@ -1082,7 +1125,7 @@ export function BacklogPage() {
       });
     }
     return list;
-  }, [backlog, filterText, filterSprintId, sortField, sortDir]);
+  }, [backlog, filterText, filterSprintId, filterEpicId, epicNumberById, sortField, sortDir]);
 
   const total     = items.length;
   const pageItems = items.slice((page - 1) * pageSize, page * pageSize);
@@ -1159,6 +1202,22 @@ export function BacklogPage() {
           </select>
         )}
 
+        {epicOptions.length > 0 && (
+          <select
+            data-testid="filter-epic"
+            value={filterEpicId}
+            onChange={(e) => setFilterEpicId(e.target.value)}
+            className="rounded-md px-2 py-1.5 text-xs outline-none"
+            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+          >
+            <option value="">All epics</option>
+            <option value="__none__">Unsorted</option>
+            {epicOptions.map((ep) => (
+              <option key={ep.id} value={ep.id}>E-{ep.number} {ep.title}</option>
+            ))}
+          </select>
+        )}
+
         <input
           data-testid="filter-backlog-text"
           type="search"
@@ -1207,6 +1266,9 @@ export function BacklogPage() {
                     <button onClick={() => toggleSort('title')} className="hover:opacity-80">Title{sortMark('title')}</button>
                   </th>
                   <th className="text-xs font-medium text-left px-3 py-2" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '8rem' }}>Stage</th>
+                  <th className="text-xs font-medium text-left px-3 py-2" style={{ color: sortField === 'epic' ? 'var(--text-1)' : 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '8rem' }}>
+                    <button onClick={() => toggleSort('epic')} className="hover:opacity-80">Epic{sortMark('epic')}</button>
+                  </th>
                   <th className="text-xs font-medium text-left px-3 py-2" style={{ color: sortField === 'clarity' ? 'var(--text-1)' : 'var(--text-3)', borderBottom: '1px solid var(--border)', width: '6rem' }}>
                     <button onClick={() => toggleSort('clarity')} className="hover:opacity-80">Clarity{sortMark('clarity')}</button>
                   </th>
@@ -1223,13 +1285,14 @@ export function BacklogPage() {
               <tbody>
                 {pageItems.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="px-4 py-10 text-center text-sm" style={{ color: 'var(--text-3)' }}>
+                    <td colSpan={11} className="px-4 py-10 text-center text-sm" style={{ color: 'var(--text-3)' }}>
                       {total === 0 ? 'Backlog is empty. Add something!' : 'No items on this page.'}
                     </td>
                   </tr>
                 )}
                 {pageItems.map((item) => {
                   const stageName = item.node_id ? stageNameById.get(item.node_id) : undefined;
+                  const epicName = item.epic_id ? epicNameById.get(item.epic_id) : undefined;
                   const isExpanded = expandedItems.has(item.id);
                   const isEditing = editingItemId === item.id;
                   return (
@@ -1238,6 +1301,7 @@ export function BacklogPage() {
                         <BacklogItemEditRow
                           item={item}
                           stageOptions={stageOptions}
+                          epicOptions={epicOptions}
                           sprints={sprints}
                           draft={editDraft}
                           onChange={(patch) => setEditDraft((d) => d ? { ...d, ...patch } : d)}
@@ -1281,6 +1345,15 @@ export function BacklogPage() {
                             <span className="text-xs truncate block" style={{ color: 'var(--text-3)', maxWidth: '7rem' }} title={stageName}>
                               {stageName}
                             </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-1 align-middle">
+                          {epicName ? (
+                            <span className="text-xs truncate block" style={{ color: 'var(--text-2)', maxWidth: '7rem' }} title={epicName}>
+                              {epicName}
+                            </span>
+                          ) : (
+                            <span className="text-xs" style={{ color: 'var(--text-3)' }}>Unsorted</span>
                           )}
                         </td>
                         <td className="px-3 py-1 align-middle text-center">

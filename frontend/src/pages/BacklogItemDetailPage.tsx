@@ -1,7 +1,7 @@
 import { useState, useMemo, Fragment, useEffect } from 'react';
 import { Link, useParams, useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { useBacklogItem, useUpdateBacklogItem, useDeleteBacklogItem, useProjectAncestors, backlogKeys } from '@/hooks/useProjects';
+import { useBacklogItem, useUpdateBacklogItem, useDeleteBacklogItem, useProjectAncestors, useEpics, backlogKeys } from '@/hooks/useProjects';
 import { useTasks, useCreateTask, useUpdateTask, useDeleteTask, useItemTests, useCreateItemTest, useDeleteItemTest } from '@/hooks/useItemDetails';
 import { useSprints } from '@/hooks/useSprints';
 import { sprintsApi } from '@/api/endpoints/sprints';
@@ -619,6 +619,77 @@ function StagePicker({
 }
 
 // ---------------------------------------------------------------------------
+//  Epic picker -- the "theme" axis. Flat dropdown; empty clears to Unsorted.
+// ---------------------------------------------------------------------------
+
+function EpicPicker({
+  projectId,
+  itemId,
+  epicId,
+}: {
+  projectId: string;
+  itemId: string;
+  epicId: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const updateItem = useUpdateBacklogItem(projectId);
+  const { data: epics = [] } = useEpics(projectId);
+
+  const current = epics.find((e) => e.id === epicId);
+  const label = current ? `E-${current.number} ${current.title}` : null;
+
+  function handlePick(newId: string) {
+    setOpen(false);
+    // Empty string clears to Unsorted -- backend treats '' as NULL sentinel.
+    void updateItem.mutate({ itemId, epic_id: newId });
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="text-xs px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5"
+        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: label ? 'var(--text-1)' : 'var(--text-3)', maxWidth: '16rem' }}
+        title={label ?? 'Unsorted'}
+      >
+        <span className="truncate">{label ?? 'Unsorted'}</span>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ opacity: 0.5, flexShrink: 0 }}>
+          <path d="M2 4l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div
+            className="absolute left-0 top-full mt-1 rounded-lg overflow-hidden z-30 py-1 min-w-48 max-h-72 overflow-y-auto"
+            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)' }}
+          >
+            <button
+              onClick={() => handlePick('')}
+              className="w-full text-left text-xs px-3 py-2 hover:bg-[var(--bg-hover)]"
+              style={{ color: 'var(--text-3)' }}
+            >
+              Unsorted
+            </button>
+            {epics.map((ep) => (
+              <button
+                key={ep.id}
+                onClick={() => handlePick(ep.id)}
+                className="w-full text-left text-xs px-3 py-2 hover:bg-[var(--bg-hover)] truncate"
+                style={{ color: ep.id === epicId ? 'var(--accent)' : 'var(--text-1)' }}
+                title={`E-${ep.number} ${ep.title}`}
+              >
+                <span style={{ color: 'var(--text-3)' }}>E-{ep.number} </span>{ep.title}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 //  Assignee picker -- dropdown of all active users
 // ---------------------------------------------------------------------------
 
@@ -944,6 +1015,8 @@ export function BacklogItemDetailPage() {
       <section className="flex items-center gap-3 flex-wrap">
         <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>Stage</span>
         <StagePicker projectId={projectId} itemId={itemId} stageId={item.node_id ?? null} />
+        <span className="text-xs font-semibold uppercase tracking-wider ml-3" style={{ color: 'var(--text-3)' }}>Epic</span>
+        <EpicPicker projectId={projectId} itemId={itemId} epicId={item.epic_id ?? null} />
         <span className="text-xs font-semibold uppercase tracking-wider ml-3" style={{ color: 'var(--text-3)' }}>Sprint</span>
         <SprintPanel projectId={projectId} itemId={itemId} sprintId={item.sprint_id ?? null} sprintName={item.sprint_name ?? null} />
         <span className="text-xs font-semibold uppercase tracking-wider ml-3" style={{ color: 'var(--text-3)' }}>Status</span>
