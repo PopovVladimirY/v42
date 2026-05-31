@@ -20,7 +20,7 @@ export const CLARITY_HEX: Record<ClarityQuadrant, string> = {
 // following the Cynefin layout: Complex / Complicated / Chaos / Simple.
 const GRID: ClarityQuadrant[] = ['tacit', 'scoped', 'foggy', 'clear'];
 
-const FOG = 'rgba(148, 163, 184, 0.30)';   // pale grey -- unlit / inactive cells
+const FOG = 'rgba(148, 163, 184, 0.2)';   // unlit cells -- faint but still mark the quadrant grid
 
 // Cynefin domain explanations -- shown as picker tooltips so the meaning is
 // spelled out instead of just echoing the field label.
@@ -55,14 +55,26 @@ export function ClarityIndicator({ clarity, size = 16 }: { clarity: ClarityQuadr
         height: size,
         padding: 1,
         borderRadius: 3,
-        background: 'var(--border)',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border)',
         flexShrink: 0,
         verticalAlign: 'middle',
       }}
     >
-      {GRID.map((q) => (
-        <span key={q} style={{ background: cellColor(q), borderRadius: 1 }} />
-      ))}
+      {GRID.map((q) => {
+        const lit = q === clarity;
+        return (
+          <span
+            key={q}
+            style={{
+              background: cellColor(q),
+              borderRadius: 1,
+              // Lit cell pops with a tight glow; fogged cells stay flat and dim.
+              boxShadow: lit ? `0 0 ${Math.max(2, size / 5)}px ${CLARITY_HEX[q]}` : 'none',
+            }}
+          />
+        );
+      })}
     </span>
   );
 }
@@ -87,16 +99,20 @@ export function ClarityPicker({
         onClick={() => onChange(q)}
         data-testid={`clarity-pick-${q}`}
         title={CLARITY_CYNEFIN[q]}
-        className="text-xs font-medium rounded transition-colors"
+        onMouseEnter={(e) => { if (!active && !disabled) { e.currentTarget.style.opacity = '0.8'; e.currentTarget.style.filter = 'saturate(0.9)'; } }}
+        onMouseLeave={(e) => { if (!active && !disabled) { e.currentTarget.style.opacity = '0.45'; e.currentTarget.style.filter = 'saturate(0.6)'; } }}
+        className="text-xs font-medium rounded transition-all"
         style={{
           padding: '8px 12px',
           minWidth: '7rem',
           textAlign: 'left',
           cursor: disabled ? 'default' : 'pointer',
-          color: active ? '#fff' : 'var(--text-2)',
+          color: active ? '#fff' : 'var(--text-3)',
           background: active ? CLARITY_HEX[q] : 'var(--bg-surface)',
           border: `1px solid ${active ? CLARITY_HEX[q] : 'var(--border)'}`,
-          opacity: disabled ? 0.6 : 1,
+          boxShadow: active ? `0 0 0 2px ${CLARITY_HEX[q]}55, 0 2px 8px ${CLARITY_HEX[q]}40` : 'none',
+          opacity: disabled ? 0.6 : active ? 1 : 0.45,
+          filter: active ? 'none' : 'saturate(0.6)',
         }}
       >
         {CLARITY_LABEL[q]}
@@ -115,7 +131,7 @@ export function ClarityPicker({
         onClick={() => onChange('unknown')}
         data-testid="clarity-pick-unknown"
         title={CLARITY_CYNEFIN.unknown}
-        className="text-xs font-medium rounded transition-colors"
+        className="text-xs font-medium rounded transition-all"
         style={{
           padding: '6px 8px',
           textAlign: 'center',
@@ -123,7 +139,9 @@ export function ClarityPicker({
           color: disorderActive ? '#fff' : 'var(--text-3)',
           background: disorderActive ? CLARITY_HEX.unknown : 'var(--bg-surface)',
           border: `1px solid ${disorderActive ? CLARITY_HEX.unknown : 'var(--border)'}`,
-          opacity: disabled ? 0.6 : 1,
+          boxShadow: disorderActive ? `0 0 0 2px ${CLARITY_HEX.unknown}55, 0 2px 8px ${CLARITY_HEX.unknown}40` : 'none',
+          opacity: disabled ? 0.6 : disorderActive ? 1 : 0.45,
+          filter: disorderActive ? 'none' : 'saturate(0.6)',
         }}
       >
         {CLARITY_LABEL.unknown}

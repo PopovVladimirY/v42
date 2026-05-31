@@ -12,7 +12,7 @@ import { useAuthStore } from '@/hooks/useAuth';
 import { CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
 import type { BacklogItemStatus, Project, Task, TestType } from '@/types';
 import { BreakdownModal } from './BreakdownModal';
-import { ClarityIndicator, ClarityPicker } from '@/components/ClarityIndicator';
+import { ClarityPicker } from '@/components/ClarityIndicator';
 import { skillsApi } from '@/api/endpoints/users';
 
 // ---------------------------------------------------------------------------
@@ -983,12 +983,6 @@ export function BacklogItemDetailPage() {
           <h1 className="text-lg font-semibold leading-snug" style={{ color: 'var(--text-1)' }}>
             {item.title}
           </h1>
-          <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--text-2)' }}>
-              <ClarityIndicator clarity={item.clarity} size={18} />
-              {CLARITY_LABEL[item.clarity]}
-            </span>
-          </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <ExportMenu item={item} tasks={tasks} tests={tests} />
