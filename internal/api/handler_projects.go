@@ -110,6 +110,8 @@ func (h *projectHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		Name        *string `json:"name"`
 		Description *string `json:"description"`
 		Status      *string `json:"status"`
+		StartDate   *string `json:"start_date"`
+		EndDate     *string `json:"end_date"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -135,6 +137,8 @@ func (h *projectHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		Name:        req.Name,
 		Description: req.Description,
 		Status:      req.Status,
+		StartDate:   req.StartDate,
+		EndDate:     req.EndDate,
 	})
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {

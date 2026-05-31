@@ -183,6 +183,45 @@ export function ProjectOverviewPage() {
         )}
       </section>
 
+      {/* Schedule -- start / end dates via native date pickers (drives Gantt + milestone health) */}
+      <section
+        className="rounded-xl p-4"
+        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+      >
+        <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-3)' }}>
+          Schedule
+        </p>
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+          <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-2)' }}>
+            <span style={{ minWidth: '3rem' }}>Start</span>
+            <input
+              type="date"
+              disabled={!canEdit || updateProject.isPending}
+              value={project?.start_date ?? ''}
+              onChange={(e) => updateProject.mutate({ start_date: e.target.value || null })}
+              className="text-sm rounded px-2 py-1 outline-none disabled:opacity-60"
+              style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-2)' }}>
+            <span style={{ minWidth: '3rem' }}>End</span>
+            <input
+              type="date"
+              disabled={!canEdit || updateProject.isPending}
+              value={project?.end_date ?? ''}
+              min={project?.start_date ?? undefined}
+              onChange={(e) => updateProject.mutate({ end_date: e.target.value || null })}
+              className="text-sm rounded px-2 py-1 outline-none disabled:opacity-60"
+              style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+            />
+          </label>
+        </div>
+        <p className="text-xs mt-3" style={{ color: 'var(--text-3)' }}>
+          Drives the Gantt bar and milestone health.
+          {project?.created_at && ` Created ${new Date(project.created_at).toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric' })}.`}
+        </p>
+      </section>
+
       {/* Teams section */}
       <section
         className="rounded-xl p-4"
