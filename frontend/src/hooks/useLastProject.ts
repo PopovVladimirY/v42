@@ -1,6 +1,7 @@
 // Recent projects list for sidebar quick-nav. Scoped per user to survive
 // multi-account usage. Stores up to MAX_RECENT entries in localStorage.
 import { useState, useEffect } from 'react';
+import { loadJSON, saveJSON } from '@/lib/persist';
 
 const MAX_RECENT = 5;
 const CUSTOM_EVENT = 'v42-recent-projects-changed';
@@ -15,13 +16,7 @@ function storageKey(userId: string): string {
 }
 
 export function getRecentProjects(userId: string): RecentProject[] {
-  try {
-    const raw = localStorage.getItem(storageKey(userId));
-    if (!raw) return [];
-    return JSON.parse(raw) as RecentProject[];
-  } catch {
-    return [];
-  }
+  return loadJSON<RecentProject[]>(storageKey(userId)) ?? [];
 }
 
 export function pushRecentProject(userId: string, id: string, name: string): void {
@@ -29,7 +24,7 @@ export function pushRecentProject(userId: string, id: string, name: string): voi
     const current = getRecentProjects(userId);
     const filtered = current.filter((p) => p.id !== id); // dedupe
     const updated = [{ id, name }, ...filtered].slice(0, MAX_RECENT);
-    localStorage.setItem(storageKey(userId), JSON.stringify(updated));
+    saveJSON(storageKey(userId), updated);
     window.dispatchEvent(new CustomEvent(CUSTOM_EVENT));
   } catch {
     // storage quota exceeded or private mode -- silently ignore

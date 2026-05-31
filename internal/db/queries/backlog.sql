@@ -30,13 +30,23 @@ WHERE id = $1;
 -- name: ListBacklogItems :many
 -- Ordered by priority ascending (lower float = higher up).
 -- Decomposed items are always excluded from working views; use ListBacklogItemChildren for history.
+-- Items live on tree nodes via node_id (project_id is always the tree root).
+-- A node shows the backlog of its whole subtree: items attached to the node
+-- itself plus every nested descendant stage (recursive walk down parent_id).
+-- Legacy unattached items (node_id IS NULL) surface only at the root view.
+WITH RECURSIVE subtree AS (
+    SELECT id FROM projects WHERE id = sqlc.arg('project_id')::uuid
+    UNION ALL
+    SELECT p.id FROM projects p JOIN subtree s ON p.parent_id = s.id
+)
 SELECT id, project_id, number, epic_id, release_id, stage_id, node_id,
        title, description, type, status, clarity, priority,
        estimate, assignee_id, skill_required,
        ac_setup, ac_steps, ac_expected, parent_item_id,
        created_by, created_at, updated_at
 FROM backlog_items
-WHERE project_id = $1
+WHERE (node_id IN (SELECT id FROM subtree)
+       OR (node_id IS NULL AND project_id = sqlc.arg('project_id')::uuid))
   AND status != 'decomposed'
   AND (sqlc.narg('epic_id')::uuid IS NULL   OR epic_id    = sqlc.narg('epic_id'))
   AND (sqlc.narg('status')::item_status IS NULL OR status = sqlc.narg('status'))

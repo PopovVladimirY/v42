@@ -5,6 +5,7 @@ import type { Epic, EpicStatus, ClarityQuadrant } from '@/types';
 import { CLARITY_COLOR, CLARITY_LABEL } from '@/types';
 import { usePaginationStore } from '@/stores/usePagination';
 import { Paginator } from '@/components/Paginator';
+import { loadJSON, saveJSON } from '@/lib/persist';
 
 const STATUS_OPTS: { value: EpicStatus; label: string; color: string; bg: string }[] = [
   { value: 'open',        label: 'Open',        color: 'var(--text-2)',        bg: 'var(--bg-elevated)'                                                    },
@@ -51,11 +52,10 @@ function firstLine(desc: string | null | undefined): string {
 const _FILTERS_KEY = (pid: string) => `v42-epics-filters-${pid}`;
 type SavedFilters = { status: EpicStatus | ''; clarity: ClarityQuadrant | ''; text: string };
 function _loadFilters(pid: string): SavedFilters | null {
-  try { const r = localStorage.getItem(_FILTERS_KEY(pid)); return r ? JSON.parse(r) as SavedFilters : null; }
-  catch { return null; }
+  return loadJSON<SavedFilters>(_FILTERS_KEY(pid));
 }
 function _saveFilters(pid: string, f: SavedFilters) {
-  try { localStorage.setItem(_FILTERS_KEY(pid), JSON.stringify(f)); } catch { /* quota */ }
+  saveJSON(_FILTERS_KEY(pid), f);
 }
 
 // -- Epic edit panel -------------------------------------------------------

@@ -1,10 +1,12 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import { useParams, Link, useNavigate, Outlet } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import {
   DndContext,
   DragOverlay,
   PointerSensor,
+  pointerWithin,
   useSensor,
   useSensors,
   useDraggable,
@@ -29,6 +31,7 @@ import { CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
 import type { BacklogItem, BacklogItemStatus, BacklogItemType, ClarityQuadrant, Project, Task, TestSpec } from '@/types';
 import { usePaginationStore } from '@/stores/usePagination';
 import { Paginator } from '@/components/Paginator';
+import { loadJSON, saveJSON } from '@/lib/persist';
 import { BreakdownModal } from './BreakdownModal';
 
 // -- Stage option (flat list built from project tree) -----------------------
@@ -99,11 +102,49 @@ function StatusPill({
 }) {
   const update = useUpdateBacklogItem(projectId);
   const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // Fixed-position coords so the menu escapes the table's overflow:clip box
+  const [coords, setCoords] = useState<{ left: number; top: number; openUp: boolean } | null>(null);
   const col = STATUS_COLOR[item.status] ?? { bg: '#6B7280', fg: '#fff' };
+
+  // Rough menu height: 1 row ~30px + 8px vertical padding. Good enough to pick a side.
+  const MENU_H = STATUS_OPTS.length * 30 + 8;
+
+  // Position the portal menu under (or above) the trigger and keep it glued on scroll/resize.
+  useLayoutEffect(() => {
+    if (!open || !btnRef.current) return;
+    const place = () => {
+      const r = btnRef.current!.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - r.bottom;
+      const openUp = spaceBelow < MENU_H && r.top > spaceBelow;
+      setCoords({ left: r.left, top: openUp ? r.top - 4 : r.bottom + 4, openUp });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [open, MENU_H]);
+
+  // Click outside closes the menu (portal lives on body, so check both refs).
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (btnRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
 
   return (
     <div className="relative">
       <button
+        ref={btnRef}
         data-testid={`status-pill-${item.id}`}
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
         className="text-xs px-2 py-0.5 rounded-full font-medium"
@@ -111,10 +152,20 @@ function StatusPill({
       >
         {STATUS_LABEL[item.status] ?? item.status}
       </button>
-      {open && (
+      {open && coords && createPortal(
         <div
-          className="absolute left-0 top-full mt-1 rounded-lg overflow-hidden z-30 py-1 min-w-32"
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', boxShadow: '0 4px 16px rgba(0,0,0,.2)' }}
+          ref={menuRef}
+          className="rounded-lg overflow-hidden py-1 min-w-32"
+          style={{
+            position: 'fixed',
+            left: coords.left,
+            top: coords.top,
+            transform: coords.openUp ? 'translateY(-100%)' : 'none',
+            zIndex: 60,
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border)',
+            boxShadow: '0 4px 16px rgba(0,0,0,.2)',
+          }}
         >
           {STATUS_OPTS.map((s) => {
             const c = STATUS_COLOR[s];
@@ -136,7 +187,8 @@ function StatusPill({
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -846,13 +898,10 @@ function CreateItemPanel({
 function _filtersKey(projectId: string) { return `v42-backlog-filters-${projectId}`; }
 type SavedFilters = { status: BacklogItemStatus | '' | 'all'; clarity: ClarityQuadrant | ''; sprintId: string; text: string };
 function _loadFilters(projectId: string): SavedFilters | null {
-  try {
-    const raw = localStorage.getItem(_filtersKey(projectId));
-    return raw ? (JSON.parse(raw) as SavedFilters) : null;
-  } catch { return null; }
+  return loadJSON<SavedFilters>(_filtersKey(projectId));
 }
 function _saveFilters(projectId: string, f: SavedFilters) {
-  try { localStorage.setItem(_filtersKey(projectId), JSON.stringify(f)); } catch { /* quota */ }
+  saveJSON(_filtersKey(projectId), f);
 }
 
 type SortField = 'number' | 'title' | 'type' | 'clarity' | 'status' | 'sprint';
@@ -1142,7 +1191,7 @@ export function BacklogPage() {
       {isError   && <p className="text-sm" style={{ color: 'var(--color-danger)' }}>Failed to load backlog.</p>}
 
       {!isLoading && !isError && (
-        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="rounded-xl" style={{ border: '1px solid var(--border)', overflow: 'clip' }}>
             <table className="w-full border-collapse" data-testid="backlog-list">
               <thead style={{ background: 'var(--bg-elevated)' }}>
