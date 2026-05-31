@@ -12,6 +12,7 @@ import (
 	"github.com/vpo/v42/internal/api/middleware"
 	"github.com/vpo/v42/internal/db/store"
 	"github.com/vpo/v42/internal/domain"
+	"github.com/vpo/v42/internal/sse"
 )
 
 // validTaskStatus is the set of accepted task_status enum values.
@@ -21,7 +22,8 @@ var validTaskStatus = map[string]bool{"todo": true, "in_progress": true, "done":
 var validSprintStatus = map[string]bool{"planning": true, "active": true, "completed": true, "cancelled": true}
 
 type taskHandlers struct {
-	tasks *store.TaskStore
+	tasks  *store.TaskStore
+	events *sse.Broker
 }
 
 // List handles GET /api/v1/projects/{project_id}/backlog/{backlog_item_id}/tasks
@@ -99,6 +101,7 @@ func (h *taskHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create task")
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventTaskCreated, ProjectID: chi.URLParam(r, "project_id"), EntityID: t.ID, Actor: claims.UserID})
 	respond(w, http.StatusCreated, t)
 }
 
@@ -153,6 +156,7 @@ func (h *taskHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update task")
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventTaskUpdated, ProjectID: chi.URLParam(r, "project_id"), EntityID: t.ID, Actor: actorID(r)})
 	respond(w, http.StatusOK, t)
 }
 
@@ -177,6 +181,7 @@ func (h *taskHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete task")
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventTaskDeleted, ProjectID: chi.URLParam(r, "project_id"), EntityID: id, Actor: actorID(r)})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -218,6 +223,7 @@ func (h *taskHandlers) Move(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to move task")
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventTaskMoved, ProjectID: chi.URLParam(r, "project_id"), EntityID: t.ID, Actor: actorID(r)})
 	respond(w, http.StatusOK, t)
 }
 
@@ -226,6 +232,7 @@ func (h *taskHandlers) Move(w http.ResponseWriter, r *http.Request) {
 type sprintHandlers struct {
 	sprints *store.SprintStore
 	results *store.SprintTestStore
+	events  *sse.Broker
 }
 
 // List handles GET /api/v1/projects/{project_id}/sprints
@@ -310,6 +317,7 @@ func (h *sprintHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create sprint")
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventSprintCreated, ProjectID: projectID, EntityID: s.ID, Actor: actorID(r)})
 	respond(w, http.StatusCreated, s)
 }
 
@@ -369,6 +377,7 @@ func (h *sprintHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
+	h.events.Publish(sse.Event{Type: sse.EventSprintUpdated, ProjectID: s.ProjectID, EntityID: s.ID, Actor: actorID(r)})
 	respond(w, http.StatusOK, s)
 }
 
@@ -383,6 +392,7 @@ func (h *sprintHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete sprint")
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventSprintDeleted, ProjectID: chi.URLParam(r, "project_id"), EntityID: id, Actor: actorID(r)})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -428,6 +438,7 @@ func (h *sprintHandlers) AddItem(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to add item to sprint")
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventSprintItemAdded, ProjectID: chi.URLParam(r, "project_id"), EntityID: req.BacklogItemID, Actor: actorID(r)})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -443,6 +454,7 @@ func (h *sprintHandlers) RemoveItem(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to remove item from sprint")
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventSprintItemRemoved, ProjectID: chi.URLParam(r, "project_id"), EntityID: backlogItemID, Actor: actorID(r)})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -474,6 +486,7 @@ func (h *sprintHandlers) Close(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.events.Publish(sse.Event{Type: sse.EventSprintClosed, ProjectID: s.ProjectID, EntityID: id, Actor: actorID(r)})
 	respond(w, http.StatusOK, map[string]any{
 		"sprint":              s,
 		"carried_over":        carried,

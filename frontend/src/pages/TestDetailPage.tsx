@@ -5,7 +5,7 @@ import { itemTestsApi } from '@/api/endpoints/item_tests';
 import { useBacklogItem, useProjectAncestors } from '@/hooks/useProjects';
 import { useAuthStore } from '@/hooks/useAuth';
 import { CLARITY_LABEL } from '@/types';
-import type { TestSpec, TestType } from '@/types';
+import type { TestType } from '@/types';
 
 // -- constants ---------------------------------------------------------------
 

@@ -161,7 +161,6 @@ function MoveDropdown({
 
 function DraggableTaskRow({
   task,
-  projectId,
   item,
   allItems,
   moveTask,
@@ -289,7 +288,6 @@ function DraggableTaskRow({
 
 function DraggableTestRow({
   test,
-  projectId,
   item,
   allItems,
   moveTest,
@@ -808,7 +806,7 @@ export function SprintBacklogTab() {
                         to={`/projects/${projectId}/backlog/${item.id}`}
                         className="truncate block hover:underline font-semibold"
                         style={{ color: 'color-mix(in srgb, var(--text-1) 80%, transparent)', fontSize: '1.006rem' }}
-                        title={item.description || 'No description details available'}
+                        title={item.title}
                         onClick={(e) => e.stopPropagation()}
                         onDoubleClick={(e) => e.stopPropagation()}
                       >

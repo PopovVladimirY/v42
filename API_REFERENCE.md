@@ -34,6 +34,19 @@ Returns `{ "status": "ok" }` when the API process and DB connection are healthy.
 
 ---
 
+## Events (SSE)
+
+| Method | Path | Auth |
+|--------|------|------|
+| GET | `/events` | JWT via `?access_token=` query param (or `Bearer` header) |
+
+Long-lived `text/event-stream` connection broadcasting cache-invalidation hints
+(entity type + id, never payload) for live dashboards. Named SSE events; heartbeat
+every 25s. Full contract, event catalog, and the React client hook are documented
+in [SSE_GUIDE.md](SSE_GUIDE.md).
+
+---
+
 ## AUTH
 
 | Method | Path | Auth |

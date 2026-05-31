@@ -65,8 +65,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	router, stopLimiter := api.NewRouter(cfg, pool, log, authSvc, queries)
-	defer stopLimiter()
+	router, cleanup := api.NewRouter(cfg, pool, log, authSvc, queries)
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf("%s:%s", cfg.ServerHost, cfg.ServerPort),
@@ -84,6 +83,11 @@ func main() {
 		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 		sig := <-quit
 		log.Info("shutdown signal received", "signal", fmt.Sprintf("%v", sig))
+
+		// Close the broker first so live SSE streams terminate and don't keep the
+		// server alive through the whole Shutdown grace window. cleanup is
+		// idempotent (Stop once, broker.Close guarded by sync.Once).
+		cleanup()
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()

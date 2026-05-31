@@ -10,6 +10,7 @@ import (
 	"github.com/vpo/v42/internal/api/middleware"
 	"github.com/vpo/v42/internal/db/store"
 	"github.com/vpo/v42/internal/domain"
+	"github.com/vpo/v42/internal/sse"
 )
 
 // validEpicStatus is the set of accepted epic_status enum values.
@@ -18,7 +19,8 @@ var validEpicStatus = map[string]bool{"draft": true, "active": true, "done": tru
 var validEpicClarity = map[string]bool{"clear": true, "scoped": true, "tacit": true, "foggy": true, "unknown": true}
 
 type epicHandlers struct {
-	epics *store.EpicStore
+	epics  *store.EpicStore
+	events *sse.Broker
 }
 
 // List handles GET /api/v1/projects/{project_id}/epics
@@ -104,6 +106,7 @@ func (h *epicHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create epic")
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventEpicCreated, ProjectID: projectID, EntityID: e.ID, Actor: claims.UserID})
 	respond(w, http.StatusCreated, e)
 }
 
@@ -165,6 +168,7 @@ func (h *epicHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update epic")
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventEpicUpdated, ProjectID: e.ProjectID, EntityID: e.ID, Actor: actorID(r)})
 	respond(w, http.StatusOK, e)
 }
 
@@ -189,5 +193,6 @@ func (h *epicHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete epic")
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventEpicDeleted, ProjectID: existing.ProjectID, EntityID: id, Actor: actorID(r)})
 	w.WriteHeader(http.StatusNoContent)
 }

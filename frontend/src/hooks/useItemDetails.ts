@@ -66,6 +66,7 @@ export function useUpdateTask(projectId: string, itemId: string) {
     mutationFn: ({ taskId, ...data }: {
       taskId: string;
       title?: string;
+      description?: string;
       status?: TaskStatus;
       estimate?: string;
       skill_required?: string;

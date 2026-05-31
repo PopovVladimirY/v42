@@ -25,7 +25,7 @@ import {
   useTasks, useItemTests, useMoveTask, useMoveItemTest,
   useCreateTask, useCreateItemTest, useDeleteTask, useDeleteItemTest, useUpdateTask, useUpdateItemTest,
 } from '@/hooks/useItemDetails';
-import { CLARITY_COLOR, CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
+import { CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
 import type { BacklogItem, BacklogItemStatus, BacklogItemType, ClarityQuadrant, Project, Task, TestSpec } from '@/types';
 import { usePaginationStore } from '@/stores/usePagination';
 import { Paginator } from '@/components/Paginator';

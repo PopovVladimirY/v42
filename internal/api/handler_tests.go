@@ -10,11 +10,13 @@ import (
 	"github.com/vpo/v42/internal/api/middleware"
 	"github.com/vpo/v42/internal/db/store"
 	"github.com/vpo/v42/internal/domain"
+	"github.com/vpo/v42/internal/sse"
 )
 
 // testHandlers serves CRUD for test specs at project / epic / backlog-item scope.
 type testHandlers struct {
-	tests *store.TestStore
+	tests  *store.TestStore
+	events *sse.Broker
 }
 
 type createTestRequest struct {
@@ -78,6 +80,7 @@ func (h *testHandlers) createTest(w http.ResponseWriter, r *http.Request, scope,
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create test")
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventTestCreated, ProjectID: projectID, EntityID: ts.ID, Actor: actorID(r)})
 	respond(w, http.StatusCreated, ts)
 }
 
@@ -158,6 +161,7 @@ func (h *testHandlers) UpdateTest(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update test")
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventTestUpdated, ProjectID: projectID, EntityID: ts.ID, Actor: actorID(r)})
 	respond(w, http.StatusOK, ts)
 }
 
@@ -173,6 +177,7 @@ func (h *testHandlers) DeleteTest(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete test")
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventTestDeleted, ProjectID: projectID, EntityID: testID, Actor: actorID(r)})
 	w.WriteHeader(http.StatusNoContent)
 }
 // MoveItemTest handles POST /projects/{project_id}/backlog/{backlog_item_id}/tests/{test_id}/move
@@ -216,5 +221,6 @@ func (h *testHandlers) MoveItemTest(w http.ResponseWriter, r *http.Request) {
                 respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to move test")
                 return
         }
+        h.events.Publish(sse.Event{Type: sse.EventTestMoved, ProjectID: projectID, EntityID: moved.ID, Actor: actorID(r)})
         respond(w, http.StatusOK, moved)
 }

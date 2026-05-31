@@ -16,6 +16,7 @@ import (
 	dbgen "github.com/vpo/v42/internal/db/gen"
 	"github.com/vpo/v42/internal/db/store"
 	"github.com/vpo/v42/internal/domain"
+	"github.com/vpo/v42/internal/sse"
 )
 
 func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc *domain.AuthService, queries *dbgen.Queries) (*chi.Mux, func()) {
@@ -36,6 +37,11 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 	agentTokenStore := store.NewAgentTokenStore(queries)
 	bearerAuth := middleware.BearerAuth(cfg.JWTSecret, agentTokenStore)
 
+	// Real-time SSE fan-out hub. Mutating handlers publish cache-invalidation
+	// hints; connected clients refetch through the normal authorized API.
+	broker := sse.NewBroker(log)
+	eventsH := &eventsHandler{broker: broker, jwtSecret: cfg.JWTSecret}
+
 	auth := &authHandlers{
 		svc:        authSvc,
 		secure:     cfg.IsProduction(),
@@ -53,15 +59,15 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 	skillH := &skillHandlers{skills: skillStore}
 	teamH := &teamHandlers{teams: store.NewTeamStore(queries)}
 	projectH := &projectHandlers{projects: store.NewProjectStore(queries), teams: store.NewProjectTeamStore(queries)}
-	epicH := &epicHandlers{epics: store.NewEpicStore(queries)}
-	backlogH := &backlogHandlers{backlog: store.NewBacklogStore(queries, pool)}
-	taskH := &taskHandlers{tasks: store.NewTaskStore(queries)}
-	commentH := &commentHandlers{comments: store.NewCommentStore(queries)}
+	epicH := &epicHandlers{epics: store.NewEpicStore(queries), events: broker}
+	backlogH := &backlogHandlers{backlog: store.NewBacklogStore(queries, pool), events: broker}
+	taskH := &taskHandlers{tasks: store.NewTaskStore(queries), events: broker}
+	commentH := &commentHandlers{comments: store.NewCommentStore(queries), events: broker}
 	capacityH := &capacityHandlers{capacity: store.NewCapacityStore(queries, pool)}
-	testH := &testHandlers{tests: store.NewTestStore(queries)}
+	testH := &testHandlers{tests: store.NewTestStore(queries), events: broker}
 	timeH := &timeEntryHandlers{entries: store.NewTimeEntryStore(queries)}
 	sprintResults := store.NewSprintTestStore(queries)
-	sprintH := &sprintHandlers{sprints: store.NewSprintStore(queries, pool), results: sprintResults}
+	sprintH := &sprintHandlers{sprints: store.NewSprintStore(queries, pool), results: sprintResults, events: broker}
 	resultH := &sprintResultHandlers{results: sprintResults}
 	sprintCapacityH := &sprintCapacityHandlers{q: queries}
 	retroH := &retroHandlers{q: queries}
@@ -70,6 +76,10 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", healthHandler(pool))
+
+		// Live SSE stream. Self-authenticates via ?access_token= (EventSource can't
+		// set headers), so it lives OUTSIDE the bearerAuth group on purpose.
+		r.Get("/events", eventsH.Stream)
 
 		// rate-limited: brute-force targets (login + refresh share the limiter)
 		r.Group(func(r chi.Router) {
@@ -264,7 +274,10 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 		})
 	})
 
-	return r, authLimiter.Stop
+	return r, func() {
+		authLimiter.Stop()
+		broker.Close()
+	}
 }
 
 // healthHandler checks db connectivity and reports overall system status.
@@ -293,6 +306,15 @@ func healthHandler(pool *pgxpool.Pool) http.HandlerFunc {
 
 func notImplemented(w http.ResponseWriter, r *http.Request) {
 	respondErr(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "coming soon")
+}
+
+// actorID pulls the authenticated user id from the request, or "" if absent.
+// Used to stamp SSE events with who triggered the change.
+func actorID(r *http.Request) string {
+	if c := middleware.ClaimsFromContext(r.Context()); c != nil {
+		return c.UserID
+	}
+	return ""
 }
 
 // respond writes a successful JSON response in the standard { data, meta, error } envelope.

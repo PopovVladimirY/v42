@@ -12,6 +12,7 @@ const ROLE_COLOR: Record<UserRole, string> = {
   developer: 'var(--accent)',
   tester: 'var(--info)',
   observer: 'var(--text-3)',
+  agent: 'var(--success)', // robots get the green light too
 };
 
 function fmtDate(iso: string) {

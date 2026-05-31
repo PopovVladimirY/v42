@@ -10,6 +10,7 @@ import (
 	"github.com/vpo/v42/internal/api/middleware"
 	"github.com/vpo/v42/internal/db/store"
 	"github.com/vpo/v42/internal/domain"
+	"github.com/vpo/v42/internal/sse"
 )
 
 // validBacklogItemStatus is the set of accepted item_status enum values.
@@ -38,6 +39,7 @@ var validBacklogItemType = map[string]bool{
 
 type backlogHandlers struct {
 	backlog *store.BacklogStore
+	events  *sse.Broker
 }
 
 // List handles GET /api/v1/projects/{project_id}/backlog
@@ -164,6 +166,7 @@ func (h *backlogHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create backlog item")
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventBacklogCreated, ProjectID: projectID, EntityID: item.ID, Actor: claims.UserID})
 	respond(w, http.StatusCreated, item)
 }
 
@@ -247,6 +250,7 @@ func (h *backlogHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update backlog item")
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventBacklogUpdated, ProjectID: item.ProjectID, EntityID: item.ID, Actor: actorID(r)})
 	respond(w, http.StatusOK, item)
 }
 
@@ -271,6 +275,7 @@ func (h *backlogHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete backlog item")
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventBacklogDeleted, ProjectID: existing.ProjectID, EntityID: id, Actor: actorID(r)})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -304,6 +309,7 @@ func (h *backlogHandlers) Reorder(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to reorder backlog")
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventBacklogReordered, ProjectID: projectID, Actor: actorID(r)})
 	respond(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 

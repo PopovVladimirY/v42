@@ -21,7 +21,6 @@ function RetroCard({
   projectId,
   sprintId,
   callerUserId,
-  canClose,
   canManage,
   facilitatorUserId,
 }: {

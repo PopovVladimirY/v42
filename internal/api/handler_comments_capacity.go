@@ -10,10 +10,12 @@ import (
 	"github.com/vpo/v42/internal/api/middleware"
 	"github.com/vpo/v42/internal/db/store"
 	"github.com/vpo/v42/internal/domain"
+	"github.com/vpo/v42/internal/sse"
 )
 
 type commentHandlers struct {
 	comments *store.CommentStore
+	events   *sse.Broker
 }
 
 // ListByBacklogItem handles GET /api/v1/projects/{project_id}/backlog/{backlog_item_id}/comments
@@ -55,6 +57,7 @@ func (h *commentHandlers) CreateForBacklogItem(w http.ResponseWriter, r *http.Re
 	if err != nil {
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventCommentCreated, ProjectID: chi.URLParam(r, "project_id"), EntityID: backlogItemID, Actor: claims.UserID})
 	respond(w, http.StatusCreated, comment)
 }
 
@@ -67,6 +70,7 @@ func (h *commentHandlers) CreateForTask(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		return
 	}
+	h.events.Publish(sse.Event{Type: sse.EventCommentCreated, ProjectID: chi.URLParam(r, "project_id"), EntityID: taskID, Actor: claims.UserID})
 	respond(w, http.StatusCreated, comment)
 }
 

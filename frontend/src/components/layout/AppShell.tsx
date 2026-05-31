@@ -5,6 +5,7 @@ import { useAuthStore } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { useIdleTimeout } from '@/hooks/useIdleTimeout';
 import { useIdleDetect } from '@/hooks/useIdleDetect';
+import { useEventStream } from '@/hooks/useEventStream';
 import { useRecentProjects } from '@/hooks/useLastProject';
 import { SidebarAmbient } from '@/components/SidebarAmbient';
 import { useThemeStore } from '@/stores/useTheme';
@@ -64,6 +65,7 @@ export function AppShell() {
   const navigate = useNavigate();
 
   useIdleTimeout();
+  useEventStream(); // live cache invalidation via server-sent events
   const ambientDelayMs = useThemeStore((s) => s.ambientDelayMs);
   const sidebarPinned = useThemeStore((s) => s.sidebarPinned);
   const setSidebarPinned = useThemeStore((s) => s.setSidebarPinned);

@@ -31,7 +31,7 @@ function makeSlot(): Slot {
 
 // -- Small badge helpers -----------------------------------------------------
 
-function Badge({ label, kind }: { label: string; kind: 'task' | 'test' }) {
+function Badge({ kind }: { label?: string; kind: 'task' | 'test' }) {
   const s = kind === 'task'
     ? { background: '#1D4ED8', color: '#BFDBFE' }
     : { background: '#064E3B', color: '#6EE7B7' };
@@ -78,8 +78,6 @@ function SlotPanel({
   index,
   tasks,
   tests,
-  allTasks,
-  allTests,
   canRemove,
   onChange,
   onRemove,

@@ -231,21 +231,8 @@ vec4 effect_ocean_blue(vec2 uv, float t) {
   float below = smoothstep(wave - 0.004, wave - 0.016, uv.y) * 0.18;
   alpha += crest + below;
 
-  // Rising foam droplets: reach up to 45% of the sidebar
-  for (int i = 0; i < 18; i++) {
-    float fi  = float(i);
-    float xb  = fract(fi * 0.1973);
-    float sp  = 0.024 + fract(fi * 0.1371) * 0.028;
-    float ph  = fract(fi * 0.2511);
-    float age = fract(t * sp + ph);
-    float y   = age * 0.45;
-    float x   = xb + sin(age * 5.1 + fi) * 0.024;
-    float r   = 0.0045 + fract(fi * 0.0731) * 0.0065;
-    float fade = smoothstep(0.0, 0.12, age) * smoothstep(1.0, 0.65, age);
-    float d    = length(uv - vec2(x, y));
-    float ring = (smoothstep(r + 0.0010, r, d) - smoothstep(r, r - 0.0018, d)) * fade;
-    alpha += ring * 0.65;
-  }
+  // No rising droplets here: Ocean Blue is a clean surf crest, not a
+  // bubble bath. (Those bubbles wandered in from DeepDive -- shooed out.)
 
   return vec4(foam, clamp(alpha, 0.0, 0.78));
 }
