@@ -137,6 +137,11 @@ const (
 	EventEpicUpdated = "epic.updated"
 	EventEpicDeleted = "epic.deleted"
 
+	EventMilestoneCreated = "milestone.created"
+	EventMilestoneUpdated = "milestone.updated"
+	EventMilestoneDeleted = "milestone.deleted"
+	EventMilestoneBound   = "milestone.bound" // stage <-> milestone binding changed
+
 	EventSprintCreated     = "sprint.created"
 	EventSprintUpdated     = "sprint.updated"
 	EventSprintDeleted     = "sprint.deleted"

@@ -188,6 +188,44 @@ export interface Epic {
   updated_at: string;
 }
 
+// -- Milestones --------------------------------------------------------------
+
+// Lifecycle (manual intent) -- mirrors DB enum milestone_status.
+export type MilestoneStatus = 'future' | 'target' | 'closed';
+// Health (derived server-side from dates) -- never set by the client.
+export type MilestoneHealth = 'on_time' | 'at_risk' | 'delayed' | 'missed' | 'closed';
+
+export interface Milestone {
+  id: string;
+  project_id: string;
+  number: number;
+  name: string;
+  description: string | null;
+  target_date: string; // ISO "2026-08-15"
+  status: MilestoneStatus;
+  health: MilestoneHealth;
+  created_at: string;
+  updated_at: string;
+}
+
+// Flattened project-tree node for the Gantt feed.
+export interface TimelineNode {
+  id: string;
+  node_number: number;
+  name: string;
+  parent_id: string | null;
+  status: ProjectStatus;
+  start_date: string | null;
+  end_date: string | null;
+  milestone_id: string | null;
+  depth: number;
+}
+
+export interface ProjectTimeline {
+  milestones: Milestone[];
+  stages: TimelineNode[];
+}
+
 // -- Backlog -----------------------------------------------------------------
 
 export type BacklogItemType = 'story' | 'bug' | 'task' | 'spike';

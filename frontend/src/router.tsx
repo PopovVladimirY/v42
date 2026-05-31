@@ -18,6 +18,7 @@ import { ProjectSubProjectsPage } from '@/pages/ProjectSubProjectsPage';
 import { BacklogPage } from '@/pages/BacklogPage';
 import { EpicsPage } from '@/pages/EpicsPage';
 import { EpicDetailPage } from '@/pages/EpicDetailPage';
+import { MilestonesPage } from '@/pages/MilestonesPage';
 import { SprintsPage } from '@/pages/SprintsPage';
 import { SprintShell, SprintRedirect } from '@/pages/SprintShell';
 import { SprintBoardTab } from '@/pages/SprintBoardTab';
@@ -90,6 +91,7 @@ export const router = createBrowserRouter([
               { path: 'tests/:testId', element: <TestDetailPage /> },
               { path: 'epics', element: <EpicsPage /> },
               { path: 'epics/:epicId', element: <EpicDetailPage /> },
+              { path: 'milestones', element: <MilestonesPage /> },
               { path: 'sprints', element: <SprintsPage /> },
               {
                 path: 'sprints/:sprintId',

@@ -60,6 +60,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 	teamH := &teamHandlers{teams: store.NewTeamStore(queries)}
 	projectH := &projectHandlers{projects: store.NewProjectStore(queries), teams: store.NewProjectTeamStore(queries)}
 	epicH := &epicHandlers{epics: store.NewEpicStore(queries), events: broker}
+	milestoneH := &milestoneHandlers{milestones: store.NewMilestoneStore(queries), events: broker}
 	backlogStore := store.NewBacklogStore(queries, pool)
 	taskStore := store.NewTaskStore(queries)
 	backlogH := &backlogHandlers{backlog: backlogStore, events: broker}
@@ -190,6 +191,15 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 				r.With(middleware.RequireRole("admin", "maintainer")).Post("/epics", epicH.Create)
 				r.With(middleware.RequireRole("admin", "maintainer")).Patch("/epics/{id}", epicH.Update)
 				r.With(middleware.RequireRole("admin", "maintainer")).Delete("/epics/{id}", epicH.Delete)
+
+				// Milestones + Gantt timeline
+				r.Get("/timeline", milestoneH.Timeline)
+				r.Get("/milestones", milestoneH.List)
+				r.Get("/milestones/{id}", milestoneH.Get)
+				r.With(middleware.RequireRole("admin", "maintainer")).Post("/milestones", milestoneH.Create)
+				r.With(middleware.RequireRole("admin", "maintainer")).Patch("/milestones/{id}", milestoneH.Update)
+				r.With(middleware.RequireRole("admin", "maintainer")).Delete("/milestones/{id}", milestoneH.Delete)
+				r.With(middleware.RequireRole("admin", "maintainer")).Put("/stages/{node_id}/milestone", milestoneH.Bind)
 
 				// Backlog
 				r.Get("/backlog", backlogH.List)

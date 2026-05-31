@@ -1,8 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '@/api/endpoints/projects';
 import { epicsApi } from '@/api/endpoints/epics';
+import { milestonesApi } from '@/api/endpoints/milestones';
 import { backlogApi, type BacklogFilters } from '@/api/endpoints/backlog';
-import type { ProjectStatus, EpicStatus, BacklogItemType, BacklogItemStatus, ClarityQuadrant } from '@/types';
+import type { ProjectStatus, EpicStatus, BacklogItemType, BacklogItemStatus, ClarityQuadrant, MilestoneStatus } from '@/types';
 
 // -- Projects ----------------------------------------------------------------
 
@@ -147,6 +148,79 @@ export function useDeleteEpic(projectId: string) {
     onSuccess: () => qc.invalidateQueries({ queryKey: epicKeys.byProject(projectId) }),
   });
 }
+
+// -- Milestones --------------------------------------------------------------
+
+export const milestoneKeys = {
+  byProject: (projectId: string) => ['milestones', projectId] as const,
+  timeline: (projectId: string) => ['milestones', projectId, 'timeline'] as const,
+};
+
+export function useMilestones(projectId: string) {
+  return useQuery({
+    queryKey: milestoneKeys.byProject(projectId),
+    queryFn: async () => {
+      const { data } = await milestonesApi.list(projectId);
+      return data.data ?? [];
+    },
+    enabled: !!projectId,
+  });
+}
+
+export function useTimeline(projectId: string, archived = false) {
+  return useQuery({
+    queryKey: [...milestoneKeys.timeline(projectId), archived] as const,
+    queryFn: async () => {
+      const { data } = await milestonesApi.timeline(projectId, archived);
+      return data.data ?? { milestones: [], stages: [] };
+    },
+    enabled: !!projectId,
+  });
+}
+
+function invalidateMilestones(qc: ReturnType<typeof useQueryClient>, projectId: string) {
+  void qc.invalidateQueries({ queryKey: milestoneKeys.byProject(projectId) });
+  void qc.invalidateQueries({ queryKey: milestoneKeys.timeline(projectId) });
+}
+
+export function useCreateMilestone(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { name: string; description?: string; target_date: string; status?: MilestoneStatus }) =>
+      milestonesApi.create(projectId, data),
+    onSuccess: () => invalidateMilestones(qc, projectId),
+  });
+}
+
+export function useUpdateMilestone(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ milestoneId, ...data }: { milestoneId: string; name?: string; description?: string; target_date?: string; status?: MilestoneStatus }) =>
+      milestonesApi.update(projectId, milestoneId, data),
+    onSuccess: () => invalidateMilestones(qc, projectId),
+  });
+}
+
+export function useDeleteMilestone(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (milestoneId: string) => milestonesApi.delete(projectId, milestoneId),
+    onSuccess: () => invalidateMilestones(qc, projectId),
+  });
+}
+
+export function useBindNodeMilestone(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ nodeId, milestoneId }: { nodeId: string; milestoneId: string | null }) =>
+      milestonesApi.bindNode(projectId, nodeId, milestoneId),
+    onSuccess: () => {
+      invalidateMilestones(qc, projectId);
+      void qc.invalidateQueries({ queryKey: projectKeys.tree(projectId) });
+    },
+  });
+}
+
 
 // -- Backlog -----------------------------------------------------------------
 

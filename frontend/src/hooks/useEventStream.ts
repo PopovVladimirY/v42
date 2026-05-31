@@ -30,6 +30,10 @@ const EVENT_TYPES = [
   'epic.created',
   'epic.updated',
   'epic.deleted',
+  'milestone.created',
+  'milestone.updated',
+  'milestone.deleted',
+  'milestone.bound',
   'sprint.created',
   'sprint.updated',
   'sprint.deleted',
@@ -65,6 +69,11 @@ export function invalidateFor(qc: QueryClient, ev: ServerEvent) {
       break;
     case 'epic':
       void qc.invalidateQueries({ queryKey: ['epics', pid] });
+      break;
+    case 'milestone':
+      // Both the milestones list and the Gantt timeline hang off this prefix.
+      // A bind also shifts stages, so the timeline must refresh too.
+      void qc.invalidateQueries({ queryKey: ['milestones', pid] });
       break;
     case 'sprint':
       void qc.invalidateQueries({ queryKey: ['sprints', pid] });
