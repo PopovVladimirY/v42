@@ -896,7 +896,7 @@ export function BacklogItemDetailPage() {
           <Link to={`/projects/${projectId}/backlog`} className="hover:underline">Backlog</Link>
           <span>/</span>
           <span style={{ color: 'var(--text-1)' }}>B-{item.number}</span>
-          <button onClick={() => navigate(-1)} className="ml-auto text-sm" style={{ color: 'var(--text-3)' }} title="Close">&#10007;</button>
+          <button onClick={() => navigate(-1)} aria-label="Close" className="ml-auto text-sm" style={{ color: 'var(--text-3)' }} title="Close">&#10007;</button>
         </div>
 
       <div className="px-6 py-4 flex flex-col gap-5">

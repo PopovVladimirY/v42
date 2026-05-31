@@ -521,7 +521,7 @@ function ExpandedItemPanel({
                 className="flex-1 text-xs rounded px-1.5 py-0.5 outline-none"
                 style={{ background: 'var(--bg-surface)', border: '1px solid var(--accent)', color: 'var(--text-1)' }}
               />
-              <button onClick={() => { setAddingType(null); setAddingTitle(''); }} className="text-xs flex-shrink-0" style={{ color: 'var(--text-3)' }}>&#10007;</button>
+              <button onClick={() => { setAddingType(null); setAddingTitle(''); }} aria-label="Cancel" className="text-xs flex-shrink-0" style={{ color: 'var(--text-3)' }}>&#10007;</button>
             </div>
           </td>
         </tr>

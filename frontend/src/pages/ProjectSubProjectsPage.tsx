@@ -278,6 +278,7 @@ function SubProjectNode({
               className="opacity-0 group-hover:opacity-100 text-xs px-1.5 py-0.5 rounded flex-shrink-0 transition-opacity"
               style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}
               title="Edit"
+              aria-label="Edit"
             >✎</button>
           )}
 

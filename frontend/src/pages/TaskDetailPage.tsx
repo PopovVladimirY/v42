@@ -143,7 +143,7 @@ export function TaskDetailPage() {
           <Link to={`/projects/${projectId}/backlog/${itemId}`} className="hover:underline">B-{backlogItem?.number ?? '?'}</Link>
           <span>/</span>
           <span style={{ color: 'var(--text-1)' }}>Task</span>
-          <button onClick={() => navigate(-1)} className="ml-auto text-sm" style={{ color: 'var(--text-3)' }} title="Close">&#10007;</button>
+          <button onClick={() => navigate(-1)} aria-label="Close" className="ml-auto text-sm" style={{ color: 'var(--text-3)' }} title="Close">&#10007;</button>
         </div>
 
         <div className="max-w-2xl mx-auto px-6 py-8 flex flex-col gap-6 w-full">

@@ -155,7 +155,7 @@ export function TestDetailPage() {
           )}
           <span>/</span>
           <span style={{ color: 'var(--text-1)' }}>Test</span>
-          <button onClick={() => navigate(-1)} className="ml-auto text-sm" style={{ color: 'var(--text-3)' }} title="Close">&#10007;</button>
+          <button onClick={() => navigate(-1)} aria-label="Close" className="ml-auto text-sm" style={{ color: 'var(--text-3)' }} title="Close">&#10007;</button>
         </div>
 
         <div className="max-w-2xl mx-auto px-6 py-8 flex flex-col gap-6 w-full">

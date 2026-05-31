@@ -135,6 +135,9 @@ export function TestDetailModal({
       <div
         className="w-full flex-shrink-0 flex flex-col rounded-2xl h-fit"
         style={{ maxWidth: '680px', background: 'var(--bg-active)', border: '1px solid var(--border)' }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Test details"
       >
         {/* Header */}
         <div
@@ -157,7 +160,7 @@ export function TestDetailModal({
                 Open &#8599;
               </Link>
             )}
-            <button onClick={onClose} className="text-sm" style={{ color: 'var(--text-3)' }} title="Close (Esc)">&#10007;</button>
+            <button onClick={onClose} aria-label="Close" className="text-sm" style={{ color: 'var(--text-3)' }} title="Close (Esc)">&#10007;</button>
           </div>
         </div>
 
