@@ -7,6 +7,7 @@ import type {
   EngagementScore,
   TeamMemberAppetite,
   MemberCapacity,
+  SkillDemand,
 } from '@/types/index';
 
 function unwrap<T>(res: { data: T }): T {
@@ -47,5 +48,10 @@ export const capacityApi = {
   teamMemberCapacity: (teamId: string) =>
     apiClient
       .get<{ data: MemberCapacity[] }>(`/teams/${teamId}/member-capacity`)
+      .then((r) => unwrap(r.data)),
+
+  projectSkillDemand: (projectId: string) =>
+    apiClient
+      .get<{ data: SkillDemand[] }>(`/projects/${projectId}/skill-demand`)
       .then((r) => unwrap(r.data)),
 };

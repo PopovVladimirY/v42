@@ -1,10 +1,14 @@
-import { useEffect, useState, Fragment } from 'react';
+import { useEffect, useState, useMemo, Fragment } from 'react';
 import { useParams, Link, NavLink, Outlet } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueries } from '@tanstack/react-query';
+import {
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer,
+} from 'recharts';
 import { useProject, useProjectAncestors, useProjectTeams, useAddProjectTeam, useRemoveProjectTeam } from '@/hooks/useProjects';
 import { useAuthStore } from '@/hooks/useAuth';
 import { pushRecentProject } from '@/hooks/useLastProject';
 import { teamsApi } from '@/api/endpoints/teams';
+import { capacityApi } from '@/api/endpoints/capacity';
 
 // Sub-nav tabs for a project
 const TABS = [
@@ -166,6 +170,9 @@ export function ProjectOverviewPage() {
         </Link>
       </div>
 
+      {/* Skill planning -- what the backlog needs vs what the teams can do */}
+      <SkillPlanningSection projectId={projectId ?? ''} teamIds={projectTeams.map((t) => t.id)} />
+
       {canEdit && (
         <section
           className="rounded-xl p-4"
@@ -264,3 +271,168 @@ export function ProjectOverviewPage() {
     </div>
   );
 }
+
+// Level rank -> human label, mirrors the 1..5 scale from the skill matrix.
+const LEVEL_LABEL = ['none', 'novice', 'beginner', 'competent', 'proficient', 'expert'];
+
+// SkillPlanningSection -- the heart of skill-based planning. Two radars side by
+// side (backlog demand vs team coverage) plus a per-skill balance bar that
+// screams when the backlog wants a skill nobody on the linked teams can cover.
+function SkillPlanningSection({ projectId, teamIds }: { projectId: string; teamIds: string[] }) {
+  const { data: demand = [], isLoading: demandLoading } = useQuery({
+    queryKey: ['project-skill-demand', projectId],
+    queryFn: () => capacityApi.projectSkillDemand(projectId),
+    enabled: !!projectId,
+  });
+
+  // One skill-matrix per linked team; merged into a single coverage map below.
+  const matrixQueries = useQueries({
+    queries: teamIds.map((tid) => ({
+      queryKey: ['team-skill-matrix', tid],
+      queryFn: () => capacityApi.teamSkillMatrix(tid),
+      enabled: !!tid,
+    })),
+  });
+  const matrixKey = teamIds.join(',');
+  const matrixEntries = matrixQueries.flatMap((q) => q.data ?? []);
+
+  // Team coverage per skill: ceiling = best level on the bench, depth = how many
+  // distinct people sit at competent+ (the bus-factor signal).
+  const coverage = useMemo(() => {
+    const m = new Map<string, { name: string; ceiling: number; depth: number; seen: Set<string> }>();
+    for (const e of matrixEntries) {
+      let c = m.get(e.skill_id);
+      if (!c) { c = { name: e.skill_name, ceiling: 0, depth: 0, seen: new Set() }; m.set(e.skill_id, c); }
+      c.ceiling = Math.max(c.ceiling, e.level_rank);
+      if (e.level_rank >= 3 && !c.seen.has(e.user_id)) { c.seen.add(e.user_id); c.depth += 1; }
+    }
+    return m;
+    // matrixKey + entry count keep this stable without deep-comparing the array
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matrixKey, matrixEntries.length]);
+
+  // Union of every skill that either side cares about, richest first.
+  const balance = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string; demand: number; ceiling: number; depth: number }>();
+    for (const d of demand) {
+      byId.set(d.skill_id, {
+        id: d.skill_id, name: d.skill_name,
+        demand: d.item_count + d.task_count, ceiling: 0, depth: 0,
+      });
+    }
+    for (const [id, c] of coverage) {
+      const row = byId.get(id);
+      if (row) { row.ceiling = c.ceiling; row.depth = c.depth; }
+      else byId.set(id, { id, name: c.name, demand: 0, ceiling: c.ceiling, depth: c.depth });
+    }
+    return Array.from(byId.values()).sort((a, b) => b.demand - a.demand || b.ceiling - a.ceiling);
+  }, [demand, coverage]);
+
+  const maxDemand = Math.max(1, ...balance.map((b) => b.demand));
+
+  // Radar axes: demand skills only (the planning focus), capped so the chart
+  // stays readable. Each axis carries both demand and coverage for comparison.
+  const radarData = useMemo(() => {
+    return balance
+      .filter((b) => b.demand > 0)
+      .slice(0, 8)
+      .map((b) => ({
+        skill: b.name,
+        demand: b.demand,
+        // Scale ceiling (0..5) into demand units so both layers share an axis.
+        coverage: (b.ceiling / 5) * maxDemand,
+      }));
+  }, [balance, maxDemand]);
+
+  const loading = demandLoading || matrixQueries.some((q) => q.isLoading);
+  const gaps = balance.filter((b) => b.demand > 0 && b.depth === 0);
+
+  return (
+    <section
+      className="rounded-xl p-4"
+      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
+          Skill Planning
+        </p>
+        {gaps.length > 0 && (
+          <span
+            className="text-xs px-2 py-0.5 rounded"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--color-danger)', border: '1px solid var(--border)' }}
+          >
+            {gaps.length} skill{gaps.length > 1 ? 's' : ''} with no coverage
+          </span>
+        )}
+      </div>
+
+      {loading ? (
+        <p className="text-xs" style={{ color: 'var(--text-3)' }}>Loading...</p>
+      ) : balance.length === 0 ? (
+        <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+          No skills tagged on the backlog yet, and no team skills to match. Tag tasks with a required skill to light this up.
+        </p>
+      ) : (
+        <>
+          {/* Two radars side by side: what the backlog asks vs what the bench offers */}
+          {radarData.length > 0 && (
+            <div className="grid sm:grid-cols-2 gap-4 mb-4">
+              <div className="rounded-lg p-3" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
+                <p className="text-xs font-medium mb-2 text-center" style={{ color: 'var(--text-3)' }}>Backlog demand</p>
+                <ResponsiveContainer width="100%" height={240}>
+                  <RadarChart data={radarData} outerRadius="68%" margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
+                    <PolarGrid stroke="var(--border)" />
+                    <PolarAngleAxis dataKey="skill" tick={{ fill: 'var(--text-3)', fontSize: 10 }} tickFormatter={(v: string) => v.length > 9 ? v.slice(0, 8) + '...' : v} />
+                    <PolarRadiusAxis domain={[0, maxDemand]} tick={false} axisLine={false} />
+                    <Radar name="Demand" dataKey="demand" stroke="var(--accent)" strokeWidth={1.5} fill="var(--accent)" fillOpacity={0.25} dot={false} isAnimationActive={false} />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="rounded-lg p-3" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
+                <p className="text-xs font-medium mb-2 text-center" style={{ color: 'var(--text-3)' }}>Team coverage</p>
+                <ResponsiveContainer width="100%" height={240}>
+                  <RadarChart data={radarData} outerRadius="68%" margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
+                    <PolarGrid stroke="var(--border)" />
+                    <PolarAngleAxis dataKey="skill" tick={{ fill: 'var(--text-3)', fontSize: 10 }} tickFormatter={(v: string) => v.length > 9 ? v.slice(0, 8) + '...' : v} />
+                    <PolarRadiusAxis domain={[0, maxDemand]} tick={false} axisLine={false} />
+                    <Radar name="Coverage" dataKey="coverage" stroke="var(--color-success)" strokeWidth={1.5} fill="var(--color-success)" fillOpacity={0.2} dot={false} isAnimationActive={false} />
+                    <Radar name="Demand" dataKey="demand" stroke="var(--accent)" strokeWidth={1} strokeOpacity={0.4} fill="none" dot={false} isAnimationActive={false} />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* Load balance: per-skill demand bar with a coverage verdict on the right */}
+          <div className="flex flex-col gap-1.5">
+            {balance.map((b) => {
+              const gap = b.demand > 0 && b.depth === 0;
+              const idle = b.demand === 0;
+              const barColor = gap ? 'var(--color-danger)' : idle ? 'var(--text-3)' : 'var(--accent)';
+              return (
+                <div key={b.id} className="flex items-center gap-2 text-xs">
+                  <span className="w-28 truncate" style={{ color: 'var(--text-2)' }} title={b.name}>{b.name}</span>
+                  <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'var(--bg-elevated)' }}>
+                    <div className="h-full rounded-full" style={{ width: `${(b.demand / maxDemand) * 100}%`, background: barColor, opacity: idle ? 0.3 : 1 }} />
+                  </div>
+                  <span className="w-8 text-right tabular-nums" style={{ color: 'var(--text-3)' }}>{b.demand}</span>
+                  <span
+                    className="w-24 text-right truncate"
+                    title={`ceiling: ${LEVEL_LABEL[b.ceiling]}, ${b.depth} at competent+`}
+                    style={{ color: gap ? 'var(--color-danger)' : b.depth > 0 ? 'var(--color-success)' : 'var(--text-3)' }}
+                  >
+                    {b.ceiling === 0 ? 'no one' : `${LEVEL_LABEL[b.ceiling]} (${b.depth})`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-3 text-xs" style={{ color: 'var(--text-3)' }}>
+            Bar = backlog demand (items + tasks). Right = best team level and how many people sit at competent+. Red means the backlog asks for a skill nobody covers.
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
+

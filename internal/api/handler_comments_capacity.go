@@ -193,6 +193,21 @@ func (h *capacityHandlers) TeamSkillMatrix(w http.ResponseWriter, r *http.Reques
 	respond(w, http.StatusOK, data)
 }
 
+// ProjectSkillDemand handles GET /api/v1/projects/{project_id}/skill-demand
+func (h *capacityHandlers) ProjectSkillDemand(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "project_id")
+	data, err := h.capacity.ProjectSkillDemand(r.Context(), projectID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "project not found")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get skill demand")
+		return
+	}
+	respond(w, http.StatusOK, data)
+}
+
 // TandemOpportunities handles GET /api/v1/teams/{id}/tandems
 func (h *capacityHandlers) TandemOpportunities(w http.ResponseWriter, r *http.Request) {
 	teamID := chi.URLParam(r, "id")

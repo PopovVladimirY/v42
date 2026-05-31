@@ -83,6 +83,15 @@ export interface TandemPair {
   skill_name: string;
 }
 
+// One skill's backlog pull for a project -- mirrors store.SkillDemand
+export interface SkillDemand {
+  skill_id: string;
+  skill_name: string;
+  category: string | null;
+  item_count: number;
+  task_count: number;
+}
+
 export interface LearningAppetite {
   reaching_count: number;
   curious_breadth: number;

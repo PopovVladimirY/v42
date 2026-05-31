@@ -31,6 +31,16 @@ type MatrixEntry struct {
 	LevelRank    int     `json:"level_rank"`
 }
 
+// SkillDemand is one skill's pull from a project's backlog: how many items
+// and tasks want it. The "demand" half of the planning radar.
+type SkillDemand struct {
+	SkillID   string  `json:"skill_id"`
+	SkillName string  `json:"skill_name"`
+	Category  *string `json:"category"`
+	ItemCount int64   `json:"item_count"`
+	TaskCount int64   `json:"task_count"`
+}
+
 // TandemPair is a learner-mentor match for a specific skill.
 type TandemPair struct {
 	LearnerID       string `json:"learner_id"`
@@ -141,6 +151,29 @@ func (s *CapacityStore) TeamSkillMatrix(ctx context.Context, teamID string) ([]M
 			Interest:     string(r.Interest),
 			InterestNote: r.InterestNote,
 			LevelRank:    toInt(r.LevelRank),
+		}
+	}
+	return out, nil
+}
+
+// ProjectSkillDemand returns the per-skill backlog pull for a project subtree.
+func (s *CapacityStore) ProjectSkillDemand(ctx context.Context, projectID string) ([]SkillDemand, error) {
+	pid, err := parseUUID(projectID)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	rows, err := s.q.GetProjectSkillDemand(ctx, pid)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SkillDemand, len(rows))
+	for i, r := range rows {
+		out[i] = SkillDemand{
+			SkillID:   uuidToString(r.SkillID),
+			SkillName: r.SkillName,
+			Category:  r.Category,
+			ItemCount: r.ItemCount,
+			TaskCount: r.TaskCount,
 		}
 	}
 	return out, nil

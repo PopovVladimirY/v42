@@ -129,3 +129,48 @@ FROM member_skills ms
 JOIN team_members tm ON tm.user_id = ms.user_id
 WHERE tm.team_id = $1
 GROUP BY ms.user_id;
+
+-- name: GetProjectSkillDemand :many
+-- What skills does this project's backlog ask for? The radar's "demand" side.
+-- Walks the project subtree (node_id) like ListBacklogItems, counts how many
+-- backlog items and how many tasks point at each skill. Decomposed items skip.
+WITH RECURSIVE subtree AS (
+    SELECT id FROM projects WHERE id = sqlc.arg('project_id')::uuid
+    UNION ALL
+    SELECT p.id FROM projects p JOIN subtree s ON p.parent_id = s.id
+),
+items AS (
+    SELECT id, skill_required
+    FROM backlog_items
+    WHERE (node_id IN (SELECT id FROM subtree)
+           OR (node_id IS NULL AND project_id = sqlc.arg('project_id')::uuid))
+      AND status != 'decomposed'
+),
+item_demand AS (
+    SELECT skill_required AS skill_id, COUNT(*) AS cnt
+    FROM items
+    WHERE skill_required IS NOT NULL
+    GROUP BY skill_required
+),
+task_demand AS (
+    SELECT t.skill_required AS skill_id, COUNT(*) AS cnt
+    FROM tasks t
+    WHERE t.backlog_item_id IN (SELECT id FROM items)
+      AND t.skill_required IS NOT NULL
+    GROUP BY t.skill_required
+)
+SELECT
+    s.id   AS skill_id,
+    s.name AS skill_name,
+    s.category,
+    COALESCE(i.cnt, 0)::bigint  AS item_count,
+    COALESCE(td.cnt, 0)::bigint AS task_count
+FROM skills s
+JOIN (
+    SELECT skill_id FROM item_demand
+    UNION
+    SELECT skill_id FROM task_demand
+) used ON used.skill_id = s.id
+LEFT JOIN item_demand i  ON i.skill_id  = s.id
+LEFT JOIN task_demand td ON td.skill_id = s.id
+ORDER BY (COALESCE(i.cnt, 0) + COALESCE(td.cnt, 0)) DESC, s.name ASC;

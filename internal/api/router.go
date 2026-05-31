@@ -184,6 +184,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 				r.Get("/teams", projectH.ListTeams)
 				r.With(middleware.RequireRole("admin", "maintainer")).Post("/teams", projectH.AddTeam)
 				r.With(middleware.RequireRole("admin", "maintainer")).Delete("/teams/{team_id}", projectH.RemoveTeam)
+				r.Get("/skill-demand", capacityH.ProjectSkillDemand)
 				r.Get("/epics", epicH.List)
 				r.Get("/epics/{id}", epicH.Get)
 				r.With(middleware.RequireRole("admin", "maintainer")).Post("/epics", epicH.Create)
