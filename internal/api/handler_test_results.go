@@ -15,6 +15,8 @@ import (
 // timeEntryHandlers serves time-logging endpoints for tasks.
 type timeEntryHandlers struct {
 	entries *store.TimeEntryStore
+	backlog *store.BacklogStore
+	tasks   *store.TaskStore
 }
 
 type logTimeRequest struct {
@@ -25,6 +27,9 @@ type logTimeRequest struct {
 
 // Log handles POST /projects/{project_id}/backlog/{backlog_item_id}/tasks/{task_id}/time
 func (h *timeEntryHandlers) Log(w http.ResponseWriter, r *http.Request) {
+	if !ensureItemInProject(w, r, h.backlog) || !ensureTaskInItem(w, r, h.tasks) {
+		return
+	}
 	taskID := chi.URLParam(r, "task_id")
 	claims := middleware.ClaimsFromContext(r.Context())
 
@@ -61,6 +66,9 @@ func (h *timeEntryHandlers) Log(w http.ResponseWriter, r *http.Request) {
 
 // ListByTask handles GET /projects/{project_id}/backlog/{backlog_item_id}/tasks/{task_id}/time
 func (h *timeEntryHandlers) ListByTask(w http.ResponseWriter, r *http.Request) {
+	if !ensureItemInProject(w, r, h.backlog) || !ensureTaskInItem(w, r, h.tasks) {
+		return
+	}
 	taskID := chi.URLParam(r, "task_id")
 	entries, err := h.entries.ListByTask(r.Context(), taskID)
 	if err != nil {
@@ -74,8 +82,12 @@ func (h *timeEntryHandlers) ListByTask(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, entries)
 }
 
-// DeleteEntry handles DELETE /time-entries/{entry_id}
+// DeleteEntry handles DELETE
+// /projects/{project_id}/backlog/{backlog_item_id}/tasks/{task_id}/time/{entry_id}
 func (h *timeEntryHandlers) DeleteEntry(w http.ResponseWriter, r *http.Request) {
+	if !ensureItemInProject(w, r, h.backlog) || !ensureTaskInItem(w, r, h.tasks) {
+		return
+	}
 	entryID := chi.URLParam(r, "entry_id")
 	claims := middleware.ClaimsFromContext(r.Context())
 
@@ -91,6 +103,7 @@ func (h *timeEntryHandlers) DeleteEntry(w http.ResponseWriter, r *http.Request) 
 // sprintResultHandlers serves sprint test result endpoints.
 type sprintResultHandlers struct {
 	results *store.SprintTestStore
+	sprints *store.SprintStore
 }
 
 type updateResultRequest struct {
@@ -101,6 +114,9 @@ type updateResultRequest struct {
 
 // InitResults handles POST /projects/{project_id}/sprints/{sprint_id}/test-results/init
 func (h *sprintResultHandlers) InitResults(w http.ResponseWriter, r *http.Request) {
+	if !ensureSprintInProject(w, r, h.sprints) {
+		return
+	}
 	sprintID := chi.URLParam(r, "id")
 	if err := h.results.InitResults(r.Context(), sprintID); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -115,6 +131,9 @@ func (h *sprintResultHandlers) InitResults(w http.ResponseWriter, r *http.Reques
 
 // ListResults handles GET /projects/{project_id}/sprints/{sprint_id}/test-results
 func (h *sprintResultHandlers) ListResults(w http.ResponseWriter, r *http.Request) {
+	if !ensureSprintInProject(w, r, h.sprints) {
+		return
+	}
 	sprintID := chi.URLParam(r, "id")
 	rows, err := h.results.ListResults(r.Context(), sprintID)
 	if err != nil {
@@ -130,6 +149,9 @@ func (h *sprintResultHandlers) ListResults(w http.ResponseWriter, r *http.Reques
 
 // UpdateResult handles PATCH /projects/{project_id}/sprints/{sprint_id}/test-results/{result_id}
 func (h *sprintResultHandlers) UpdateResult(w http.ResponseWriter, r *http.Request) {
+	if !ensureSprintInProject(w, r, h.sprints) {
+		return
+	}
 	sprintID := chi.URLParam(r, "id")
 	resultID := chi.URLParam(r, "result_id")
 	claims := middleware.ClaimsFromContext(r.Context())

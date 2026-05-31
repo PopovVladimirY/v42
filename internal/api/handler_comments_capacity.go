@@ -15,11 +15,16 @@ import (
 
 type commentHandlers struct {
 	comments *store.CommentStore
+	backlog  *store.BacklogStore
+	tasks    *store.TaskStore
 	events   *sse.Broker
 }
 
 // ListByBacklogItem handles GET /api/v1/projects/{project_id}/backlog/{backlog_item_id}/comments
 func (h *commentHandlers) ListByBacklogItem(w http.ResponseWriter, r *http.Request) {
+	if !ensureItemInProject(w, r, h.backlog) {
+		return
+	}
 	id := chi.URLParam(r, "backlog_item_id")
 	comments, err := h.comments.ListByBacklogItem(r.Context(), id)
 	if err != nil {
@@ -35,6 +40,9 @@ func (h *commentHandlers) ListByBacklogItem(w http.ResponseWriter, r *http.Reque
 
 // ListByTask handles GET .../tasks/{task_id}/comments
 func (h *commentHandlers) ListByTask(w http.ResponseWriter, r *http.Request) {
+	if !ensureItemInProject(w, r, h.backlog) || !ensureTaskInItem(w, r, h.tasks) {
+		return
+	}
 	id := chi.URLParam(r, "task_id")
 	comments, err := h.comments.ListByTask(r.Context(), id)
 	if err != nil {
@@ -50,6 +58,9 @@ func (h *commentHandlers) ListByTask(w http.ResponseWriter, r *http.Request) {
 
 // CreateForBacklogItem handles POST .../backlog/{backlog_item_id}/comments
 func (h *commentHandlers) CreateForBacklogItem(w http.ResponseWriter, r *http.Request) {
+	if !ensureItemInProject(w, r, h.backlog) {
+		return
+	}
 	// backlog_item_id is the sole parent; project_id from URL is routing-only, not a comment parent.
 	backlogItemID := chi.URLParam(r, "backlog_item_id")
 	claims := middleware.ClaimsFromContext(r.Context())
@@ -63,6 +74,9 @@ func (h *commentHandlers) CreateForBacklogItem(w http.ResponseWriter, r *http.Re
 
 // CreateForTask handles POST .../tasks/{task_id}/comments
 func (h *commentHandlers) CreateForTask(w http.ResponseWriter, r *http.Request) {
+	if !ensureItemInProject(w, r, h.backlog) || !ensureTaskInItem(w, r, h.tasks) {
+		return
+	}
 	// task_id is the sole parent; project_id from URL is routing-only, not a comment parent.
 	taskID := chi.URLParam(r, "task_id")
 	claims := middleware.ClaimsFromContext(r.Context())

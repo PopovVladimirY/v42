@@ -30,6 +30,7 @@ import { BacklogItemDetailPage } from '@/pages/BacklogItemDetailPage';
 import { TaskDetailPage } from '@/pages/TaskDetailPage';
 import { TestDetailPage } from '@/pages/TestDetailPage';
 import { AllProjectsPage } from '@/pages/AllProjectsPage';
+import { RouteErrorBoundary } from '@/components/RouteErrorBoundary';
 
 export const router = createBrowserRouter([
   {
@@ -47,6 +48,7 @@ export const router = createBrowserRouter([
       },
       {
         element: <AppShell />,
+        errorElement: <RouteErrorBoundary />,
         children: [
           { index: true, element: <Navigate to="/sprints" replace /> },
           { path: '/sprints', element: <MySprintsPage /> },
@@ -67,6 +69,7 @@ export const router = createBrowserRouter([
           {
             path: '/projects/:projectId',
             element: <ProjectShell />,
+            errorElement: <RouteErrorBoundary />,
             children: [
               { index: true, element: <Navigate to="backlog" replace /> },
               {

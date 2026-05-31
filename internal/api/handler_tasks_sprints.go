@@ -22,12 +22,16 @@ var validTaskStatus = map[string]bool{"todo": true, "in_progress": true, "done":
 var validSprintStatus = map[string]bool{"planning": true, "active": true, "completed": true, "cancelled": true}
 
 type taskHandlers struct {
-	tasks  *store.TaskStore
-	events *sse.Broker
+	tasks   *store.TaskStore
+	backlog *store.BacklogStore
+	events  *sse.Broker
 }
 
 // List handles GET /api/v1/projects/{project_id}/backlog/{backlog_item_id}/tasks
 func (h *taskHandlers) List(w http.ResponseWriter, r *http.Request) {
+	if !ensureItemInProject(w, r, h.backlog) {
+		return
+	}
 	backlogItemID := chi.URLParam(r, "backlog_item_id")
 	items, err := h.tasks.List(r.Context(), backlogItemID)
 	if err != nil {
@@ -43,6 +47,9 @@ func (h *taskHandlers) List(w http.ResponseWriter, r *http.Request) {
 
 // Get handles GET .../{backlog_item_id}/tasks/{id}
 func (h *taskHandlers) Get(w http.ResponseWriter, r *http.Request) {
+	if !ensureItemInProject(w, r, h.backlog) {
+		return
+	}
 	id := chi.URLParam(r, "id")
 	t, err := h.tasks.GetByID(r.Context(), id)
 	if err != nil {
@@ -63,6 +70,9 @@ func (h *taskHandlers) Get(w http.ResponseWriter, r *http.Request) {
 
 // Create handles POST .../{backlog_item_id}/tasks
 func (h *taskHandlers) Create(w http.ResponseWriter, r *http.Request) {
+	if !ensureItemInProject(w, r, h.backlog) {
+		return
+	}
 	backlogItemID := chi.URLParam(r, "backlog_item_id")
 	claims := middleware.ClaimsFromContext(r.Context())
 	var req struct {
@@ -107,6 +117,9 @@ func (h *taskHandlers) Create(w http.ResponseWriter, r *http.Request) {
 
 // Update handles PATCH .../{backlog_item_id}/tasks/{id}
 func (h *taskHandlers) Update(w http.ResponseWriter, r *http.Request) {
+	if !ensureItemInProject(w, r, h.backlog) {
+		return
+	}
 	id := chi.URLParam(r, "id")
 	var req struct {
 		Title         *string `json:"title"`
@@ -162,6 +175,9 @@ func (h *taskHandlers) Update(w http.ResponseWriter, r *http.Request) {
 
 // Delete handles DELETE .../{backlog_item_id}/tasks/{id}
 func (h *taskHandlers) Delete(w http.ResponseWriter, r *http.Request) {
+	if !ensureItemInProject(w, r, h.backlog) {
+		return
+	}
 	id := chi.URLParam(r, "id")
 	// Cross-backlog-item isolation: verify task belongs to the URL's backlog item before deleting.
 	existing, err := h.tasks.GetByID(r.Context(), id)
@@ -187,6 +203,9 @@ func (h *taskHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 
 // Move handles POST .../{backlog_item_id}/tasks/{id}/move
 func (h *taskHandlers) Move(w http.ResponseWriter, r *http.Request) {
+	if !ensureItemInProject(w, r, h.backlog) {
+		return
+	}
 	id := chi.URLParam(r, "id")
 	var req struct {
 		TargetItemID string `json:"target_item_id"`
@@ -214,6 +233,21 @@ func (h *taskHandlers) Move(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, http.StatusNotFound, "NOT_FOUND", "task not found")
 		return
 	}
+	// Cross-project isolation: the move target must live in the same project,
+	// otherwise a task could be smuggled out into someone else's backlog.
+	target, err := h.backlog.GetByID(r.Context(), req.TargetItemID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "target item not found")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to move task")
+		return
+	}
+	if target.ProjectID != chi.URLParam(r, "project_id") {
+		respondErr(w, http.StatusNotFound, "NOT_FOUND", "target item not found")
+		return
+	}
 	t, err := h.tasks.MoveTo(r.Context(), id, req.TargetItemID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -231,6 +265,7 @@ func (h *taskHandlers) Move(w http.ResponseWriter, r *http.Request) {
 
 type sprintHandlers struct {
 	sprints *store.SprintStore
+	backlog *store.BacklogStore
 	results *store.SprintTestStore
 	events  *sse.Broker
 }
@@ -323,6 +358,9 @@ func (h *sprintHandlers) Create(w http.ResponseWriter, r *http.Request) {
 
 // Update handles PATCH /api/v1/projects/{project_id}/sprints/{id}
 func (h *sprintHandlers) Update(w http.ResponseWriter, r *http.Request) {
+	if !ensureSprintInProject(w, r, h.sprints) {
+		return
+	}
 	id := chi.URLParam(r, "id")
 	var req struct {
 		Name          *string `json:"name"`
@@ -383,6 +421,9 @@ func (h *sprintHandlers) Update(w http.ResponseWriter, r *http.Request) {
 
 // Delete handles DELETE /api/v1/projects/{project_id}/sprints/{id}
 func (h *sprintHandlers) Delete(w http.ResponseWriter, r *http.Request) {
+	if !ensureSprintInProject(w, r, h.sprints) {
+		return
+	}
 	id := chi.URLParam(r, "id")
 	if err := h.sprints.Delete(r.Context(), id); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -398,6 +439,9 @@ func (h *sprintHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 
 // ListItems handles GET /api/v1/projects/{project_id}/sprints/{id}/items
 func (h *sprintHandlers) ListItems(w http.ResponseWriter, r *http.Request) {
+	if !ensureSprintInProject(w, r, h.sprints) {
+		return
+	}
 	id := chi.URLParam(r, "id")
 	items, err := h.sprints.ListItems(r.Context(), id)
 	if err != nil {
@@ -413,6 +457,9 @@ func (h *sprintHandlers) ListItems(w http.ResponseWriter, r *http.Request) {
 
 // AddItem handles POST /api/v1/projects/{project_id}/sprints/{id}/items
 func (h *sprintHandlers) AddItem(w http.ResponseWriter, r *http.Request) {
+	if !ensureSprintInProject(w, r, h.sprints) {
+		return
+	}
 	sprintID := chi.URLParam(r, "id")
 	var req struct {
 		BacklogItemID string `json:"backlog_item_id"`
@@ -424,6 +471,20 @@ func (h *sprintHandlers) AddItem(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.BacklogItemID == "" {
 		respondErr(w, http.StatusBadRequest, "INVALID_REQUEST", "backlog_item_id is required")
+		return
+	}
+	// Cross-project isolation: only items from this project may join the sprint.
+	item, err := h.backlog.GetByID(r.Context(), req.BacklogItemID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondErr(w, http.StatusNotFound, "NOT_FOUND", "backlog item not found")
+			return
+		}
+		respondErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to add item to sprint")
+		return
+	}
+	if item.ProjectID != chi.URLParam(r, "project_id") {
+		respondErr(w, http.StatusNotFound, "NOT_FOUND", "backlog item not found")
 		return
 	}
 	if err := h.sprints.AddItem(r.Context(), sprintID, req.BacklogItemID); err != nil {
@@ -444,6 +505,9 @@ func (h *sprintHandlers) AddItem(w http.ResponseWriter, r *http.Request) {
 
 // RemoveItem handles DELETE /api/v1/projects/{project_id}/sprints/{id}/items/{backlog_item_id}
 func (h *sprintHandlers) RemoveItem(w http.ResponseWriter, r *http.Request) {
+	if !ensureSprintInProject(w, r, h.sprints) {
+		return
+	}
 	sprintID := chi.URLParam(r, "id")
 	backlogItemID := chi.URLParam(r, "backlog_item_id")
 	if err := h.sprints.RemoveItem(r.Context(), sprintID, backlogItemID); err != nil {
@@ -462,6 +526,9 @@ func (h *sprintHandlers) RemoveItem(w http.ResponseWriter, r *http.Request) {
 // Body (optional): { "carry_to_sprint_id": "uuid" }
 // Moves unclosed items to the target sprint and marks current sprint as completed.
 func (h *sprintHandlers) Close(w http.ResponseWriter, r *http.Request) {
+	if !ensureSprintInProject(w, r, h.sprints) {
+		return
+	}
 	id := chi.URLParam(r, "id")
 	var body struct {
 		CarryToSprintID string `json:"carry_to_sprint_id"`

@@ -60,17 +60,21 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 	teamH := &teamHandlers{teams: store.NewTeamStore(queries)}
 	projectH := &projectHandlers{projects: store.NewProjectStore(queries), teams: store.NewProjectTeamStore(queries)}
 	epicH := &epicHandlers{epics: store.NewEpicStore(queries), events: broker}
-	backlogH := &backlogHandlers{backlog: store.NewBacklogStore(queries, pool), events: broker}
-	taskH := &taskHandlers{tasks: store.NewTaskStore(queries), events: broker}
-	commentH := &commentHandlers{comments: store.NewCommentStore(queries), events: broker}
+	backlogStore := store.NewBacklogStore(queries, pool)
+	taskStore := store.NewTaskStore(queries)
+	backlogH := &backlogHandlers{backlog: backlogStore, events: broker}
+	taskH := &taskHandlers{tasks: taskStore, backlog: backlogStore, events: broker}
+	commentH := &commentHandlers{comments: store.NewCommentStore(queries), backlog: backlogStore, tasks: taskStore, events: broker}
 	capacityH := &capacityHandlers{capacity: store.NewCapacityStore(queries, pool)}
 	testH := &testHandlers{tests: store.NewTestStore(queries), events: broker}
-	timeH := &timeEntryHandlers{entries: store.NewTimeEntryStore(queries)}
-	sprintResults := store.NewSprintTestStore(queries)
-	sprintH := &sprintHandlers{sprints: store.NewSprintStore(queries, pool), results: sprintResults, events: broker}
-	resultH := &sprintResultHandlers{results: sprintResults}
+	timeH := &timeEntryHandlers{entries: store.NewTimeEntryStore(queries), backlog: backlogStore, tasks: taskStore}
+	sprintResults := store.NewSprintTestStore(queries, pool)
+	sprintStore := store.NewSprintStore(queries, pool)
+	sprintH := &sprintHandlers{sprints: sprintStore, backlog: backlogStore, results: sprintResults, events: broker}
+	resultH := &sprintResultHandlers{results: sprintResults, sprints: sprintStore}
 	sprintCapacityH := &sprintCapacityHandlers{q: queries}
 	retroH := &retroHandlers{q: queries}
+	guard := &guards{sprints: sprintStore}
 	agentTokenH := &agentTokenHandlers{tokens: agentTokenStore, users: store.NewUserStore(queries)}
 	readinessH := &readinessHandlers{backlog: store.NewBacklogStore(queries, pool), tests: store.NewTestStore(queries)}
 
@@ -230,6 +234,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 
 				// Sprint capacity -- sub-router avoids wildcard {user_id} shadowing literal /init
 				r.Route("/sprints/{id}/capacity", func(r chi.Router) {
+					r.Use(guard.requireSprintInProject)
 					r.Get("/", sprintCapacityH.GetCapacity)
 					r.Put("/", sprintCapacityH.PutCapacity)
 					r.Post("/init", sprintCapacityH.InitCapacity)
@@ -239,6 +244,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, authSvc
 
 				// Sprint retrospective -- sub-router avoids wildcard {retro_id} shadowing literal /close
 				r.Route("/sprints/{id}/retro", func(r chi.Router) {
+					r.Use(guard.requireSprintInProject)
 					r.Get("/", retroH.List)
 					r.Post("/", retroH.Create)
 					r.Post("/close", retroH.Close)

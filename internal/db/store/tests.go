@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	dbgen "github.com/vpo/v42/internal/db/gen"
 	"github.com/vpo/v42/internal/domain"
 )
@@ -285,24 +286,37 @@ type SprintTestResultRow struct {
 
 // SprintTestStore wraps sqlc sprint_test_results queries.
 type SprintTestStore struct {
-	q *dbgen.Queries
+	q    *dbgen.Queries
+	pool *pgxpool.Pool
 }
 
 // NewSprintTestStore returns a SprintTestStore.
-func NewSprintTestStore(q *dbgen.Queries) *SprintTestStore {
-	return &SprintTestStore{q: q}
+func NewSprintTestStore(q *dbgen.Queries, pool *pgxpool.Pool) *SprintTestStore {
+	return &SprintTestStore{q: q, pool: pool}
 }
 
 // InitResults creates result rows for all tests and AC items in the sprint.
+// Both seeding queries run in one transaction: a sprint must never end up with
+// half its result grid populated if the second insert trips.
 func (s *SprintTestStore) InitResults(ctx context.Context, sprintID string) error {
 	uid, err := parseUUID(sprintID)
 	if err != nil {
 		return domain.ErrNotFound
 	}
-	if err := s.q.InitSprintTestResults(ctx, uid); err != nil {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
 		return err
 	}
-	return s.q.InitSprintACResults(ctx, uid)
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	qtx := s.q.WithTx(tx)
+	if err := qtx.InitSprintTestResults(ctx, uid); err != nil {
+		return err
+	}
+	if err := qtx.InitSprintACResults(ctx, uid); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // ListResults returns all result rows for a sprint, with test/item titles.
