@@ -4,7 +4,7 @@ import { useAuthStore } from '@/hooks/useAuth';
 
 // Server event payload -- mirrors internal/sse.Event. We only need the type and
 // the project scope to know which cached queries to nudge.
-interface ServerEvent {
+export interface ServerEvent {
   type: string;
   project_id?: string;
   entity_id?: string;
@@ -42,7 +42,8 @@ const EVENT_TYPES = [
 // Map an event's first segment to the React Query key prefixes it should
 // invalidate. Keys are partial -- TanStack matches by prefix, so invalidating
 // ['backlog', projectId] catches both the list and every item detail under it.
-function invalidateFor(qc: QueryClient, ev: ServerEvent) {
+// Exported for unit testing -- the cache-fanout logic is the brain here.
+export function invalidateFor(qc: QueryClient, ev: ServerEvent) {
   const pid = ev.project_id;
   if (!pid) return;
   const domain = ev.type.split('.')[0];
