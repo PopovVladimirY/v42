@@ -25,6 +25,7 @@ type TestSpec struct {
 	Steps           *string   `json:"steps"`
 	ExpectedResults *string   `json:"expected_results"`
 	Type            string    `json:"type"`
+	SkillRequired   *string   `json:"skill_required"`
 	CreatedBy       string    `json:"created_by"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
@@ -65,12 +66,16 @@ func testFromRow(r dbgen.Test) TestSpec {
 		v := uuidToString(r.EpicID)
 		ts.EpicID = &v
 	}
+	if r.SkillRequired.Valid {
+		v := uuidToString(r.SkillRequired)
+		ts.SkillRequired = &v
+	}
 	return ts
 }
 
 // CreateTest creates a new test spec. parentKind is "project", "epic", or "item".
 func (s *TestStore) CreateTest(ctx context.Context, projectID, parentKind, parentID, title, testType, createdBy string,
-	description, setup, config, steps, expectedResults *string) (*TestSpec, error) {
+	description, setup, config, steps, expectedResults, skillRequired *string) (*TestSpec, error) {
 
 	projUUID, err := parseUUID(projectID)
 	if err != nil {
@@ -90,6 +95,13 @@ func (s *TestStore) CreateTest(ctx context.Context, projectID, parentKind, paren
 		Steps:           steps,
 		ExpectedResults: expectedResults,
 		CreatedBy:       createdByUUID,
+	}
+
+	// Optional required-skill FK. Bad UUIDs are treated as "not found" upstream.
+	if skillRequired != nil {
+		if arg.SkillRequired, err = parseUUID(*skillRequired); err != nil {
+			return nil, domain.ErrNotFound
+		}
 	}
 
 	// Wire the nullable type field.
@@ -194,7 +206,7 @@ func (s *TestStore) ListTests(ctx context.Context, projectID, scope, scopeID str
 // UpdateTest patches fields on an existing test spec.
 func (s *TestStore) UpdateTest(ctx context.Context, projectID, id string,
 	title, description, setup, config, steps, expectedResults *string,
-	testType *string) (*TestSpec, error) {
+	testType, skillRequired *string) (*TestSpec, error) {
 
 	projUUID, err := parseUUID(projectID)
 	if err != nil {
@@ -217,6 +229,11 @@ func (s *TestStore) UpdateTest(ctx context.Context, projectID, id string,
 	}
 	if testType != nil {
 		arg.Type = dbgen.NullTestType{TestType: dbgen.TestType(*testType), Valid: true}
+	}
+	if skillRequired != nil {
+		if arg.SkillRequired, err = parseUUID(*skillRequired); err != nil {
+			return nil, domain.ErrNotFound
+		}
 	}
 
 	row, err := s.q.UpdateTest(ctx, arg)

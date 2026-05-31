@@ -27,6 +27,7 @@ type createTestRequest struct {
 	Config          *string `json:"config"`
 	Steps           *string `json:"steps"`
 	ExpectedResults *string `json:"expected_results"`
+	SkillRequired   *string `json:"skill_required"`
 }
 
 type updateTestRequest struct {
@@ -37,6 +38,7 @@ type updateTestRequest struct {
 	Config          *string `json:"config"`
 	Steps           *string `json:"steps"`
 	ExpectedResults *string `json:"expected_results"`
+	SkillRequired   *string `json:"skill_required"`
 }
 
 // CreateProjectTest handles POST /projects/{project_id}/tests
@@ -71,7 +73,7 @@ func (h *testHandlers) createTest(w http.ResponseWriter, r *http.Request, scope,
 
 	ts, err := h.tests.CreateTest(r.Context(), projectID, scope, parentID,
 		req.Title, req.Type, claims.Subject,
-		req.Description, req.Setup, req.Config, req.Steps, req.ExpectedResults)
+		req.Description, req.Setup, req.Config, req.Steps, req.ExpectedResults, req.SkillRequired)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			respondErr(w, http.StatusNotFound, "NOT_FOUND", "project or parent not found")
@@ -148,7 +150,7 @@ func (h *testHandlers) UpdateTest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ts, err := h.tests.UpdateTest(r.Context(), projectID, testID,
-		req.Title, req.Description, req.Setup, req.Config, req.Steps, req.ExpectedResults, req.Type)
+		req.Title, req.Description, req.Setup, req.Config, req.Steps, req.ExpectedResults, req.Type, req.SkillRequired)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			respondErr(w, http.StatusNotFound, "NOT_FOUND", "test not found")

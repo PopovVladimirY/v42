@@ -11,6 +11,7 @@ export const itemTestsApi = {
     description?: string;
     steps?: string;
     expected_results?: string;
+    skill_required?: string | null;
   }) =>
     client.post<ApiResponse<TestSpec>>(`/projects/${projectId}/backlog/${itemId}/tests`, data),
 
@@ -31,6 +32,7 @@ export const itemTestsApi = {
     config?: string;
     steps?: string;
     expected_results?: string;
+    skill_required?: string | null;
   }) =>
     client.patch<ApiResponse<TestSpec>>(`/projects/${projectId}/tests/${testId}`, data),
 

@@ -8,11 +8,11 @@
 INSERT INTO tests (
     project_id, backlog_item_id, epic_id,
     title, description, setup, config, steps, expected_results,
-    type, created_by
+    type, skill_required, created_by
 ) VALUES (
     @project_id, @backlog_item_id, @epic_id,
     @title, @description, @setup, @config, @steps, @expected_results,
-    @type, @created_by
+    @type, @skill_required, @created_by
 )
 RETURNING *;
 
@@ -49,6 +49,7 @@ SET title            = COALESCE(sqlc.narg(title), title),
     steps            = COALESCE(sqlc.narg(steps), steps),
     expected_results = COALESCE(sqlc.narg(expected_results), expected_results),
     type             = COALESCE(sqlc.narg(type), type),
+    skill_required   = COALESCE(sqlc.narg(skill_required), skill_required),
     updated_at       = now()
 WHERE id = @id AND project_id = @project_id
 RETURNING *;

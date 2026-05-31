@@ -110,6 +110,7 @@ export function useCreateItemTest(projectId: string, itemId: string) {
       description?: string;
       steps?: string;
       expected_results?: string;
+      skill_required?: string | null;
     }) => itemTestsApi.create(projectId, itemId, data),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: itemTestKeys.byItem(projectId, itemId) }),
@@ -129,7 +130,7 @@ export function useDeleteItemTest(projectId: string) {
 export function useUpdateItemTest(projectId: string, itemId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ testId, ...data }: { testId: string; title?: string }) =>
+    mutationFn: ({ testId, ...data }: { testId: string; title?: string; type?: TestType; skill_required?: string | null }) =>
       itemTestsApi.update(projectId, testId, data),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: itemTestKeys.byItem(projectId, itemId) }),

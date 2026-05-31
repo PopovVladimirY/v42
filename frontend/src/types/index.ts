@@ -344,6 +344,7 @@ export interface TestSpec {
   steps: string | null;
   expected_results: string | null;
   type: TestType;
+  skill_required: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;

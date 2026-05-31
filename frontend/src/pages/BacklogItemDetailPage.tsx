@@ -2,7 +2,7 @@ import { useState, useMemo, Fragment, useEffect } from 'react';
 import { Link, useParams, useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useBacklogItem, useUpdateBacklogItem, useDeleteBacklogItem, useProjectAncestors, useEpics, backlogKeys } from '@/hooks/useProjects';
-import { useTasks, useCreateTask, useUpdateTask, useDeleteTask, useItemTests, useCreateItemTest, useDeleteItemTest } from '@/hooks/useItemDetails';
+import { useTasks, useCreateTask, useUpdateTask, useDeleteTask, useItemTests, useCreateItemTest, useDeleteItemTest, useUpdateItemTest } from '@/hooks/useItemDetails';
 import { useSprints } from '@/hooks/useSprints';
 import { sprintsApi } from '@/api/endpoints/sprints';
 import { projectsApi } from '@/api/endpoints/projects';
@@ -10,7 +10,7 @@ import { usersApi } from '@/api/endpoints/users';
 import { backlogApi } from '@/api/endpoints/backlog';
 import { useAuthStore } from '@/hooks/useAuth';
 import { CLARITY_LABEL, STATUS_COLOR, STATUS_LABEL } from '@/types';
-import type { BacklogItemStatus, Project, Skill, Task, TestType } from '@/types';
+import type { BacklogItemStatus, Project, Task, TestType } from '@/types';
 import { BreakdownModal } from './BreakdownModal';
 import { ClarityIndicator, ClarityPicker } from '@/components/ClarityIndicator';
 import { skillsApi } from '@/api/endpoints/users';
@@ -41,14 +41,17 @@ const TEST_TYPE_OPTS: { value: TestType; label: string }[] = [
 // ---------------------------------------------------------------------------
 
 function SkillLoadBar({ tasks }: { tasks: Task[] }) {
+  const { data: skills = [] } = useSkills();
   const counts = useMemo(() => {
+    // Map skill UUID -> human name; unknown ids fall back to the id itself.
+    const nameById = new Map(skills.map((s) => [s.id, s.name]));
     const acc: Record<string, number> = {};
     for (const t of tasks) {
-      const key = t.skill_required ?? '(unassigned)';
+      const key = t.skill_required ? (nameById.get(t.skill_required) ?? t.skill_required) : '(unassigned)';
       acc[key] = (acc[key] ?? 0) + 1;
     }
     return Object.entries(acc).sort((a, b) => b[1] - a[1]);
-  }, [tasks]);
+  }, [tasks, skills]);
 
   if (counts.length === 0) return null;
 
@@ -154,7 +157,7 @@ function TaskRow({
       >
         <option value="">+ skill</option>
         {skills.filter((s) => !s.is_hidden).map((s) => (
-          <option key={s.id} value={s.name}>{s.name}</option>
+          <option key={s.id} value={s.id}>{s.name}</option>
         ))}
       </select>
 
@@ -243,7 +246,7 @@ function CreateTaskForm({
         >
           <option value="">-- skill --</option>
           {skills.filter((s) => !s.is_hidden).map((s) => (
-            <option key={s.id} value={s.name}>{s.name}</option>
+            <option key={s.id} value={s.id}>{s.name}</option>
           ))}
         </select>
         <input
@@ -877,6 +880,8 @@ export function BacklogItemDetailPage() {
   const updateItem = useUpdateBacklogItem(projectId);
   const deleteItem = useDeleteBacklogItem(projectId);
   const deleteTest = useDeleteItemTest(projectId);
+  const updateTest = useUpdateItemTest(projectId, itemId);
+  const { data: skills = [] } = useSkills();
 
   const [showCreateTask, setShowCreateTask] = useState(false);
   const [showCreateTest, setShowCreateTest] = useState(false);
@@ -1258,6 +1263,19 @@ export function BacklogItemDetailPage() {
                 <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-3)' }}>{t.steps}</p>
               )}
             </div>
+            <select
+              value={t.skill_required ?? ''}
+              onChange={(e) => void updateTest.mutate({ testId: t.id, skill_required: e.target.value || null })}
+              onClick={(e) => e.stopPropagation()}
+              className="text-xs px-2 py-0.5 rounded flex-shrink-0 outline-none max-w-[10rem] truncate"
+              style={{ background: 'var(--bg-elevated)', color: t.skill_required ? 'var(--color-info)' : 'var(--text-3)', border: '1px solid var(--border)' }}
+              title="Required skill"
+            >
+              <option value="">+ skill</option>
+              {skills.filter((s) => !s.is_hidden).map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
             <Link
               to={`/projects/${projectId}/tests/${t.id}`}
               className="opacity-0 group-hover:opacity-100 transition-opacity text-xs px-1 rounded flex-shrink-0"
@@ -1311,10 +1329,12 @@ function CreateTestForm({
   onClose: () => void;
 }) {
   const create = useCreateItemTest(projectId, itemId);
+  const { data: skills = [] } = useSkills();
   const [title, setTitle] = useState('');
   const [type, setType] = useState<TestType>('acceptance');
   const [steps, setSteps] = useState('');
   const [expected, setExpected] = useState('');
+  const [skill, setSkill] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -1324,6 +1344,7 @@ function CreateTestForm({
       type,
       steps: steps.trim() || undefined,
       expected_results: expected.trim() || undefined,
+      skill_required: skill || null,
     });
     onClose();
   }
@@ -1347,6 +1368,18 @@ function CreateTestForm({
         >
           {TEST_TYPE_OPTS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+        <select
+          value={skill}
+          onChange={(e) => setSkill(e.target.value)}
+          className="w-32 text-xs px-2 rounded outline-none"
+          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: skill ? 'var(--text-1)' : 'var(--text-3)' }}
+          title="Required skill"
+        >
+          <option value="">-- skill --</option>
+          {skills.filter((s) => !s.is_hidden).map((s) => (
+            <option key={s.id} value={s.id}>{s.name}</option>
           ))}
         </select>
       </div>
