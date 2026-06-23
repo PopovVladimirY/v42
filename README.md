@@ -10,19 +10,26 @@ Stack: **Go 1.25** + **PostgreSQL 16** + **React 18** (Vite + TanStack Query + Z
 
 ---
 
-## Prerequisites
+## Development Environment
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) with **WSL2 backend** enabled
-- [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) with Ubuntu (default distro)
-- Git
+All build commands run in a **Linux shell** (bash). Two supported setups:
+
+| | Native Linux | Windows with WSL2 |
+|---|---|---|
+| **Shell** | Any terminal | WSL2 terminal (Ubuntu) -- NOT PowerShell |
+| **Go 1.25** | Install natively | Install inside WSL |
+| **Docker** | Docker Engine | Docker Desktop with WSL2 backend |
+| **Project path** | Wherever you cloned it | Symlinked from Windows filesystem into WSL |
+
+> **Windows users:** every `make` command in this file must be run from a **WSL terminal**
+> (Windows Terminal -> Ubuntu), not from PowerShell or CMD. Make and Go are not installed
+> on the Windows side.
 
 ---
 
-## WSL2 Setup (one time)
+## One-Time Setup: Native Linux
 
-### 1. Install Go 1.25 in WSL
-
-Open a WSL terminal (Windows Terminal -> Ubuntu) and run:
+### 1. Install Go 1.25
 
 ```bash
 curl -Lo /tmp/go.tar.gz https://go.dev/dl/go1.25.0.linux-amd64.tar.gz
@@ -33,98 +40,141 @@ go version
 # go version go1.25.0 linux/amd64
 ```
 
-### 2. Fix WSL HOME variable
+### 2. Install Docker Engine
 
-WSL inherits the Windows `HOME` variable which breaks `~` expansion.
-Run once as root:
+Follow the official guide for your distro:
+[https://docs.docker.com/engine/install/](https://docs.docker.com/engine/install/)
+
+Then add your user to the `docker` group so you can run Docker without `sudo`:
 
 ```bash
-# Make HOME always resolve from /etc/passwd, not Windows
-echo 'HOME=/home/$USER' | sudo tee /etc/environment > /dev/null
-# Or more precisely:
+sudo usermod -aG docker $USER
+# Log out and back in for the group change to take effect
+```
+
+### 3. Verify
+
+```bash
+cd /path/to/v42
+make vet    # runs go vet ./... -- should print nothing on success
+```
+
+---
+
+## One-Time Setup: Windows with WSL2
+
+Open a **WSL terminal** (Windows Terminal -> Ubuntu) for all steps below.
+
+### 1. Install Go 1.25 in WSL
+
+```bash
+curl -Lo /tmp/go.tar.gz https://go.dev/dl/go1.25.0.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf /tmp/go.tar.gz
+sudo ln -sf /usr/local/go/bin/go /usr/local/bin/go
+sudo ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+go version
+# go version go1.25.0 linux/amd64
+```
+
+### 2. Install Docker Desktop (Windows side)
+
+Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/) with
+the **WSL2 backend** enabled. Docker Desktop makes the `docker` command available inside WSL
+automatically -- no separate Docker installation inside WSL is needed.
+
+### 3. Fix WSL HOME variable
+
+WSL inherits the Windows `HOME` variable, which breaks `~` expansion in some shells.
+Run once:
+
+```bash
 printf 'export HOME=$(getent passwd $(id -un) | cut -d: -f6)\n' \
   | sudo tee /etc/profile.d/fix-wsl-home.sh
 sudo chmod +x /etc/profile.d/fix-wsl-home.sh
+# Reload the shell (open a new WSL tab or run: source /etc/profile.d/fix-wsl-home.sh)
 ```
 
-### 3. Symlink the project into Linux home
+### 4. Symlink the project into WSL home
 
-From WSL, link the Windows project folder into your Linux home so
-`~/v42` and `C:\path\to\V42` are the same directory -- no copies, no sync:
+Link the Windows project folder into your Linux home so `~/v42` and `C:\...\V42`
+are the same directory -- one copy, zero sync overhead:
 
 ```bash
-# Adjust the Windows path if your project lives elsewhere
+# Adjust the path if your project lives elsewhere on Windows
 ln -s /mnt/c/Users/$USER/Desktop/V42 ~/v42
 ls ~/v42/go.mod   # should print the file path
 ```
 
-### 4. Verify
+### 5. Verify
 
 ```bash
 cd ~/v42
-make vet    # should print VET_OK, no Docker involved
+make vet    # runs go vet ./... -- should print nothing on success
 ```
 
 ---
 
-## Quick Start
+## Quick Start (Development Mode)
+
+> Run all commands below in a **Linux terminal** (native Linux) or a **WSL terminal**
+> (Windows: Windows Terminal -> Ubuntu). Do NOT use PowerShell or CMD.
 
 ```bash
-cd ~/v42
-cp .env.example .env          # fill in DB_PASSWORD and JWT_SECRET at minimum
+# Native Linux:
+cd /path/to/v42
 
-make docker-dev               # start postgres + adminer (background)
+# Windows (WSL):
+cd ~/v42
+
+cp .env.example .env          # copy dev defaults; set DB_PASSWORD and JWT_SECRET at minimum
+
+make docker-dev               # start postgres + adminer in background (Docker required)
 make migrate-up               # apply all SQL migrations
-make dev                      # run API (foreground -- JSON logs)
+make dev                      # start the API -- logs to stdout, Ctrl+C to stop
 ```
 
-Smoke test in a second terminal:
+In a second terminal (same type -- Linux or WSL):
 
 ```bash
 curl http://localhost:8080/api/v1/health
 # {"data":{"status":"ok","db":"ok","version":"0.1.0"},"error":null,"meta":null}
 ```
 
----
+`status: ok` means the API is up. `db: ok` means PostgreSQL is reachable.
 
-## What to Look At
-
-### 1. API is alive
-
-After `make dev`, hit the health endpoint from a second WSL terminal:
+To also run the React frontend in dev mode:
 
 ```bash
-curl http://localhost:8080/api/v1/health
-# {"data":{"status":"ok","db":"ok","version":"0.1.0"},"error":null,"meta":null}
+cd frontend
+npm install        # first time only
+npm run dev        # Vite dev server on http://localhost:5173
 ```
 
-`status: ok` -- API is up. `db: ok` -- PostgreSQL connection works.
+Or as a detached background process (survives terminal close):
 
-### 2. Database browser
-
-Open [http://localhost:8742](http://localhost:8742) in your browser -- that's Adminer.
-
-Connection details (from your `.env`):
-- **System**: PostgreSQL
-- **Server**: postgres
-- **Username**: v42 (or whatever `DB_USER` is in `.env`)
-- **Password**: changeme (or your `DB_PASSWORD`)
-- **Database**: v42 (or your `DB_NAME`)
-
-### 3. API logs
-
-Watch the terminal running the API. Every request logs as structured JSON:
-
-```json
-{"time":"...","level":"INFO","msg":"http","method":"GET","path":"/api/v1/health","status":200,"bytes":78,"ms":0}
+```bash
+make frontend-dev           # logs: /tmp/v42-vite.log
+make frontend-kill          # stop it
 ```
+
+### Database browser (Adminer)
+
+Open [http://localhost:8742](http://localhost:8742) after `make docker-dev`.
+
+| Field | Value |
+|-------|-------|
+| System | PostgreSQL |
+| Server | postgres |
+| Username | value of `DB_USER` in `.env` |
+| Password | value of `DB_PASSWORD` in `.env` |
+| Database | value of `DB_NAME` in `.env` |
 
 ---
 
 ## Makefile Commands
 
 ```bash
-# -- Go (native, requires WSL setup above) --
+# -- Go (requires Go 1.25 -- see one-time setup above) --
 make dev               # run API locally (requires: make docker-dev first)
 make build             # build binary to bin/v42
 make tidy              # go mod tidy
@@ -196,7 +246,7 @@ Everything else has sensible defaults. See [.env.example](.env.example) for the 
 
 ## Development Workflow
 
-Edit code in VS Code (Windows), run commands in the WSL terminal:
+Edit code in VS Code (Windows or Linux). Run all `make` commands in a Linux/WSL terminal.
 
 ```bash
 # Typical loop
@@ -270,15 +320,19 @@ Response envelope -- every endpoint returns:
 
 ## Deploying / Distribution
 
-> See [QUICK_START.md](QUICK_START.md) for the full installation guide.
+> See [QUICK_START.md](QUICK_START.md) for the full deployment and installation guide.
 
-**TL;DR -- three commands from zero to running:**
+**TL;DR -- three commands from zero to a running production stack:**
 
 ```bash
+# Run from a Linux terminal (native) or WSL terminal (Windows)
 cp .env.dist .env          # fill in DB_PASSWORD, JWT_SECRET, SEED_ADMIN_PASSWORD
-make prod-up               # builds and starts everything in Docker
+make prod-up               # builds images and starts everything in Docker
 # open http://localhost:8042
 ```
+
+> `.env.dist` is the production template with `CHANGE_ME_*` placeholders.
+> `.env.example` (used in dev) has pre-filled defaults and is not suitable for production.
 
 ### Build the distribution images
 

@@ -1,16 +1,25 @@
 # V.42 Quick Start
 
+This guide covers **deploying V.42** for regular use (production or team install).
+For **developer setup** (running Go natively, editing code, running tests), see [README.md](README.md).
+
 Get from zero to running in under 10 minutes.
 
 ---
 
 ## Prerequisites
 
-- **Docker Desktop** (v4.20+) with the Docker Compose plugin
+- **Docker Desktop** (v4.20+) with the Docker Compose plugin -- on Linux, Docker Engine works too
 - **Git**
-- A terminal (PowerShell, bash, or WSL)
+- A terminal:
+  - **Linux / macOS**: any bash/sh terminal
+  - **Windows**: a **WSL terminal** (Windows Terminal -> Ubuntu) -- NOT PowerShell or CMD
 
-That is it. No Go, no Node, no database client required -- everything runs in containers.
+> **Windows users:** `make`, `bash`, and all shell utilities used in this guide are Linux tools.
+> They are available inside WSL. Do NOT run these commands from PowerShell or CMD.
+> If you do not have WSL, follow [Microsoft's WSL install guide](https://learn.microsoft.com/en-us/windows/wsl/install) first.
+
+That is it. No Go, no Node, no database client required on the host -- everything runs in containers.
 
 > **Got a distributable package (v42-vX.Y.Z.tar.gz)?**
 > Skip straight to [Offline / USB install](#offline--usb-install) below -- no git or internet needed.
@@ -23,6 +32,9 @@ That is it. No Go, no Node, no database client required -- everything runs in co
 git clone https://github.com/vpo/v42.git
 cd v42
 ```
+
+> **Windows:** run this from your WSL terminal. Clone into the Linux filesystem (e.g. `~/v42`)
+> for best performance, not into `/mnt/c/...`.
 
 ---
 
@@ -55,6 +67,8 @@ You can also change `SEED_ADMIN_EMAIL` from `admin@example.com` to whatever you 
 ```bash
 make prod-up
 ```
+
+> **Windows:** run from a WSL terminal, not PowerShell.
 
 This single command:
 1. Starts PostgreSQL 16
@@ -205,7 +219,7 @@ The same commands as the git install (see sections above), but replace
 
 ### Building a new package
 
-On a machine with internet access, Go, and Node (or just Docker):
+On a machine that has Docker (no local Go or Node required -- the build happens inside containers):
 
 ```bash
 git clone https://github.com/vpo/v42.git
